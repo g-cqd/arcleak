@@ -1,0 +1,25 @@
+/// One stored property of a type: the raw material of ownership-graph edges.
+///
+/// `referencedTypeNames` are the nominal type names appearing in the declared
+/// type (unwrapping optionals, arrays, dictionary values, generic arguments) or
+/// inferred from a direct `= TypeName(...)` initializer. Resolution against the
+/// analyzed corpus happens at graph-build time; names that don't resolve to a
+/// known class/actor simply produce no edge.
+public struct StoredPropertyFact: Sendable, Equatable, Codable {
+    public let name: String
+    public let strength: ReferenceStrength
+    public let referencedTypeNames: [String]
+    public let position: SourcePosition
+
+    public init(
+        name: String,
+        strength: ReferenceStrength,
+        referencedTypeNames: [String],
+        position: SourcePosition
+    ) {
+        self.name = name
+        self.strength = strength
+        self.referencedTypeNames = referencedTypeNames
+        self.position = position
+    }
+}
