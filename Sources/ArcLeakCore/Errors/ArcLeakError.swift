@@ -8,11 +8,11 @@ public enum ArcLeakError: Error, Sendable, CustomStringConvertible {
 
     public var description: String {
         switch self {
-        case let .fileUnreadable(path, underlying):
+        case .fileUnreadable(let path, let underlying):
             "cannot read \(path): \(underlying)"
-        case let .configurationUnreadable(path, underlying):
+        case .configurationUnreadable(let path, let underlying):
             "cannot read configuration \(path): \(underlying)"
-        case let .configurationInvalid(path, detail):
+        case .configurationInvalid(let path, let detail):
             "invalid configuration \(path): \(detail)"
         case .noInputs:
             "no Swift files to analyze"

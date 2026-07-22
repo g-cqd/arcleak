@@ -1,5 +1,5 @@
-public import ArgumentParser
 import ArcLeakCore
+public import ArgumentParser
 import Foundation
 
 @main
@@ -61,7 +61,8 @@ struct Analyze: AsyncParsableCommand {
         name: .long,
         help: ArgumentHelp(
             "Write an empty stamp file after a successful (non-failing) run.",
-            discussion: "Used by the build-tool plugin so the build system can skip re-analysis when inputs are unchanged."
+            discussion:
+                "Used by the build-tool plugin so the build system can skip re-analysis when inputs are unchanged."
         )
     )
     var stamp: String?
@@ -153,8 +154,9 @@ struct Analyze: AsyncParsableCommand {
         let manager = FileManager.default
 
         for path in paths {
-            guard let isDirectory = try? URL(fileURLWithPath: path)
-                .resourceValues(forKeys: [.isDirectoryKey]).isDirectory
+            guard
+                let isDirectory = try? URL(fileURLWithPath: path)
+                    .resourceValues(forKeys: [.isDirectoryKey]).isDirectory
             else {
                 throw ValidationError("no such file or directory: \(path)")
             }
@@ -163,11 +165,13 @@ struct Analyze: AsyncParsableCommand {
                 continue
             }
             let root = URL(fileURLWithPath: path)
-            guard let enumerator = manager.enumerator(
-                at: root,
-                includingPropertiesForKeys: [.isRegularFileKey],
-                options: [.skipsHiddenFiles]
-            ) else { continue }
+            guard
+                let enumerator = manager.enumerator(
+                    at: root,
+                    includingPropertiesForKeys: [.isRegularFileKey],
+                    options: [.skipsHiddenFiles]
+                )
+            else { continue }
             for case let url as URL in enumerator {
                 if skippedComponents.contains(url.lastPathComponent) {
                     enumerator.skipDescendants()
@@ -194,13 +198,14 @@ struct Rules: ParsableCommand {
             print("\(rule.rawValue)  [\(rule.defaultSeverity.rawValue)]")
             print("    \(rule.summary)")
         }
-        print("""
+        print(
+            """
 
-        Suppression:
-          // arcleak:deliberate -- <why this strong reference is intentional>
-          // arcleak:disable:this <rule|all> [-- reason]
-          // arcleak:disable:next <rule|all> [-- reason]
-          // arcleak:disable <rule|all> … // arcleak:enable <rule|all>
-        """)
+            Suppression:
+              // arcleak:deliberate -- <why this strong reference is intentional>
+              // arcleak:disable:this <rule|all> [-- reason]
+              // arcleak:disable:next <rule|all> [-- reason]
+              // arcleak:disable <rule|all> … // arcleak:enable <rule|all>
+            """)
     }
 }

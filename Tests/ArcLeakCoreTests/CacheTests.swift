@@ -8,18 +8,18 @@ import Testing
             .appending(path: "arcleak-cache-test-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let leaky = """
-        final class Box {
-            var handler: (() -> Void)?
-            func arm() { handler = { self.fire() } }
-            func fire() {}
-        }
-        """
+            final class Box {
+                var handler: (() -> Void)?
+                func arm() { handler = { self.fire() } }
+                func fire() {}
+            }
+            """
         let clean = """
-        final class Fine {
-            var value = 0
-            func bump() { value += 1 }
-        }
-        """
+            final class Fine {
+                var value = 0
+                func bump() { value += 1 }
+            }
+            """
         let first = dir.appending(path: "Leaky.swift")
         let second = dir.appending(path: "Fine.swift")
         try leaky.write(to: first, atomically: true, encoding: .utf8)

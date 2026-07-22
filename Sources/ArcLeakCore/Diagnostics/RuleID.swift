@@ -20,11 +20,11 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
     public var defaultSeverity: Severity {
         switch self {
         case .storedClosureStrongSelf, .combineAssignSelfCycle, .combineSinkSelfCycle,
-             .dispatchSourceCycle:
+            .dispatchSourceCycle:
             .error
         case .timerRetainsSelf, .notificationObserverLeak, .taskNonterminatingSelf,
-             .unstoredLifetimeToken, .tokenStoredInLocal, .mutualStrongProperties,
-             .urlSessionDelegateLeak, .unownedOutlivesOwner:
+            .unstoredLifetimeToken, .tokenStoredInLocal, .mutualStrongProperties,
+            .urlSessionDelegateLeak, .unownedOutlivesOwner:
             .warning
         }
     }

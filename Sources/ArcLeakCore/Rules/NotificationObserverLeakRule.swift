@@ -15,17 +15,19 @@ struct NotificationObserverLeakRule: Rule {
 
         return type.apiCalls.compactMap { call in
             guard call.kind == .notificationAddObserverBlock,
-                  call.closureSelfCapture?.isStrong == true
+                call.closureSelfCapture?.isStrong == true
             else { return nil }
 
             let severity: Severity
             let note: String
             if deinitOnly {
                 severity = .error
-                note = "removeObserver only appears in deinit — the center's strong hold on the block (which holds self) means deinit never runs; remove from a reachable path or capture [weak self]"
+                note =
+                    "removeObserver only appears in deinit — the center's strong hold on the block (which holds self) means deinit never runs; remove from a reachable path or capture [weak self]"
             } else {
                 severity = configuration.severity(for: .notificationObserverLeak)
-                note = "NotificationCenter → block → self keeps self alive until removeObserver; capture [weak self] or remove the observer from a reachable path"
+                note =
+                    "NotificationCenter → block → self keeps self alive until removeObserver; capture [weak self] or remove the observer from a reachable path"
             }
             return Finding(
                 rule: .notificationObserverLeak,
@@ -33,7 +35,8 @@ struct NotificationObserverLeakRule: Rule {
                 path: path,
                 line: call.position.line,
                 column: call.position.column,
-                message: "leak: block observer captures self strongly and the notification center strongly holds the block until removal",
+                message:
+                    "leak: block observer captures self strongly and the notification center strongly holds the block until removal",
                 note: note
             )
         }
