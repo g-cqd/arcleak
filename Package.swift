@@ -35,6 +35,7 @@ let package = Package(
             dependencies: [
                 .product(name: "SwiftSyntax", package: "swift-syntax"),
                 .product(name: "SwiftParser", package: "swift-syntax"),
+                .product(name: "SwiftIfConfig", package: "swift-syntax"),
             ],
             swiftSettings: strictSwiftSettings
         ),

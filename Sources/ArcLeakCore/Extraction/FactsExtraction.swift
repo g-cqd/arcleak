@@ -1,26 +1,46 @@
+import SwiftIfConfig
 import SwiftParser
 import SwiftSyntax
 
 /// Parses one file and extracts `FileFacts`. The tree lives only for the
 /// duration of this call.
 public enum FactsExtraction {
-    public static func extract(path: String, source: String) -> FileFacts {
+    public static func extract(path: String, source: String, defines: Set<String> = []) -> FileFacts {
         let tree = Parser.parse(source: source)
         let converter = SourceLocationConverter(fileName: path, tree: tree)
+        let buildConfiguration = buildConfiguration(defines: defines)
 
-        let members = MemberCollector()
+        let members = MemberCollector(buildConfiguration: buildConfiguration)
         members.walk(tree)
 
         let extractor = FactsExtractor(
             path: path,
             converter: converter,
-            memberTable: members.table
+            memberTable: members.table,
+            buildConfiguration: buildConfiguration
         )
         extractor.walk(tree)
 
         var facts = extractor.finish()
         facts.directives = scanDirectives(tree: tree, converter: converter)
         return facts
+    }
+
+    /// Facts follow what a compile would see: the host platform's `os()`
+    /// conditions plus the user's `--define`/config custom conditions.
+    /// (`canImport` modules are not modeled yet — documented limitation.)
+    static func buildConfiguration(defines: Set<String>) -> StaticBuildConfiguration {
+        var configuration = StaticBuildConfiguration(
+            customConditions: defines,
+            languageVersion: VersionTuple(6),
+            compilerVersion: VersionTuple(6, 4)
+        )
+        #if os(macOS)
+            configuration.targetOSs = ["macOS", "OSX"]
+        #elseif os(Linux)
+            configuration.targetOSs = ["Linux"]
+        #endif
+        return configuration
     }
 
     /// One token sweep collecting `// arcleak:` comment directives with their lines.
@@ -61,6 +81,7 @@ final class FactsExtractor: SyntaxVisitor {
     private let path: String
     private let converter: SourceLocationConverter
     private let memberTable: [String: MemberCollector.Entry]
+    private let buildConfiguration: StaticBuildConfiguration
 
     private var typeStack: [String] = []
     private var methodStack: [MethodContext] = []
@@ -84,11 +105,28 @@ final class FactsExtractor: SyntaxVisitor {
         var localUses: [String: Int] = [:]
     }
 
-    init(path: String, converter: SourceLocationConverter, memberTable: [String: MemberCollector.Entry]) {
+    init(
+        path: String,
+        converter: SourceLocationConverter,
+        memberTable: [String: MemberCollector.Entry],
+        buildConfiguration: StaticBuildConfiguration
+    ) {
         self.path = path
         self.converter = converter
         self.memberTable = memberTable
+        self.buildConfiguration = buildConfiguration
         super.init(viewMode: .sourceAccurate)
+    }
+
+    /// Mirror of `MemberCollector`'s handling: only the active clause's facts
+    /// exist under this configuration.
+    override func visit(_ node: IfConfigDeclSyntax) -> SyntaxVisitorContinueKind {
+        if let clause = node.activeClause(in: buildConfiguration).clause,
+            let elements = clause.elements
+        {
+            walk(elements)
+        }
+        return .skipChildren
     }
 
     func finish() -> FileFacts {
