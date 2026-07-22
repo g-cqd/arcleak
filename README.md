@@ -34,7 +34,15 @@ swift run arcleak analyze --format json .    # machine-readable report (also: --
 swift run arcleak analyze --strict Sources   # exit 1 on any finding
 swift run arcleak rules                      # list rules, severities, suppression syntax
 swift run arcleak explain timer-retains-self # retention contract, why it bites, the fix
+swift run arcleak analyze --fix Sources      # apply [weak self] fix-its in place (--fix-dry-run to preview)
+swift run arcleak lsp                        # minimal LSP server: diagnostics + deliberate-suppression quick fix
+swift run arcleak generate-repro --finding <fp> --report r.json  # deinit-canary test skeleton
 ```
+
+`explain --finding <fingerprint> --report <json>` prints one finding's full
+story (location, message, contract citation); fingerprints are in every JSON
+report. A composite GitHub Action ships in `action.yml` (build, analyze,
+SARIF upload); release process in `Docs/RELEASING.md`.
 
 **Adopting on a legacy codebase** — accept current debt, gate only new findings:
 
