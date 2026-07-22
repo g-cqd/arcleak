@@ -61,7 +61,12 @@ struct ClosureCaptureAnalysis: Sendable, Equatable {
 
     private static func captureListEntryForSelf(_ closure: ClosureExprSyntax) -> SelfCaptureKind? {
         guard let items = closure.signature?.capture?.items else { return nil }
-        for item in items where item.name.text == "self" && item.initializer == nil {
+        for item in items {
+            let isSelfEntry = item.name.text == "self" && item.initializer == nil
+            // `[s = self]` aliases capture self too — with the alias's strength.
+            let isSelfAlias =
+                item.initializer?.value.as(DeclReferenceExprSyntax.self)?.baseName.text == "self"
+            guard isSelfEntry || isSelfAlias else { continue }
             switch item.specifier?.specifier.text {
             case "weak": return .weak
             case "unowned": return .unowned
