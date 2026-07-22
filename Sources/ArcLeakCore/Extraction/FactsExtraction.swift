@@ -114,6 +114,10 @@ final class FactsExtractor: SyntaxVisitor {
         /// Local `func`s whose bodies reference `self` — passing one as a value
         /// captures `self` strongly with no capture-list syntax available.
         var selfReferencingLocalFunctions: Set<String> = []
+        /// Locals (bindings + parameters) that shadow member names: a bare
+        /// `handler = { … }` writing a *local* must never be read as member
+        /// storage (gauntlet-exposed false positive).
+        var localDeclarations: Set<String> = []
     }
 
     init(
@@ -229,11 +233,17 @@ final class FactsExtractor: SyntaxVisitor {
 
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
         let opened = pushMethodIfTopLevel(node, isDeinit: false)
-        if !opened, !methodStack.isEmpty,
-            ClosureCaptureAnalysis.referencesSelfExplicitly(node)
-        {
-            methodStack[methodStack.count - 1]
-                .selfReferencingLocalFunctions.insert(node.name.text)
+        if opened {
+            for parameter in node.signature.parameterClause.parameters {
+                methodStack[methodStack.count - 1]
+                    .localDeclarations.insert((parameter.secondName ?? parameter.firstName).text)
+            }
+        } else if !methodStack.isEmpty {
+            if ClosureCaptureAnalysis.referencesSelfExplicitly(node) {
+                methodStack[methodStack.count - 1]
+                    .selfReferencingLocalFunctions.insert(node.name.text)
+            }
+            methodStack[methodStack.count - 1].localDeclarations.insert(node.name.text)
         }
         return .visitChildren
     }
@@ -340,6 +350,15 @@ final class FactsExtractor: SyntaxVisitor {
 
     override func visit(_ node: VariableDeclSyntax) -> SyntaxVisitorContinueKind {
         guard node.parent?.is(MemberBlockItemSyntax.self) == true, typeStack.last != nil else {
+            // A method-local binding shadows any member of the same name for
+            // the rest of the context.
+            if !methodStack.isEmpty {
+                for binding in node.bindings {
+                    if let name = binding.pattern.as(IdentifierPatternSyntax.self)?.identifier.text {
+                        methodStack[methodStack.count - 1].localDeclarations.insert(name)
+                    }
+                }
+            }
             return .visitChildren
         }
         recordStoredProperties(node)
@@ -916,7 +935,8 @@ final class FactsExtractor: SyntaxVisitor {
         return memberTable[typeName]?.members ?? []
     }
 
-    /// `self.x` → "x"; bare `x` when `x` is a member of the enclosing type → "x".
+    /// `self.x` → "x"; bare `x` when `x` is an *unshadowed* member of the
+    /// enclosing type → "x".
     private func memberOfSelfName(_ expr: some ExprSyntaxProtocol) -> String? {
         if let member = ExprSyntax(expr).as(MemberAccessExprSyntax.self),
             member.base?.as(DeclReferenceExprSyntax.self)?.baseName.text == "self"
@@ -924,7 +944,8 @@ final class FactsExtractor: SyntaxVisitor {
             return member.declName.baseName.text
         }
         if let reference = ExprSyntax(expr).as(DeclReferenceExprSyntax.self),
-            currentMemberNames.contains(reference.baseName.text)
+            currentMemberNames.contains(reference.baseName.text),
+            methodStack.last?.localDeclarations.contains(reference.baseName.text) != true
         {
             return reference.baseName.text
         }
