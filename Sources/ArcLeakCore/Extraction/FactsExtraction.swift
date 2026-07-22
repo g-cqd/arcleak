@@ -35,7 +35,7 @@ public enum FactsExtraction {
             for piece in trivia {
                 switch piece {
                 case .lineComment(let text), .blockComment(let text),
-                     .docLineComment(let text), .docBlockComment(let text):
+                    .docLineComment(let text), .docBlockComment(let text):
                     let line = converter.location(for: AbsolutePosition(utf8Offset: offset)).line
                     if let directive = SuppressionDirective.parse(comment: text, line: line) {
                         directives.append(directive)
@@ -99,12 +99,40 @@ final class FactsExtractor: SyntaxVisitor {
             type.inheritedTypeNames = memberTable[name]?.inheritedTypes ?? []
             type.storedProperties = collectedFacts.storedProperties
             type.storedClosures = collectedFacts.storedClosures
-            type.apiCalls = collectedFacts.apiCalls
+            type.apiCalls = Self.resolveUpstreams(
+                collectedFacts.apiCalls,
+                properties: collectedFacts.storedProperties
+            )
             type.taskSpawns = collectedFacts.taskSpawns
             type.releaseSites = collectedFacts.releaseSites
             facts.types.append(type)
         }
         return facts
+    }
+
+    /// Post-pass once the whole type is collected: an unknown upstream whose
+    /// chain root is a subject-backed or `@Published` property is infinite.
+    private static func resolveUpstreams(
+        _ calls: [APICallFact],
+        properties: [StoredPropertyFact]
+    ) -> [APICallFact] {
+        let neverCompleting = Set(
+            properties
+                .filter { property in
+                    property.hasPublishedAttribute
+                        || property.referencedTypeNames.contains(where: subjectTypeNames.contains)
+                }
+                .map(\.name)
+        )
+        guard !neverCompleting.isEmpty else { return calls }
+        return calls.map { call in
+            guard call.upstreamFiniteness == .unknown,
+                call.kind == .combineSink || call.kind == .combineAssignOn,
+                let root = call.upstreamRootMember,
+                neverCompleting.contains(root)
+            else { return call }
+            return call.withUpstreamFiniteness(.infinite)
+        }
     }
 
     // MARK: - Type scope
@@ -201,7 +229,8 @@ final class FactsExtractor: SyntaxVisitor {
 
         func finalize(_ consumption: ResultConsumption) -> ResultConsumption {
             if case .storedToLocalOnly(let name) = consumption,
-               context.localUses[name, default: 0] > 0 {
+                context.localUses[name, default: 0] > 0
+            {
                 return .storedToLocalEscaping(name)
             }
             return consumption
@@ -216,6 +245,8 @@ final class FactsExtractor: SyntaxVisitor {
                     repeats: call.repeats,
                     targetIsSelf: call.targetIsSelf,
                     receiverIsSelfMember: call.receiverIsSelfMember,
+                    upstreamFiniteness: call.upstreamFiniteness,
+                    upstreamRootMember: call.upstreamRootMember,
                     closureSelfCapture: call.closureSelfCapture,
                     consumption: finalize(call.consumption)
                 )
@@ -280,13 +311,14 @@ final class FactsExtractor: SyntaxVisitor {
         let modifierNames = node.modifiers.map(\.name.text)
         guard !modifierNames.contains("static"), !modifierNames.contains("class") else { return }
 
-        let strength: ReferenceStrength = if modifierNames.contains("weak") {
-            .weak
-        } else if modifierNames.contains("unowned") {
-            .unowned
-        } else {
-            .strong
-        }
+        let strength: ReferenceStrength =
+            if modifierNames.contains("weak") {
+                .weak
+            } else if modifierNames.contains("unowned") {
+                .unowned
+            } else {
+                .strong
+            }
 
         for binding in node.bindings {
             if let accessorBlock = binding.accessorBlock {
@@ -307,10 +339,21 @@ final class FactsExtractor: SyntaxVisitor {
             var typeNames: [String] = []
             if let annotation = binding.typeAnnotation {
                 typeNames = TypeNameExtractor.nominalNames(in: annotation.type)
-            } else if let call = binding.initializer?.value.as(FunctionCallExprSyntax.self),
-                      let reference = call.calledExpression.as(DeclReferenceExprSyntax.self),
-                      reference.baseName.text.first?.isUppercase == true {
-                typeNames = [reference.baseName.text]
+            } else if let call = binding.initializer?.value.as(FunctionCallExprSyntax.self) {
+                // `= TypeName(...)` and `= TypeName<Args>(...)` both infer.
+                var callee = call.calledExpression
+                if let generic = callee.as(GenericSpecializationExprSyntax.self) {
+                    callee = generic.expression
+                }
+                if let reference = callee.as(DeclReferenceExprSyntax.self),
+                    reference.baseName.text.first?.isUppercase == true
+                {
+                    typeNames = [reference.baseName.text]
+                }
+            }
+
+            let attributeNames = node.attributes.compactMap {
+                $0.as(AttributeSyntax.self)?.attributeName.as(IdentifierTypeSyntax.self)?.name.text
             }
 
             collected[typeName, default: CollectedFacts()].storedProperties.append(
@@ -318,6 +361,7 @@ final class FactsExtractor: SyntaxVisitor {
                     name: name,
                     strength: strength,
                     referencedTypeNames: typeNames,
+                    hasPublishedAttribute: attributeNames.contains("Published"),
                     position: position(of: binding)
                 )
             )
@@ -431,14 +475,16 @@ final class FactsExtractor: SyntaxVisitor {
                 return nil
             }
         } else if let reference = node.calledExpression.as(DeclReferenceExprSyntax.self),
-                  reference.baseName.text == "CADisplayLink",
-                  labels.contains("target") {
+            reference.baseName.text == "CADisplayLink",
+            labels.contains("target")
+        {
             kind = .displayLinkTarget
             targetIsSelf = isSelf(argument("target"))
         } else if let reference = node.calledExpression.as(DeclReferenceExprSyntax.self),
-                  reference.baseName.text == "URLSession",
-                  labels.contains("configuration"),
-                  labels.contains("delegate") {
+            reference.baseName.text == "URLSession",
+            labels.contains("configuration"),
+            labels.contains("delegate")
+        {
             kind = .urlSessionWithDelegate
             targetIsSelf = isSelf(argument("delegate"))
         } else {
@@ -447,11 +493,18 @@ final class FactsExtractor: SyntaxVisitor {
 
         var closureCapture: SelfCaptureKind?
         if let closure = attachedClosure(labels: closureLabels) {
-            closureCapture = ClosureCaptureAnalysis.analyze(
-                closure: closure,
-                memberNames: currentMemberNames,
-                allowImplicitSelf: false
-            ).selfCapture
+            closureCapture =
+                ClosureCaptureAnalysis.analyze(
+                    closure: closure,
+                    memberNames: currentMemberNames,
+                    allowImplicitSelf: false
+                ).selfCapture
+        }
+
+        var finiteness = APICallFact.UpstreamFiniteness.unknown
+        var rootMember: String?
+        if kind == .combineSink || kind == .combineAssignOn {
+            (finiteness, rootMember) = classifyUpstream(of: node)
         }
 
         return APICallFact(
@@ -460,9 +513,89 @@ final class FactsExtractor: SyntaxVisitor {
             repeats: repeatsLiteral(),
             targetIsSelf: targetIsSelf,
             receiverIsSelfMember: receiverIsSelfMember,
+            upstreamFiniteness: finiteness,
+            upstreamRootMember: rootMember,
             closureSelfCapture: closureCapture,
             consumption: classifyConsumption(of: node)
         )
+    }
+
+    /// Operators that force completion regardless of what feeds them.
+    private static let finiteChainMarkers: Set<String> = [
+        "first", "prefix", "output", "dataTaskPublisher", "Just", "Empty", "Fail",
+        "Future", "Record", "Deferred",
+    ]
+    /// Sources that never complete while their owner lives.
+    private static let infiniteChainMarkers: Set<String> = ["publish"]
+    static let subjectTypeNames: Set<String> = ["PassthroughSubject", "CurrentValueSubject"]
+
+    /// Syntactic classification of a sink/assign upstream: walks the receiver
+    /// chain collecting operator and source names. Finite markers win (a
+    /// `.first()` completes even a subject pipeline); `$projected` values and
+    /// `Timer.publish` are infinite; a bare chain-root member is reported for
+    /// per-type resolution against subject-backed properties in `finish()`.
+    private func classifyUpstream(
+        of node: FunctionCallExprSyntax
+    ) -> (APICallFact.UpstreamFiniteness, String?) {
+        var names: [String] = []
+        var sawProjected = false
+        var rootMember: String?
+
+        var current = node.calledExpression.as(MemberAccessExprSyntax.self)?.base
+        while let expr = current {
+            if let call = expr.as(FunctionCallExprSyntax.self) {
+                current = call.calledExpression
+                continue
+            }
+            if let tryExpr = expr.as(TryExprSyntax.self) {
+                current = tryExpr.expression
+                continue
+            }
+            if let awaitExpr = expr.as(AwaitExprSyntax.self) {
+                current = awaitExpr.expression
+                continue
+            }
+            if let generic = expr.as(GenericSpecializationExprSyntax.self) {
+                current = generic.expression
+                continue
+            }
+            if let member = expr.as(MemberAccessExprSyntax.self) {
+                let name = member.declName.baseName.text
+                names.append(name)
+                if name.hasPrefix("$") { sawProjected = true }
+                if member.base?.as(DeclReferenceExprSyntax.self)?.baseName.text == "self",
+                    currentMemberNames.contains(name)
+                {
+                    rootMember = name
+                }
+                current = member.base
+                continue
+            }
+            if let reference = expr.as(DeclReferenceExprSyntax.self) {
+                let name = reference.baseName.text
+                names.append(name)
+                if name.hasPrefix("$") { sawProjected = true }
+                if currentMemberNames.contains(name) { rootMember = name }
+                current = nil
+                continue
+            }
+            current = nil
+        }
+
+        if names.contains(where: { Self.finiteChainMarkers.contains($0) }) {
+            return (.finite, rootMember)
+        }
+        if sawProjected { return (.infinite, rootMember) }
+        if names.contains(where: { Self.infiniteChainMarkers.contains($0) }) {
+            return (.infinite, rootMember)
+        }
+        if names.contains(where: { Self.subjectTypeNames.contains($0) }) {
+            return (.infinite, rootMember)
+        }
+        if names.contains("publisher"), names.contains("NotificationCenter") {
+            return (.infinite, rootMember)
+        }
+        return (.unknown, rootMember)
     }
 
     private func matchTaskSpawn(_ node: FunctionCallExprSyntax) -> TaskSpawnFact? {
@@ -470,8 +603,9 @@ final class FactsExtractor: SyntaxVisitor {
         if let reference = node.calledExpression.as(DeclReferenceExprSyntax.self) {
             isTask = reference.baseName.text == "Task"
         } else if let member = node.calledExpression.as(MemberAccessExprSyntax.self),
-                  member.base?.as(DeclReferenceExprSyntax.self)?.baseName.text == "Task",
-                  member.declName.baseName.text == "detached" {
+            member.base?.as(DeclReferenceExprSyntax.self)?.baseName.text == "Task",
+            member.declName.baseName.text == "detached"
+        {
             isTask = true
         } else {
             isTask = false
@@ -552,8 +686,9 @@ final class FactsExtractor: SyntaxVisitor {
                     chained.calledExpression.id == member.id
                 else { return .other }
                 if member.declName.baseName.text == "store",
-                   let argument = chained.arguments.first,
-                   argument.label?.text == "in" {
+                    let argument = chained.arguments.first,
+                    argument.label?.text == "in"
+                {
                     let target = argument.expression.as(InOutExprSyntax.self)?.expression
                     let memberOfSelf = target.flatMap(memberOfSelfName) != nil
                     return .chainedStoreIn(memberOfSelf: memberOfSelf)
@@ -564,14 +699,16 @@ final class FactsExtractor: SyntaxVisitor {
             // `a = expr` parses as SequenceExpr(ExprList[a, =, expr]): the call's
             // parent is the element list, and the sequence sits one level up.
             if let list = parent.as(ExprListSyntax.self),
-               let sequence = list.parent?.as(SequenceExprSyntax.self) {
+                let sequence = list.parent?.as(SequenceExprSyntax.self)
+            {
                 return classifyAssignment(sequence: sequence, rhsID: current.id)
             }
             if let sequence = parent.as(SequenceExprSyntax.self) {
                 return classifyAssignment(sequence: sequence, rhsID: current.id)
             }
             if let initializer = parent.as(InitializerClauseSyntax.self),
-               initializer.value.id == current.id {
+                initializer.value.id == current.id
+            {
                 return classifyBinding(initializer)
             }
             if parent.is(ReturnStmtSyntax.self) { return .returned }
@@ -620,11 +757,13 @@ final class FactsExtractor: SyntaxVisitor {
     /// `self.x` → "x"; bare `x` when `x` is a member of the enclosing type → "x".
     private func memberOfSelfName(_ expr: some ExprSyntaxProtocol) -> String? {
         if let member = ExprSyntax(expr).as(MemberAccessExprSyntax.self),
-           member.base?.as(DeclReferenceExprSyntax.self)?.baseName.text == "self" {
+            member.base?.as(DeclReferenceExprSyntax.self)?.baseName.text == "self"
+        {
             return member.declName.baseName.text
         }
         if let reference = ExprSyntax(expr).as(DeclReferenceExprSyntax.self),
-           currentMemberNames.contains(reference.baseName.text) {
+            currentMemberNames.contains(reference.baseName.text)
+        {
             return reference.baseName.text
         }
         return nil

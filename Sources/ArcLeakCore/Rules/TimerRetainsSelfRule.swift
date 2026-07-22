@@ -32,10 +32,12 @@ struct TimerRetainsSelfRule: Rule {
             let note: String
             if deinitOnly {
                 severity = .error
-                note = "invalidate() only appears in deinit — deinit can never run while the run loop keeps self alive, so this leak is definite; invalidate from a reachable path (e.g. viewDidDisappear/stop())"
+                note =
+                    "invalidate() only appears in deinit — deinit can never run while the run loop keeps self alive, so this leak is definite; invalidate from a reachable path (e.g. viewDidDisappear/stop())"
             } else {
                 severity = configuration.severity(for: .timerRetainsSelf)
-                note = "run loop → timer → self keeps self alive; no invalidate() found in this type — add one on a reachable path, or capture [weak self]"
+                note =
+                    "run loop → timer → self keeps self alive; no invalidate() found in this type — add one on a reachable path, or capture [weak self]"
             }
             return Finding(
                 rule: .timerRetainsSelf,
