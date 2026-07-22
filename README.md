@@ -23,8 +23,15 @@ bodies), and the Swift-book-blessed `[unowned self]` same-lifetime pattern.
 Blanket `[weak self]` linting is cargo cult; the clean-fixture corpus gates
 false positives in CI.
 
-See `DESIGN.md` for the full design study (bug taxonomy, doc citations, prior
-art, and the roadmap toward index-backed cross-file cycle detection).
+Every retention contract the rules encode is *runtime-proven*: the leak
+oracle (`Scripts/run-leak-oracle.sh`) reconstructs each one and verifies it
+with `leaks -atExit` and in-process deinit canaries on every CI run, so an OS
+behavior change breaks this repo's CI — not your trust.
+
+## Requirements
+
+Swift 6.4 toolchain, macOS 14+ (analysis is source-level — no build of the
+target project is required).
 
 ## CLI
 
@@ -87,7 +94,7 @@ the compiler's own; error-severity findings fail the build, warnings don't:
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "…/arcleak.git", from: "0.1.0"),
+    .package(url: "https://github.com/g-cqd/arcleak.git", from: "0.1.0"),
 ],
 targets: [
     .target(
@@ -180,7 +187,7 @@ method-reference-specific fix guidance, no separate rule id needed.
 † upgraded to **error** when the only release call sits in `deinit` (or the
 task handle is stored on `self`) — the release is unreachable by construction.
 
-## Current limits (by design, see DESIGN.md)
+## Current limits (by design)
 
 Cross-file cycle detection covers the **analyzed corpus** (every file passed in
 one run): the ownership graph links type names across those files without any
@@ -191,5 +198,10 @@ type-level analysis — an SCC proves the types *can* cycle; verify instance
 ownership before restructuring. Analysis is of written source —
 macro-generated storage is invisible. Silence is not a proof of absence;
 confirm with Instruments/`leaks` for runtime ground truth.
+
+
+## License
+
+MIT — see `LICENSE`.
 
 [swift-syntax]: https://github.com/swiftlang/swift-syntax

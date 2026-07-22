@@ -2,7 +2,7 @@
 # Differential against Meta Infer v1.3.0's EXPERIMENTAL Swift frontend
 # (LLVM-bitcode based: `capture --llvm-bitcode-file`).
 #
-# Empirical status (2026-07-23, full evidence in DESIGN.md):
+# Empirical status (2026-07-23):
 #   - macOS release binaries ship the LLVM frontend STUBBED OUT
 #     (Assert_failure LlvmSledgeFrontendStubs.ml) — unusable on macOS.
 #   - The Linux x86_64 build has the real frontend but asserts translating
