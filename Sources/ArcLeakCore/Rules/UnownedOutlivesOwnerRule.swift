@@ -29,8 +29,10 @@ struct UnownedOutlivesOwnerRule: Rule {
                 path: path,
                 line: call.position.line,
                 column: call.position.column,
-                message: "crash risk: [unowned self] in a closure held by an external anchor — if self deallocates before the closure is released, the next access traps",
-                note: "use [weak self] here; unowned is only safe when the closure can never outlive self (Swift book: same-or-longer lifetime rule)"
+                message:
+                    "crash risk: [unowned self] in a closure held by an external anchor — if self deallocates before the closure is released, the next access traps",
+                note:
+                    "use [weak self] here; unowned is only safe when the closure can never outlive self (Swift book: same-or-longer lifetime rule)"
             )
         }
     }

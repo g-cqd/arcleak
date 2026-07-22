@@ -15,8 +15,10 @@ struct StoredClosureStrongSelfRule: Rule {
                 path: path,
                 line: stored.position.line,
                 column: stored.position.column,
-                message: "closure stored in '\(stored.targetMember)' captures self strongly — retain cycle: self → \(stored.targetMember) → self",
-                note: "capture with [weak self] and unwrap, or [unowned self] only if the closure can never outlive self (Swift book: same-lifetime rule)"
+                message:
+                    "closure stored in '\(stored.targetMember)' captures self strongly — retain cycle: self → \(stored.targetMember) → self",
+                note:
+                    "capture with [weak self] and unwrap, or [unowned self] only if the closure can never outlive self (Swift book: same-lifetime rule)"
             )
         }
     }

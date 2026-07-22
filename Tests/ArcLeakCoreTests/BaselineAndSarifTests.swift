@@ -1,17 +1,17 @@
-import Foundation
 import ArcLeakCore
+import Foundation
 import Testing
 
 @Suite struct BaselineAndSarifTests {
     private let leaky = """
-    final class Box {
-        var handler: (() -> Void)?
-        func arm() {
-            handler = { self.fire() }
+        final class Box {
+            var handler: (() -> Void)?
+            func arm() {
+                handler = { self.fire() }
+            }
+            func fire() {}
         }
-        func fire() {}
-    }
-    """
+        """
 
     @Test func fingerprintsAreStableAndPositionSensitive() {
         let first = Analyzer().analyze(source: leaky, path: "a.swift").findings
@@ -35,21 +35,21 @@ import Testing
         let loaded = try Baseline.load(path: path)
 
         let grown = """
-        final class Box {
-            var handler: (() -> Void)?
-            func arm() {
-                handler = { self.fire() }
+            final class Box {
+                var handler: (() -> Void)?
+                func arm() {
+                    handler = { self.fire() }
+                }
+                func fire() {}
             }
-            func fire() {}
-        }
-        final class Second {
-            var other: (() -> Void)?
-            func arm() {
-                other = { self.go() }
+            final class Second {
+                var other: (() -> Void)?
+                func arm() {
+                    other = { self.go() }
+                }
+                func go() {}
             }
-            func go() {}
-        }
-        """
+            """
         let current = Analyzer().analyze(source: grown, path: "a.swift").findings
         let (kept, baselined) = loaded.filter(current)
         #expect(baselined.count == 1)

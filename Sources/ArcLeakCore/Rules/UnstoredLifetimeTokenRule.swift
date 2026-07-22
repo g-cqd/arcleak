@@ -24,8 +24,9 @@ struct UnstoredLifetimeTokenRule: Rule {
             // intentional register-forever: nothing is retained and removal is
             // never needed.
             if call.kind == .notificationAddObserverBlock,
-               call.closureSelfCapture?.isStrong != true,
-               Self.isProcessLifetimeOwner(type) {
+                call.closureSelfCapture?.isStrong != true,
+                Self.isProcessLifetimeOwner(type)
+            {
                 return nil
             }
 
@@ -39,7 +40,8 @@ struct UnstoredLifetimeTokenRule: Rule {
                     line: call.position.line,
                     column: call.position.column,
                     message: "\(token) is discarded — \(consequence(for: call.kind))",
-                    note: "store it in a property of the owner (e.g. store(in:) into an instance Set<AnyCancellable>) for as long as the work should live"
+                    note:
+                        "store it in a property of the owner (e.g. store(in:) into an instance Set<AnyCancellable>) for as long as the work should live"
                 )
             case .storedToLocalOnly(let name):
                 return Finding(
@@ -48,7 +50,8 @@ struct UnstoredLifetimeTokenRule: Rule {
                     path: path,
                     line: call.position.line,
                     column: call.position.column,
-                    message: "\(token) is stored in local '\(name)' and dies at scope end — \(consequence(for: call.kind))",
+                    message:
+                        "\(token) is stored in local '\(name)' and dies at scope end — \(consequence(for: call.kind))",
                     note: "move it to instance storage; a local cannot own work that outlives the call"
                 )
             case .chainedStoreIn(memberOfSelf: false):
@@ -58,11 +61,12 @@ struct UnstoredLifetimeTokenRule: Rule {
                     path: path,
                     line: call.position.line,
                     column: call.position.column,
-                    message: "\(token) is stored into a local collection via store(in:) and dies at scope end — \(consequence(for: call.kind))",
+                    message:
+                        "\(token) is stored into a local collection via store(in:) and dies at scope end — \(consequence(for: call.kind))",
                     note: "store(in:) into a collection owned by the instance instead"
                 )
             case .storedToSelfMember, .storedToLocalEscaping, .chainedStoreIn(memberOfSelf: true),
-                 .returned, .other:
+                .returned, .other:
                 return nil
             }
         }
@@ -80,7 +84,8 @@ struct UnstoredLifetimeTokenRule: Rule {
         case .kvoObserve: "the NSKeyValueObservation"
         case .periodicTimeObserver: "the time-observer token"
         case .timerScheduledBlock, .timerScheduledTarget, .displayLinkTarget,
-             .urlSessionWithDelegate, .dispatchSourceHandler: "the token"
+            .urlSessionWithDelegate, .dispatchSourceHandler:
+            "the token"
         }
     }
 
@@ -95,7 +100,7 @@ struct UnstoredLifetimeTokenRule: Rule {
         case .periodicTimeObserver:
             "the observer cannot be removed and callbacks may stop or leak"
         case .timerScheduledBlock, .timerScheduledTarget, .displayLinkTarget,
-             .urlSessionWithDelegate, .dispatchSourceHandler:
+            .urlSessionWithDelegate, .dispatchSourceHandler:
             "the work it owns stops immediately"
         }
     }

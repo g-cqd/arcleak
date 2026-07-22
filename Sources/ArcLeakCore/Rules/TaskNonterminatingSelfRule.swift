@@ -33,10 +33,12 @@ struct TaskNonterminatingSelfRule: Rule {
             let note: String
             if spawn.consumption.storesIntoSelf {
                 severity = .error
-                note = "self stores the task handle while the task retains self — cancel() in deinit can never run; capture [weak self] (exit when self is nil) or cancel from a reachable path"
+                note =
+                    "self stores the task handle while the task retains self — cancel() in deinit can never run; capture [weak self] (exit when self is nil) or cancel from a reachable path"
             } else {
                 severity = configuration.severity(for: .taskNonterminatingSelf)
-                note = "the task retains self until it completes — which it may never do; capture [weak self] and exit when self is nil, or make cancellation reachable"
+                note =
+                    "the task retains self until it completes — which it may never do; capture [weak self] and exit when self is nil, or make cancellation reachable"
             }
             return Finding(
                 rule: .taskNonterminatingSelf,

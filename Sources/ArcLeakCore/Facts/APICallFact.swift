@@ -33,6 +33,17 @@ public struct APICallFact: Sendable, Equatable, Codable {
         case dispatchSourceHandler
     }
 
+    /// Whether a Combine upstream provably completes. `Subscribers.Sink`
+    /// releases its closures on the terminal event, so strong-self sinks over
+    /// *finite* pipelines are transient keep-alives, not cycles; over
+    /// never-completing upstreams (subjects, `@Published`, `Timer.publish`)
+    /// the cycle is permanent.
+    public enum UpstreamFiniteness: String, Sendable, Equatable, Codable {
+        case finite
+        case infinite
+        case unknown
+    }
+
     public let kind: Kind
     public let position: SourcePosition
     /// `repeats:` argument when it is a boolean literal; nil when absent/dynamic.
@@ -42,6 +53,11 @@ public struct APICallFact: Sendable, Equatable, Codable {
     /// True when the call's receiver is a stored member of the enclosing type
     /// (`self.source.setEventHandler { … }`) — the edge self → receiver exists.
     public let receiverIsSelfMember: Bool
+    /// Only meaningful for `combineSink`/`combineAssignOn`.
+    public let upstreamFiniteness: UpstreamFiniteness
+    /// Chain-root member name (`subject` in `subject.map{…}.sink`), used to
+    /// resolve subject-backed properties once the whole type is collected.
+    public let upstreamRootMember: String?
     /// Capture analysis of the trailing/`using:`/`block:` closure, when present.
     public let closureSelfCapture: SelfCaptureKind?
     public let consumption: ResultConsumption
@@ -52,6 +68,8 @@ public struct APICallFact: Sendable, Equatable, Codable {
         repeats: Bool?,
         targetIsSelf: Bool,
         receiverIsSelfMember: Bool = false,
+        upstreamFiniteness: UpstreamFiniteness = .unknown,
+        upstreamRootMember: String? = nil,
         closureSelfCapture: SelfCaptureKind?,
         consumption: ResultConsumption
     ) {
@@ -60,18 +78,36 @@ public struct APICallFact: Sendable, Equatable, Codable {
         self.repeats = repeats
         self.targetIsSelf = targetIsSelf
         self.receiverIsSelfMember = receiverIsSelfMember
+        self.upstreamFiniteness = upstreamFiniteness
+        self.upstreamRootMember = upstreamRootMember
         self.closureSelfCapture = closureSelfCapture
         self.consumption = consumption
+    }
+
+    /// Copy with resolved finiteness (per-type post-pass for subject-backed
+    /// chain roots).
+    public func withUpstreamFiniteness(_ finiteness: UpstreamFiniteness) -> APICallFact {
+        APICallFact(
+            kind: kind,
+            position: position,
+            repeats: repeats,
+            targetIsSelf: targetIsSelf,
+            receiverIsSelfMember: receiverIsSelfMember,
+            upstreamFiniteness: finiteness,
+            upstreamRootMember: upstreamRootMember,
+            closureSelfCapture: closureSelfCapture,
+            consumption: consumption
+        )
     }
 
     /// Whether this API returns a token whose loss is itself a bug (§ premature release).
     public var producesLifetimeToken: Bool {
         switch kind {
         case .combineSink, .combineAssignOn, .notificationAddObserverBlock, .kvoObserve,
-             .periodicTimeObserver:
+            .periodicTimeObserver:
             true
         case .timerScheduledBlock, .timerScheduledTarget, .displayLinkTarget,
-             .urlSessionWithDelegate, .dispatchSourceHandler:
+            .urlSessionWithDelegate, .dispatchSourceHandler:
             false
         }
     }

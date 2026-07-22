@@ -46,6 +46,16 @@ let package = Package(
             ],
             swiftSettings: strictSwiftSettings
         ),
+        // Runtime ground-truth oracle: proves every KB retention contract by
+        // running it. Cycle scenarios are judged externally by `leaks -atExit`;
+        // anchor scenarios self-verify with run-loop control. See
+        // Scripts/run-leak-oracle.sh. Compiled in language mode 5 on purpose:
+        // the scenarios reproduce real-world capture patterns verbatim, and
+        // Swift 6 strict concurrency would reject the very shapes under test.
+        .executableTarget(
+            name: "leak-oracle",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
         .plugin(
             name: "ArcLeakBuildToolPlugin",
             capability: .buildTool(),

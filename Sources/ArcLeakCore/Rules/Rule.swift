@@ -31,7 +31,7 @@ public enum RuleEngine {
     ]
 
     private static let corpusRules: [any CorpusRule.Type] = [
-        MutualStrongPropertiesRule.self,
+        MutualStrongPropertiesRule.self
     ]
 
     public static func check(file: FileFacts, configuration: Configuration) -> [Finding] {
