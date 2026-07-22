@@ -74,6 +74,10 @@ upcoming-feature set enabled package-wide (`ExistentialAny`,
 concurrency defaults `InferIsolatedConformances` and
 `NonisolatedNonsendingByDefault`) with `strictMemorySafety()` — the analyzer
 holds itself to a zero-unsafe, zero-warning bar and dogfoods itself.
+**GCD is prohibited in the implementation** (CI-gated by `Scripts/no-gcd.sh`):
+concurrency is structured Swift concurrency only — the sole sanctioned
+Dispatch usage is oracle scenarios and fixtures that reproduce GCD retention
+contracts as test subject matter.
 
 ## Build-time integration
 
