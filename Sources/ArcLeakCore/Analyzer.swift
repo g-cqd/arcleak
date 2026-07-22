@@ -25,7 +25,11 @@ public struct Analyzer: Sendable {
     /// With `cacheURL`, per-file facts are reused when the file's content
     /// fingerprint matches (parsing dominates runtime; rules always re-run, so
     /// findings can never go stale relative to rules or configuration).
-    public func analyze(files: [String], cacheURL: URL? = nil) async -> AnalysisReport {
+    public func analyze(
+        files: [String],
+        cacheURL: URL? = nil,
+        index: (any IndexReading)? = nil
+    ) async -> AnalysisReport {
         let included = files.filter { !configuration.isExcluded(path: $0) }
         var cache = cacheURL.map(FactsCache.load(url:))
         let snapshot = cache ?? FactsCache()
@@ -37,6 +41,7 @@ public struct Analyzer: Sendable {
 
         struct FileOutcome: Sendable {
             var facts: FileFacts?
+            var effectiveFacts: FileFacts?
             var fingerprint: String?
             var cacheHit = false
             var findings: [Finding] = []
@@ -80,9 +85,13 @@ public struct Analyzer: Sendable {
                             contracts: configuration.contracts ?? []
                         )
                     }
-                    let findings = RuleEngine.check(file: facts, configuration: configuration)
+                    // Cache stores raw facts; index upgrades apply after so a
+                    // changed index can never serve stale resolutions.
+                    let effective = index.map { facts.upgraded(with: $0) } ?? facts
+                    let findings = RuleEngine.check(file: effective, configuration: configuration)
                     return FileOutcome(
                         facts: facts,
+                        effectiveFacts: effective,
                         fingerprint: fingerprint,
                         cacheHit: cacheHit,
                         findings: findings
@@ -103,7 +112,7 @@ public struct Analyzer: Sendable {
         var hits = 0
         for outcome in outcomes {
             if let facts = outcome.facts {
-                corpus.append(facts)
+                corpus.append(outcome.effectiveFacts ?? facts)
                 if let fingerprint = outcome.fingerprint {
                     cache?.update(path: facts.path, fingerprint: fingerprint, facts: facts)
                 }
@@ -134,14 +143,18 @@ public struct Analyzer: Sendable {
     /// file can close a cycle.
     public func analyze(
         source: String,
-        path: String
+        path: String,
+        index: (any IndexReading)? = nil
     ) -> (findings: [Finding], suppressed: [AnalysisReport.SuppressedFinding]) {
-        let facts = FactsExtraction.extract(
+        var facts = FactsExtraction.extract(
             path: path,
             source: source,
             defines: configuration.activeDefines,
             contracts: configuration.contracts ?? []
         )
+        if let index {
+            facts = facts.upgraded(with: index)
+        }
         var raw = RuleEngine.check(file: facts, configuration: configuration)
         raw.append(contentsOf: RuleEngine.checkCorpus(corpus: [facts], configuration: configuration))
         let report = Self.assemble(raw: raw, corpus: [facts])
