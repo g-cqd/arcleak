@@ -1,5 +1,5 @@
-import Foundation
 import ArcLeakCore
+import Foundation
 import Testing
 
 /// Cross-file analysis: golden runner over Fixtures/Corpus (each subdirectory
@@ -43,13 +43,14 @@ import Testing
             }
 
             let report = await Analyzer().analyze(files: files.map(\.path))
-            let actual = Set(report.findings.map {
-                FileExpectation(
-                    file: URL(fileURLWithPath: $0.path).lastPathComponent,
-                    line: $0.line,
-                    rule: $0.rule
-                )
-            })
+            let actual = Set(
+                report.findings.map {
+                    FileExpectation(
+                        file: URL(fileURLWithPath: $0.path).lastPathComponent,
+                        line: $0.line,
+                        rule: $0.rule
+                    )
+                })
 
             #expect(
                 actual == expected,
@@ -69,14 +70,14 @@ import Testing
     @Test("Two classes in one file close a cycle (corpus of one)")
     func singleFileMutualCycle() {
         let source = """
-        final class A {
-            var b: B?
-        }
-        final class B {
-            let a: A
-            init(a: A) { self.a = a }
-        }
-        """
+            final class A {
+                var b: B?
+            }
+            final class B {
+                let a: A
+                init(a: A) { self.a = a }
+            }
+            """
         let result = findings(source)
         #expect(result.map(\.rule) == [.mutualStrongProperties])
         #expect(result.first?.message.contains("A → B → A") == true)
@@ -85,31 +86,31 @@ import Testing
     @Test("Initializer-inferred type (`= ServiceB()`) participates in the graph")
     func initializerInference() {
         let source = """
-        final class ServiceA {
-            var partner = ServiceB()
-        }
-        final class ServiceB {
-            var back: ServiceA?
-        }
-        """
+            final class ServiceA {
+                var partner = ServiceB()
+            }
+            final class ServiceB {
+                var back: ServiceA?
+            }
+            """
         #expect(findings(source).map(\.rule) == [.mutualStrongProperties])
     }
 
     @Test("weak/unowned back-references break the cycle; computed and static don't count")
     func nonEdgesProduceNoCycle() {
         let source = """
-        final class Owner {
-            var item: Item?
-            static var shared: Owner?
-            var view: Item { Item() }
-        }
-        final class Item {
-            weak var owner: Owner?
-            unowned var boss: Owner
-            init(boss: Owner) { self.boss = boss }
-            init() { fatalError() }
-        }
-        """
+            final class Owner {
+                var item: Item?
+                static var shared: Owner?
+                var view: Item { Item() }
+            }
+            final class Item {
+                weak var owner: Owner?
+                unowned var boss: Owner
+                init(boss: Owner) { self.boss = boss }
+                init() { fatalError() }
+            }
+            """
         #expect(findings(source).isEmpty)
     }
 
@@ -131,14 +132,14 @@ import Testing
     @Test("Corpus findings are suppressible like local ones")
     func corpusFindingSuppression() {
         let source = """
-        final class Left {
-            // arcleak:deliberate -- torn down manually in close()
-            var right: Right?
-        }
-        final class Right {
-            var left: Left?
-        }
-        """
+            final class Left {
+                // arcleak:deliberate -- torn down manually in close()
+                var right: Right?
+            }
+            final class Right {
+                var left: Left?
+            }
+            """
         let result = Analyzer().analyze(source: source, path: "test.swift")
         #expect(result.findings.isEmpty)
         #expect(result.suppressed.count == 1)

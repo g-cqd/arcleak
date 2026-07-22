@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Toolchain note: the package requires swift-tools 6.4. Until 6.4 GA reaches
+# hosted runners, the macOS job installs the matching swift.org snapshot and
+# the Linux job uses the nightly container. Scripts/ci-local.sh runs the
+# identical steps and is the day-to-day gate on a 6.4 machine.
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select newest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+      - name: Build (warnings are errors via package settings)
+        run: swift build --build-tests
+      - name: Tests (fixture corpus gates FP and FN both ways)
+        run: swift test
+      - name: Self-dogfood
+        run: swift run arcleak analyze Sources --strict --no-cache
+      - name: Runtime ground-truth oracle
+        run: Scripts/run-leak-oracle.sh "$(swift build --show-bin-path)/leak-oracle"
+
+  linux:
+    runs-on: ubuntu-latest
+    container: swiftlang/swift:nightly-6.4-jammy
+    # Experimental until 6.4 GA: failures here inform, not block.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: swift build --build-tests
+      - name: Tests
+        run: swift test
+
+  format:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: swift-format lint
+        run: Scripts/lint-format.sh
+
+  benchmarks:
+    runs-on: macos-15
+    # Informational: thresholds compare against committed baselines.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Benchmark against baseline
+        run: swift package --package-path Benchmarks benchmark baseline check local || true

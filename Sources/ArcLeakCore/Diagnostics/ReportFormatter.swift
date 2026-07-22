@@ -149,18 +149,19 @@ public enum ReportFormatter {
         }
         let log = SarifLog(runs: [
             SarifRun(
-                tool: SarifTool(driver: SarifDriver(
-                    name: ToolInfo.name,
-                    version: ToolInfo.version,
-                    informationUri: ToolInfo.informationURI,
-                    rules: RuleID.allCases.map {
-                        SarifRuleDescriptor(
-                            id: $0.rawValue,
-                            shortDescription: SarifText(text: $0.summary),
-                            help: SarifText(text: $0.explanation)
-                        )
-                    }
-                )),
+                tool: SarifTool(
+                    driver: SarifDriver(
+                        name: ToolInfo.name,
+                        version: ToolInfo.version,
+                        informationUri: ToolInfo.informationURI,
+                        rules: RuleID.allCases.map {
+                            SarifRuleDescriptor(
+                                id: $0.rawValue,
+                                shortDescription: SarifText(text: $0.summary),
+                                help: SarifText(text: $0.explanation)
+                            )
+                        }
+                    )),
                 results: results
             )
         ])

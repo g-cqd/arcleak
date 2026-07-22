@@ -9,17 +9,22 @@ public struct StoredPropertyFact: Sendable, Equatable, Codable {
     public let name: String
     public let strength: ReferenceStrength
     public let referencedTypeNames: [String]
+    /// `@Published` — the projected publisher never completes while the object
+    /// lives; feeds upstream-finiteness resolution.
+    public let hasPublishedAttribute: Bool
     public let position: SourcePosition
 
     public init(
         name: String,
         strength: ReferenceStrength,
         referencedTypeNames: [String],
+        hasPublishedAttribute: Bool = false,
         position: SourcePosition
     ) {
         self.name = name
         self.strength = strength
         self.referencedTypeNames = referencedTypeNames
+        self.hasPublishedAttribute = hasPublishedAttribute
         self.position = position
     }
 }

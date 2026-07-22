@@ -21,10 +21,12 @@ struct URLSessionDelegateLeakRule: Rule {
             let note: String
             if deinitOnly {
                 severity = .error
-                note = "session invalidation only appears in deinit — the session's strong hold on its delegate (self) means deinit never runs; invalidate from a reachable path"
+                note =
+                    "session invalidation only appears in deinit — the session's strong hold on its delegate (self) means deinit never runs; invalidate from a reachable path"
             } else {
                 severity = configuration.severity(for: .urlSessionDelegateLeak)
-                note = "docs: \"your app leaks memory until it exits\" without invalidateAndCancel()/finishTasksAndInvalidate(); none found in this type"
+                note =
+                    "docs: \"your app leaks memory until it exits\" without invalidateAndCancel()/finishTasksAndInvalidate(); none found in this type"
             }
             return Finding(
                 rule: .urlSessionDelegateLeak,
@@ -32,7 +34,8 @@ struct URLSessionDelegateLeakRule: Rule {
                 path: path,
                 line: call.position.line,
                 column: call.position.column,
-                message: "leak: URLSession keeps a strong reference to its delegate (self) until the session is explicitly invalidated",
+                message:
+                    "leak: URLSession keeps a strong reference to its delegate (self) until the session is explicitly invalidated",
                 note: note
             )
         }

@@ -20,7 +20,8 @@ public struct SuppressionTable: Sendable {
                 return .some(directive.reason)
             case .disableNext where directive.line == line - 1 && directive.covers(rule):
                 return .some(directive.reason)
-            case .deliberate where (directive.line == line || directive.line == line - 1)
+            case .deliberate
+            where (directive.line == line || directive.line == line - 1)
                 && directive.covers(rule):
                 return .some(directive.reason)
             case .regionDisable where directive.line <= line && directive.covers(rule):

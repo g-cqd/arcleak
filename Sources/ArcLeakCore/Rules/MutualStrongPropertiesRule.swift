@@ -14,7 +14,8 @@ struct MutualStrongPropertiesRule: CorpusRule {
         let graph = OwnershipGraph.build(from: corpus)
         guard !graph.nodeNames.isEmpty else { return [] }
 
-        let components = StronglyConnectedComponents
+        let components =
+            StronglyConnectedComponents
             .find(nodeCount: graph.nodeNames.count, adjacency: graph.adjacency)
             .filter { $0.count >= 2 }
             .sorted { ($0.min() ?? 0) < ($1.min() ?? 0) }
@@ -34,7 +35,8 @@ struct MutualStrongPropertiesRule: CorpusRule {
             if elided > 0 {
                 pathDescription += " → … (+\(elided) more links) → \(graph.nodeNames[anchor.from])"
             }
-            var links = shown
+            var links =
+                shown
                 .map { edge in
                     "\(graph.nodeNames[edge.from]).\(edge.property) → \(graph.nodeNames[edge.to])"
                         + " (\(edge.path):\(edge.position.line))"
@@ -44,7 +46,8 @@ struct MutualStrongPropertiesRule: CorpusRule {
                 links += "; … (+\(elided) more)"
             }
 
-            let extra = component.count > cycle.count
+            let extra =
+                component.count > cycle.count
                 ? " (\(component.count) types entangled in total)"
                 : ""
             return Finding(
@@ -54,7 +57,8 @@ struct MutualStrongPropertiesRule: CorpusRule {
                 line: anchor.position.line,
                 column: anchor.position.column,
                 message: "potential retain cycle across types: \(pathDescription)\(extra)",
-                note: "strong links: \(links) — make one direction weak (shorter-lived side) or unowned (same-or-longer lifetime); type-level analysis: verify which side owns the other"
+                note:
+                    "strong links: \(links) — make one direction weak (shorter-lived side) or unowned (same-or-longer lifetime); type-level analysis: verify which side owns the other"
             )
         }
     }

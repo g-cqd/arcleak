@@ -3,20 +3,22 @@ import Testing
 
 @Suite struct SuppressionDirectiveTests {
     @Test func parsesDisableThisWithRulesAndReason() throws {
-        let directive = try #require(SuppressionDirective.parse(
-            comment: "// arcleak:disable:this stored-closure-strong-self, timer-retains-self -- managed elsewhere",
-            line: 10
-        ))
+        let directive = try #require(
+            SuppressionDirective.parse(
+                comment: "// arcleak:disable:this stored-closure-strong-self, timer-retains-self -- managed elsewhere",
+                line: 10
+            ))
         #expect(directive.kind == .disableThis)
         #expect(directive.rules == [.storedClosureStrongSelf, .timerRetainsSelf])
         #expect(directive.reason == "managed elsewhere")
     }
 
     @Test func parsesDeliberate() throws {
-        let directive = try #require(SuppressionDirective.parse(
-            comment: "// arcleak:deliberate -- torn down in shutdown()",
-            line: 3
-        ))
+        let directive = try #require(
+            SuppressionDirective.parse(
+                comment: "// arcleak:deliberate -- torn down in shutdown()",
+                line: 3
+            ))
         #expect(directive.kind == .deliberate)
         #expect(directive.rules.isEmpty)
         #expect(directive.covers(.storedClosureStrongSelf))

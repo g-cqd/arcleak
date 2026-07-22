@@ -131,10 +131,11 @@ private final class BodyWalker: SyntaxVisitor {
 
     override func visit(_ node: WhileStmtSyntax) -> SyntaxVisitorContinueKind {
         if nestingDepth == 0,
-           node.conditions.count == 1,
-           let condition = node.conditions.first,
-           let literal = condition.condition.as(BooleanLiteralExprSyntax.self),
-           literal.literal.text == "true" {
+            node.conditions.count == 1,
+            let condition = node.conditions.first,
+            let literal = condition.condition.as(BooleanLiteralExprSyntax.self),
+            literal.literal.text == "true"
+        {
             sawNonterminatingLoop = true
         }
         return .visitChildren
