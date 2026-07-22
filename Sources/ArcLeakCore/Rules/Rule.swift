@@ -28,6 +28,8 @@ public enum RuleEngine {
         URLSessionDelegateLeakRule.self,
         DispatchSourceCycleRule.self,
         UnownedOutlivesOwnerRule.self,
+        DeadWeakCaptureRule.self,
+        DelegateStrongPropertyRule.self,
     ]
 
     private static let corpusRules: [any CorpusRule.Type] = [

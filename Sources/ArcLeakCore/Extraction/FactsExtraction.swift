@@ -90,6 +90,7 @@ final class FactsExtractor: SyntaxVisitor {
     private static let fileScopeKey = "<file-scope>"
 
     private struct CollectedFacts {
+        var deadWeakCaptures: [SourcePosition] = []
         var storedProperties: [StoredPropertyFact] = []
         var storedClosures: [StoredClosureFact] = []
         var apiCalls: [APICallFact] = []
@@ -103,6 +104,9 @@ final class FactsExtractor: SyntaxVisitor {
         var apiCalls: [APICallFact] = []
         var taskSpawns: [TaskSpawnFact] = []
         var localUses: [String: Int] = [:]
+        /// Local `func`s whose bodies reference `self` — passing one as a value
+        /// captures `self` strongly with no capture-list syntax available.
+        var selfReferencingLocalFunctions: Set<String> = []
     }
 
     init(
@@ -135,6 +139,8 @@ final class FactsExtractor: SyntaxVisitor {
             var type = TypeFacts(name: name, isReferenceType: memberTable[name]?.isReferenceType)
             type.memberNames = memberTable[name]?.members ?? []
             type.inheritedTypeNames = memberTable[name]?.inheritedTypes ?? []
+            type.methodNames = memberTable[name]?.functionMembers ?? []
+            type.deadWeakCaptures = collectedFacts.deadWeakCaptures
             type.storedProperties = collectedFacts.storedProperties
             type.storedClosures = collectedFacts.storedClosures
             type.apiCalls = Self.resolveUpstreams(
@@ -213,7 +219,13 @@ final class FactsExtractor: SyntaxVisitor {
     // MARK: - Method scope
 
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
-        pushMethodIfTopLevel(node, isDeinit: false)
+        let opened = pushMethodIfTopLevel(node, isDeinit: false)
+        if !opened, !methodStack.isEmpty,
+            ClosureCaptureAnalysis.referencesSelfExplicitly(node)
+        {
+            methodStack[methodStack.count - 1]
+                .selfReferencingLocalFunctions.insert(node.name.text)
+        }
         return .visitChildren
     }
 
@@ -255,9 +267,13 @@ final class FactsExtractor: SyntaxVisitor {
 
     /// Local functions nested inside a method share the enclosing method's
     /// context; only direct type members (or file-level functions) open one.
-    private func pushMethodIfTopLevel(_ node: some SyntaxProtocol, isDeinit: Bool) {
-        guard methodStack.isEmpty || node.parent?.is(MemberBlockItemSyntax.self) == true else { return }
+    @discardableResult
+    private func pushMethodIfTopLevel(_ node: some SyntaxProtocol, isDeinit: Bool) -> Bool {
+        guard methodStack.isEmpty || node.parent?.is(MemberBlockItemSyntax.self) == true else {
+            return false
+        }
         methodStack.append(MethodContext(nodeID: node.id, isDeinit: isDeinit))
+        return true
     }
 
     private func popMethod(_ node: some SyntaxProtocol) {
@@ -413,22 +429,32 @@ final class FactsExtractor: SyntaxVisitor {
         guard
             elements.count == 3,
             elements[1].is(AssignmentExprSyntax.self),
-            let closure = unwrapped(elements[2]).as(ClosureExprSyntax.self),
             let member = memberOfSelfName(elements[0])
         else { return .visitChildren }
 
-        let analysis = ClosureCaptureAnalysis.analyze(
-            closure: closure,
-            memberNames: currentMemberNames,
-            allowImplicitSelf: false
-        )
-        appendStoredClosure(
-            StoredClosureFact(
-                position: position(of: closure),
-                targetMember: member,
-                selfCapture: analysis.selfCapture
+        if let closure = unwrapped(elements[2]).as(ClosureExprSyntax.self) {
+            let analysis = ClosureCaptureAnalysis.analyze(
+                closure: closure,
+                memberNames: currentMemberNames,
+                allowImplicitSelf: false
             )
-        )
+            appendStoredClosure(
+                StoredClosureFact(
+                    position: position(of: closure),
+                    targetMember: member,
+                    selfCapture: analysis.selfCapture
+                )
+            )
+        } else if strongCaptureEquivalent(elements[2]) {
+            appendStoredClosure(
+                StoredClosureFact(
+                    position: position(of: elements[2]),
+                    targetMember: member,
+                    selfCapture: .strong(implicit: false),
+                    isMethodReference: true
+                )
+            )
+        }
         return .visitChildren
     }
 
@@ -537,6 +563,15 @@ final class FactsExtractor: SyntaxVisitor {
                     memberNames: currentMemberNames,
                     allowImplicitSelf: false
                 ).selfCapture
+        } else {
+            // `sink(receiveValue: self.handle)` — a bound method value is a
+            // strong capture, same pipeline as a strong-self closure.
+            for label in closureLabels {
+                if let expr = argument(label), strongCaptureEquivalent(expr) {
+                    closureCapture = .strong(implicit: false)
+                    break
+                }
+            }
         }
 
         var finiteness = APICallFact.UpstreamFiniteness.unknown
@@ -703,6 +738,48 @@ final class FactsExtractor: SyntaxVisitor {
                 selfCapture: analysis.selfCapture
             )
         )
+    }
+
+    /// `self.method`, a bare member-method name, or a self-referencing local
+    /// function used as a VALUE — a strong capture of `self` with no
+    /// capture-list syntax available.
+    private func strongCaptureEquivalent(_ expr: ExprSyntax) -> Bool {
+        let expr = unwrapped(expr)
+        if let member = expr.as(MemberAccessExprSyntax.self),
+            member.base?.as(DeclReferenceExprSyntax.self)?.baseName.text == "self",
+            currentFunctionMembers.contains(member.declName.baseName.text)
+        {
+            return true
+        }
+        if let reference = expr.as(DeclReferenceExprSyntax.self) {
+            let name = reference.baseName.text
+            if currentFunctionMembers.contains(name) { return true }
+            if methodStack.last?.selfReferencingLocalFunctions.contains(name) == true {
+                return true
+            }
+        }
+        return false
+    }
+
+    private var currentFunctionMembers: Set<String> {
+        guard let typeName = typeStack.last else { return [] }
+        return memberTable[typeName]?.functionMembers ?? []
+    }
+
+    /// `[weak self]` whose body never touches `self` is capture-list noise —
+    /// collected for the opt-in dead-weak-capture rule.
+    override func visit(_ node: ClosureExprSyntax) -> SyntaxVisitorContinueKind {
+        if let items = node.signature?.capture?.items,
+            items.contains(where: {
+                $0.name.text == "self" && $0.initializer == nil
+                    && $0.specifier?.specifier.text == "weak"
+            }),
+            !ClosureCaptureAnalysis.referencesSelfExplicitly(node.statements)
+        {
+            collected[typeStack.last ?? Self.fileScopeKey, default: CollectedFacts()]
+                .deadWeakCaptures.append(position(of: node))
+        }
+        return .visitChildren
     }
 
     // MARK: - Consumption classification
