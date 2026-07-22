@@ -21,6 +21,10 @@ let package = Package(
             plugins: [
                 .plugin(name: "BenchmarkPlugin", package: "package-benchmark")
             ]
-        )
+        ),
+        .testTarget(
+            name: "BenchmarksSmokeTests",
+            dependencies: [.product(name: "ArcLeakCore", package: "arcleak")]
+        ),
     ]
 )
