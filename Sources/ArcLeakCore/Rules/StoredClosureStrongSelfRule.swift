@@ -9,6 +9,19 @@ struct StoredClosureStrongSelfRule: Rule {
         guard type.isReferenceType == true else { return [] }
         return type.storedClosures.compactMap { stored in
             guard stored.selfCapture.isStrong else { return nil }
+            if stored.isMethodReference {
+                return Finding(
+                    rule: .storedClosureStrongSelf,
+                    severity: configuration.severity(for: .storedClosureStrongSelf),
+                    path: path,
+                    line: stored.position.line,
+                    column: stored.position.column,
+                    message:
+                        "bound method reference stored in '\(stored.targetMember)' captures self strongly — retain cycle: self → \(stored.targetMember) → self",
+                    note:
+                        "method references have no capture-list syntax; wrap in a closure: { [weak self] in self?.method($0) }"
+                )
+            }
             return Finding(
                 rule: .storedClosureStrongSelf,
                 severity: configuration.severity(for: .storedClosureStrongSelf),

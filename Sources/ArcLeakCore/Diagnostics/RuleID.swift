@@ -15,6 +15,8 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
     case urlSessionDelegateLeak = "urlsession-delegate-leak"
     case dispatchSourceCycle = "dispatch-source-cycle"
     case unownedOutlivesOwner = "unowned-outlives-owner"
+    case deadWeakCapture = "dead-weak-capture"
+    case delegateStrongProperty = "delegate-strong-property"
 
     /// Default severity before configuration overrides.
     public var defaultSeverity: Severity {
@@ -24,8 +26,17 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
             .error
         case .timerRetainsSelf, .notificationObserverLeak, .taskNonterminatingSelf,
             .unstoredLifetimeToken, .tokenStoredInLocal, .mutualStrongProperties,
-            .urlSessionDelegateLeak, .unownedOutlivesOwner:
+            .urlSessionDelegateLeak, .unownedOutlivesOwner, .deadWeakCapture,
+            .delegateStrongProperty:
             .warning
+        }
+    }
+
+    /// Opt-in rules ship disabled; enable per-rule in `.arcleak.json`.
+    public var enabledByDefault: Bool {
+        switch self {
+        case .deadWeakCapture, .delegateStrongProperty: false
+        default: true
         }
     }
 
@@ -56,6 +67,10 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
             "Dispatch source stored on self with a strong-self handler and no reachable cancel()"
         case .unownedOutlivesOwner:
             "[unowned self] in a closure held by an external anchor — traps if self deallocates first"
+        case .deadWeakCapture:
+            "[weak self] whose body never uses self — capture-list noise (opt-in)"
+        case .delegateStrongProperty:
+            "Strong stored property named/typed like a delegate — likely back-reference cycle (opt-in)"
         }
     }
 
@@ -181,6 +196,24 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
             cancel() in deinit is unreachable from inside the cycle.
 
             Fix: `[weak self]` in the handler, or cancel() from a reachable path.
+            """
+        case .deadWeakCapture:
+            """
+            A `[weak self]` capture whose body never references `self` does nothing —
+            it is cargo-cult ceremony that buries the capture lists that matter.
+            Opt-in tidiness rule; enable it once real captures are under control.
+
+            Fix: delete the capture list entry.
+            """
+        case .delegateStrongProperty:
+            """
+            A strong stored property whose name or type reads as a delegate/data
+            source is the classic back-reference: the owner outlives the observer,
+            and strong-both-ways closes a cycle. Name-heuristic while class-bound
+            protocol facts wait for the index layer — hence opt-in.
+
+            Fix (TSPL): `weak var delegate: …?` — the delegate outlives or matches
+            the delegating object's lifetime only when ownership says so.
             """
         case .unownedOutlivesOwner:
             """

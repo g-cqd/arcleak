@@ -9,6 +9,9 @@ final class MemberCollector: SyntaxVisitor {
     struct Entry {
         var isReferenceType: Bool?
         var members: Set<String> = []
+        /// Member *functions* only — a `self.method` reference used as a value
+        /// is a strong capture of `self` with no capture-list syntax available.
+        var functionMembers: Set<String> = []
         /// Superclass + conformance names from the inheritance clause (classes/
         /// actors) — powers ownership heuristics (XCTestCase, app delegates).
         var inheritedTypes: Set<String> = []
@@ -85,9 +88,15 @@ final class MemberCollector: SyntaxVisitor {
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
         if isDirectTypeMember(node) {
             addMember(node.name.text)
+            if let typeName = currentTypeName {
+                table[typeName, default: Entry(isReferenceType: nil)]
+                    .functionMembers.insert(node.name.text)
+            }
         }
         return .visitChildren
     }
+
+    private var currentTypeName: String? { typeStack.last }
 
     static func extendedTypeName(_ type: TypeSyntax) -> String {
         if let identifier = type.as(IdentifierTypeSyntax.self) {
