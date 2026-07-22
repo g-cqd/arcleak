@@ -8,7 +8,7 @@ struct ArcLeakCommand: AsyncParsableCommand {
         commandName: ToolInfo.name,
         abstract: "Static ARC analysis for Swift: retain cycles, anchor leaks, premature releases.",
         version: ToolInfo.version,
-        subcommands: [Analyze.self, Rules.self, Explain.self],
+        subcommands: [Analyze.self, Rules.self, Explain.self, Lsp.self, GenerateRepro.self],
         defaultSubcommand: Analyze.self
     )
 }
@@ -60,6 +60,62 @@ struct Explain: ParsableCommand {
         print("\(id.rawValue)  [default: \(id.defaultSeverity.rawValue)]")
         print("")
         print(id.explanation)
+    }
+}
+
+struct GenerateRepro: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "generate-repro",
+        abstract: "Emit a deinit-canary Swift Testing skeleton reproducing a finding."
+    )
+
+    @Option(name: .long, help: "Finding fingerprint (prefix ok).")
+    var finding: String
+
+    @Option(name: .long, help: "Path to the JSON report containing the finding.")
+    var report: String
+
+    func run() throws {
+        let data = try Data(contentsOf: URL(fileURLWithPath: report))
+        let decoded = try JSONDecoder().decode(AnalysisReport.self, from: data)
+        guard let match = decoded.findings.first(where: { $0.fingerprint.hasPrefix(finding) })
+        else {
+            throw ValidationError("no finding with fingerprint prefix \"\(finding)\" in \(report)")
+        }
+        let typeName = "Repro_\(match.fingerprint.prefix(8))"
+        print(
+            """
+            import Testing
+
+            // Reproduces: \(match.rule.rawValue) at \(match.path):\(match.line)
+            // \(match.message)
+            // Fill in the minimal construction that mirrors the flagged code, then
+            // run: the canary proves (or refutes) the leak at runtime.
+            @Suite struct \(typeName) {
+                @Test func objectDeallocates() {
+                    weak var canary: AnyObject?
+                    do {
+                        // TODO: construct the flagged object graph here, mirroring
+                        // \(match.path):\(match.line), and assign the instance:
+                        // let object = …
+                        // canary = object
+                        // object.trigger()
+                    }
+                    #expect(canary == nil, "leak reproduced — \(match.rule.rawValue)")
+                }
+            }
+            """
+        )
+    }
+}
+
+struct Lsp: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Run as a minimal LSP server over stdio (diagnostics + deliberate-suppression code actions)."
+    )
+
+    func run() throws {
+        try LspServer.run()
     }
 }
 
