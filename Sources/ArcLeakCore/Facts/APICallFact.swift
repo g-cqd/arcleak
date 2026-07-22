@@ -2,7 +2,7 @@
 /// rule needs: how the attached closure captures `self`, whether the call's
 /// target is `self`, and where the returned token went.
 public struct APICallFact: Sendable, Equatable, Codable {
-    public enum Kind: Sendable, Equatable, Codable {
+    public enum Kind: Sendable, Hashable, Codable {
         /// `Timer.scheduledTimer(withTimeInterval:repeats:block:)` — run loop retains the
         /// timer; the timer retains the block until `invalidate()`.
         case timerScheduledBlock
@@ -31,6 +31,9 @@ public struct APICallFact: Sendable, Equatable, Codable {
         /// `setEventHandler`/`setCancelHandler` on a dispatch source — handlers are
         /// Block_copy-ed and held by the source until replaced or cancelled.
         case dispatchSourceHandler
+        /// User-KB contract: the call returns a lifetime token that must be
+        /// owned (associated value = diagnostic name).
+        case userTokenProducer(String)
     }
 
     /// Whether a Combine upstream provably completes. `Subscribers.Sink`
@@ -109,6 +112,8 @@ public struct APICallFact: Sendable, Equatable, Codable {
         case .timerScheduledBlock, .timerScheduledTarget, .displayLinkTarget,
             .urlSessionWithDelegate, .dispatchSourceHandler:
             false
+        case .userTokenProducer:
+            true
         }
     }
 }

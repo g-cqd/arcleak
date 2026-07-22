@@ -19,9 +19,40 @@ struct Explain: ParsableCommand {
     )
 
     @Argument(help: "Rule id (see `arcleak rules`).")
-    var rule: String
+    var rule: String?
+
+    @Option(name: .long, help: "Finding fingerprint (prefix ok) from a --format json report.")
+    var finding: String?
+
+    @Option(name: .long, help: "Path to the JSON report containing the finding.")
+    var report: String?
 
     func run() throws {
+        if let finding {
+            guard let report else {
+                throw ValidationError("--finding requires --report <analysis.json>")
+            }
+            let data = try Data(contentsOf: URL(fileURLWithPath: report))
+            let decoded = try JSONDecoder().decode(AnalysisReport.self, from: data)
+            guard
+                let match = decoded.findings.first(where: { $0.fingerprint.hasPrefix(finding) })
+            else {
+                throw ValidationError("no finding with fingerprint prefix \"\(finding)\" in \(report)")
+            }
+            print("\(match.path):\(match.line):\(match.column)  [\(match.severity.rawValue)]")
+            print("fingerprint: \(match.fingerprint)")
+            print("")
+            print(match.message)
+            if let note = match.note {
+                print("→ \(note)")
+            }
+            print("")
+            print(match.rule.explanation)
+            return
+        }
+        guard let rule else {
+            throw ValidationError("provide a rule id, or --finding <fp> --report <json>")
+        }
         guard let id = RuleID(rawValue: rule) else {
             let known = RuleID.allCases.map(\.rawValue).joined(separator: ", ")
             throw ValidationError("unknown rule \"\(rule)\" — known rules: \(known)")
@@ -79,6 +110,15 @@ struct Analyze: AsyncParsableCommand {
     )
     var define: [String] = []
 
+    @Flag(name: .long, help: "Apply mechanical [weak self] fix-its for fixable findings, in place.")
+    var fix = false
+
+    @Flag(
+        name: .customLong("fix-dry-run"),
+        help: "Report what --fix would change without writing files."
+    )
+    var fixDryRun = false
+
     func run() async throws {
         var configuration = try loadConfiguration()
         if !define.isEmpty {
@@ -105,6 +145,11 @@ struct Analyze: AsyncParsableCommand {
             let (kept, baselined) = loaded.filter(report.findings)
             report.findings = kept
             baselinedCount = baselined.count
+        }
+
+        if fix || fixDryRun {
+            try applyFixes(report: report)
+            if fix { return }
         }
 
         let output = ReportFormatter.format(report, as: format)
@@ -145,6 +190,32 @@ struct Analyze: AsyncParsableCommand {
             return try Configuration.load(path: implicit)
         }
         return .default
+    }
+
+    /// Applies (or previews) the weak-self fix-its, grouped per file and
+    /// written atomically. `--fix` exits 0 after applying — rerun to re-gate.
+    private func applyFixes(report: AnalysisReport) throws {
+        let fixable = report.findings.filter { FixItApplier.fixableRules.contains($0.rule) }
+        let byPath = Dictionary(grouping: fixable, by: \.path).sorted { $0.key < $1.key }
+        var applied = 0
+        var skipped = 0
+        for (path, group) in byPath {
+            guard let source = try? String(contentsOfFile: path, encoding: .utf8) else { continue }
+            let result = FixItApplier.apply(findings: group, to: source, path: path)
+            applied += result.appliedCount
+            skipped += result.skipped.count
+            for finding in group where result.skipped.contains(finding) == false {
+                FileHandle.standardError.write(
+                    Data("\(fix ? "fixed" : "would fix"): \(path):\(finding.line) [\(finding.rule.rawValue)]\n".utf8)
+                )
+            }
+            if fix, result.appliedCount > 0 {
+                try result.fixedSource.write(toFile: path, atomically: true, encoding: .utf8)
+            }
+        }
+        FileHandle.standardError.write(
+            Data("arcleak: \(fix ? "applied" : "previewed") \(applied) fix(es); \(skipped) not auto-fixable\n".utf8)
+        )
     }
 
     private func cacheURL() -> URL? {
