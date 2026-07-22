@@ -3,5 +3,5 @@
 public enum ToolInfo {
     public static let name = "arcleak"
     public static let version = "0.1.0"
-    public static let informationURI = "https://github.com/gc/arcleak"
+    public static let informationURI = "https://github.com/g-cqd/arcleak"
 }
