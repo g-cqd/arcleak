@@ -157,6 +157,13 @@ suppression directive if it is truly intentional.
 | `urlsession-delegate-leak` | warning† | `URLSession(configuration:delegate: self, …)` with no reachable session invalidation — the docs mandate this: "your app leaks memory until it exits" |
 | `dispatch-source-cycle` | error | dispatch source stored on `self` whose handler captures `self` strongly, no reachable `cancel()` |
 | `unowned-outlives-owner` | warning | `[unowned self]` in an anchor-held closure (timer, notification center, time observer) — traps if `self` deallocates first |
+| `dead-weak-capture` | warning, **opt-in** | `[weak self]` whose body never uses `self` — capture-list noise |
+| `delegate-strong-property` | warning, **opt-in** | strong stored property named/typed like a delegate (name heuristic until the index layer) |
+
+Bound method references (`handler = self.method`, `sink(receiveValue: handle)`)
+and self-referencing local functions passed as values are folded into the same
+capture pipeline — they fire the existing stored-closure/cycle rules with
+method-reference-specific fix guidance, no separate rule id needed.
 
 † upgraded to **error** when the only release call sits in `deinit` (or the
 task handle is stored on `self`) — the release is unreachable by construction.

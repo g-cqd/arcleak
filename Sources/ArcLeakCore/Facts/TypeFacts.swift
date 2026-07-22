@@ -12,6 +12,10 @@ public struct TypeFacts: Sendable, Codable {
     /// Superclass + conformance names (classes/actors) — powers lifetime
     /// heuristics (XCTestCase bodies, app-delegate/singleton owners).
     public var inheritedTypeNames: Set<String>
+    /// Member functions — `self.method` used as a value is a strong capture.
+    public var methodNames: Set<String>
+    /// Positions of `[weak self]` captures whose bodies never use `self`.
+    public var deadWeakCaptures: [SourcePosition]
     /// Stored properties with their declared strength and referenced type names —
     /// the raw material of cross-file ownership-graph edges.
     public var storedProperties: [StoredPropertyFact]
@@ -25,6 +29,8 @@ public struct TypeFacts: Sendable, Codable {
         self.isReferenceType = isReferenceType
         self.memberNames = []
         self.inheritedTypeNames = []
+        self.methodNames = []
+        self.deadWeakCaptures = []
         self.storedProperties = []
         self.storedClosures = []
         self.apiCalls = []
