@@ -73,8 +73,17 @@ struct Analyze: AsyncParsableCommand {
     @Flag(name: .long, help: "Disable the incremental facts cache.")
     var noCache = false
 
+    @Option(
+        name: .customLong("define"),
+        help: "Custom #if condition to treat as set (repeatable; the compiler's -D)."
+    )
+    var define: [String] = []
+
     func run() async throws {
-        let configuration = try loadConfiguration()
+        var configuration = try loadConfiguration()
+        if !define.isEmpty {
+            configuration.defines = (configuration.defines ?? []) + define
+        }
         let files = try discoverSwiftFiles(configuration: configuration)
         guard !files.isEmpty else {
             throw ValidationError(ArcLeakError.noInputs.description)

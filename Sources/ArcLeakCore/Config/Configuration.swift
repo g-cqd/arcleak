@@ -20,11 +20,17 @@ public struct Configuration: Sendable, Codable, Equatable {
     public var rules: [String: RuleSettings]
     /// Path substrings to exclude (matched against the file path).
     public var exclude: [String]
+    /// Custom `#if` conditions treated as set (the compiler's `-D`); optional
+    /// so existing configuration files keep decoding.
+    public var defines: [String]?
 
-    public init(rules: [String: RuleSettings] = [:], exclude: [String] = []) {
+    public init(rules: [String: RuleSettings] = [:], exclude: [String] = [], defines: [String]? = nil) {
         self.rules = rules
         self.exclude = exclude
+        self.defines = defines
     }
+
+    public var activeDefines: Set<String> { Set(defines ?? []) }
 
     public static let `default` = Configuration()
 

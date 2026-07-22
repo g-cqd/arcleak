@@ -29,6 +29,9 @@ public struct Analyzer: Sendable {
         let included = files.filter { !configuration.isExcluded(path: $0) }
         var cache = cacheURL.map(FactsCache.load(url:))
         let snapshot = cache ?? FactsCache()
+        // Facts depend on the `#if` configuration — salt fingerprints so a
+        // defines change can never serve stale facts.
+        let definesSalt = configuration.activeDefines.sorted().joined(separator: ",")
 
         struct FileOutcome: Sendable {
             var facts: FileFacts?
@@ -52,7 +55,7 @@ public struct Analyzer: Sendable {
                             )
                         )
                     }
-                    let fingerprint = FactsCache.fingerprint(of: data)
+                    let fingerprint = FactsCache.fingerprint(of: data, salt: definesSalt)
 
                     let facts: FileFacts
                     var cacheHit = false
@@ -68,7 +71,11 @@ public struct Analyzer: Sendable {
                                 )
                             )
                         }
-                        facts = FactsExtraction.extract(path: path, source: source)
+                        facts = FactsExtraction.extract(
+                            path: path,
+                            source: source,
+                            defines: configuration.activeDefines
+                        )
                     }
                     let findings = RuleEngine.check(file: facts, configuration: configuration)
                     return FileOutcome(
@@ -126,7 +133,11 @@ public struct Analyzer: Sendable {
         source: String,
         path: String
     ) -> (findings: [Finding], suppressed: [AnalysisReport.SuppressedFinding]) {
-        let facts = FactsExtraction.extract(path: path, source: source)
+        let facts = FactsExtraction.extract(
+            path: path,
+            source: source,
+            defines: configuration.activeDefines
+        )
         var raw = RuleEngine.check(file: facts, configuration: configuration)
         raw.append(contentsOf: RuleEngine.checkCorpus(corpus: [facts], configuration: configuration))
         let report = Self.assemble(raw: raw, corpus: [facts])
