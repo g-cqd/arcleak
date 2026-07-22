@@ -50,6 +50,15 @@ struct ClosureCaptureAnalysis: Sendable, Equatable {
         )
     }
 
+    /// Whether `body` textually references `self` (explicitly, including
+    /// nested capture lists) — powers local-function capture analysis and
+    /// dead-weak detection.
+    static func referencesSelfExplicitly(_ body: some SyntaxProtocol) -> Bool {
+        let walker = BodyWalker(memberNames: [], allowImplicitSelf: false)
+        walker.walk(body)
+        return walker.sawExplicitSelf
+    }
+
     private static func captureListEntryForSelf(_ closure: ClosureExprSyntax) -> SelfCaptureKind? {
         guard let items = closure.signature?.capture?.items else { return nil }
         for item in items where item.name.text == "self" && item.initializer == nil {
@@ -157,6 +166,13 @@ private final class BodyWalker: SyntaxVisitor {
     }
 
     override func visit(_ node: OptionalBindingConditionSyntax) -> SyntaxVisitorContinueKind {
+        // `guard let self` shorthand has no initializer expression — the
+        // pattern itself is the use of the captured weak `self` (SE-0365).
+        if node.initializer == nil,
+            node.pattern.as(IdentifierPatternSyntax.self)?.identifier.text == "self"
+        {
+            sawExplicitSelf = true
+        }
         collectPatternNames(node.pattern)
         return .visitChildren
     }
