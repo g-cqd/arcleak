@@ -16,6 +16,9 @@ swift run arcleak analyze Sources --strict --no-cache
 echo "== runtime ground-truth oracle"
 Scripts/run-leak-oracle.sh "$(swift build --show-bin-path)/leak-oracle"
 
+echo "== lsp smoke"
+Scripts/lsp-smoke.sh "$(swift build --show-bin-path)/arcleak"
+
 echo "== format lint"
 Scripts/lint-format.sh
 
