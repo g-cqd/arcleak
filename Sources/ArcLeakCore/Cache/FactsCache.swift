@@ -34,10 +34,14 @@ public struct FactsCache: Sendable {
         self.entries = entries
     }
 
-    public static func fingerprint(of data: Data) -> String {
+    public static func fingerprint(of data: Data, salt: String = "") -> String {
         var hash: UInt64 = 0xcbf2_9ce4_8422_2325
         let prime: UInt64 = 0x0000_0100_0000_01b3
         for byte in data {
+            hash ^= UInt64(byte)
+            hash &*= prime
+        }
+        for byte in salt.utf8 {
             hash ^= UInt64(byte)
             hash &*= prime
         }

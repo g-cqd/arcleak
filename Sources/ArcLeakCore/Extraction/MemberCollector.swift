@@ -1,3 +1,4 @@
+import SwiftIfConfig
 import SwiftSyntax
 
 /// First pass over a file: builds the per-type member tables the extraction
@@ -15,9 +16,22 @@ final class MemberCollector: SyntaxVisitor {
 
     private(set) var table: [String: Entry] = [:]
     private var typeStack: [String] = []
+    private let buildConfiguration: StaticBuildConfiguration
 
-    init() {
+    init(buildConfiguration: StaticBuildConfiguration) {
+        self.buildConfiguration = buildConfiguration
         super.init(viewMode: .sourceAccurate)
+    }
+
+    /// Facts come only from the *active* `#if` clause — matching what a compile
+    /// under this configuration would see.
+    override func visit(_ node: IfConfigDeclSyntax) -> SyntaxVisitorContinueKind {
+        if let clause = node.activeClause(in: buildConfiguration).clause,
+            let elements = clause.elements
+        {
+            walk(elements)
+        }
+        return .skipChildren
     }
 
     override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
