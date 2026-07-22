@@ -23,11 +23,51 @@ public struct Configuration: Sendable, Codable, Equatable {
     /// Custom `#if` conditions treated as set (the compiler's `-D`); optional
     /// so existing configuration files keep decoding.
     public var defines: [String]?
+    /// User-supplied retention contracts extending the knowledge base.
+    /// v1 supports `tokenProducer` (the call returns a lifetime token that
+    /// must be owned); `anchorLeak` lands with cross-file release plumbing.
+    public var contracts: [UserContract]?
 
-    public init(rules: [String: RuleSettings] = [:], exclude: [String] = [], defines: [String]? = nil) {
+    public init(
+        rules: [String: RuleSettings] = [:],
+        exclude: [String] = [],
+        defines: [String]? = nil,
+        contracts: [UserContract]? = nil
+    ) {
         self.rules = rules
         self.exclude = exclude
         self.defines = defines
+        self.contracts = contracts
+    }
+
+    public struct UserContract: Sendable, Codable, Equatable {
+        public enum Template: String, Sendable, Codable {
+            case tokenProducer
+        }
+
+        /// Callee name (`subscribe` in `bus.subscribe(handler:)`).
+        public var callee: String
+        /// Optional receiver base name (`EventBus` for static calls).
+        public var base: String?
+        /// Labels that must all be present for the call to match.
+        public var requiredLabels: [String]?
+        /// Human name used in diagnostics ("the subscription token").
+        public var tokenName: String?
+        public var template: Template
+
+        public init(
+            callee: String,
+            base: String? = nil,
+            requiredLabels: [String]? = nil,
+            tokenName: String? = nil,
+            template: Template
+        ) {
+            self.callee = callee
+            self.base = base
+            self.requiredLabels = requiredLabels
+            self.tokenName = tokenName
+            self.template = template
+        }
     }
 
     public var activeDefines: Set<String> { Set(defines ?? []) }
@@ -49,6 +89,10 @@ public struct Configuration: Sendable, Codable, Equatable {
         }
         if let bogus = config.rules.keys.first(where: { RuleID(rawValue: $0) == nil }) {
             throw .configurationInvalid(path: path, detail: "unknown rule id \"\(bogus)\"")
+        }
+        if let empty = config.contracts?.first(where: { $0.callee.isEmpty }) {
+            _ = empty
+            throw .configurationInvalid(path: path, detail: "contract with empty callee")
         }
         return config
     }

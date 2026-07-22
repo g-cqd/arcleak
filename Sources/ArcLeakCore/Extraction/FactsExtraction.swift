@@ -5,7 +5,12 @@ import SwiftSyntax
 /// Parses one file and extracts `FileFacts`. The tree lives only for the
 /// duration of this call.
 public enum FactsExtraction {
-    public static func extract(path: String, source: String, defines: Set<String> = []) -> FileFacts {
+    public static func extract(
+        path: String,
+        source: String,
+        defines: Set<String> = [],
+        contracts: [Configuration.UserContract] = []
+    ) -> FileFacts {
         let tree = Parser.parse(source: source)
         let converter = SourceLocationConverter(fileName: path, tree: tree)
         let buildConfiguration = buildConfiguration(defines: defines)
@@ -17,7 +22,8 @@ public enum FactsExtraction {
             path: path,
             converter: converter,
             memberTable: members.table,
-            buildConfiguration: buildConfiguration
+            buildConfiguration: buildConfiguration,
+            userContracts: contracts
         )
         extractor.walk(tree)
 
@@ -82,6 +88,7 @@ final class FactsExtractor: SyntaxVisitor {
     private let converter: SourceLocationConverter
     private let memberTable: [String: MemberCollector.Entry]
     private let buildConfiguration: StaticBuildConfiguration
+    private let userContracts: [Configuration.UserContract]
 
     private var typeStack: [String] = []
     private var methodStack: [MethodContext] = []
@@ -113,12 +120,14 @@ final class FactsExtractor: SyntaxVisitor {
         path: String,
         converter: SourceLocationConverter,
         memberTable: [String: MemberCollector.Entry],
-        buildConfiguration: StaticBuildConfiguration
+        buildConfiguration: StaticBuildConfiguration,
+        userContracts: [Configuration.UserContract] = []
     ) {
         self.path = path
         self.converter = converter
         self.memberTable = memberTable
         self.buildConfiguration = buildConfiguration
+        self.userContracts = userContracts
         super.init(viewMode: .sourceAccurate)
     }
 
@@ -468,10 +477,48 @@ final class FactsExtractor: SyntaxVisitor {
             appendTaskSpawn(spawn)
             return .visitChildren
         }
-        if let call = matchKnowledgeBase(node) {
+        if let call = matchKnowledgeBase(node) ?? matchUserContract(node) {
             appendAPICall(call)
         }
         return .visitChildren
+    }
+
+    /// User-KB fallback: `tokenProducer` calls feed the premature-release rules
+    /// exactly like built-in token APIs.
+    private func matchUserContract(_ node: FunctionCallExprSyntax) -> APICallFact? {
+        guard !userContracts.isEmpty,
+            let member = node.calledExpression.as(MemberAccessExprSyntax.self)
+        else { return nil }
+        let callee = member.declName.baseName.text
+        let labels = node.arguments.compactMap { $0.label?.text }
+        for contract in userContracts where contract.callee == callee {
+            if let base = contract.base,
+                member.base?.as(DeclReferenceExprSyntax.self)?.baseName.text != base
+            {
+                continue
+            }
+            if let required = contract.requiredLabels, !required.allSatisfy(labels.contains) {
+                continue
+            }
+            var capture: SelfCaptureKind?
+            if let trailing = node.trailingClosure {
+                capture =
+                    ClosureCaptureAnalysis.analyze(
+                        closure: trailing,
+                        memberNames: currentMemberNames,
+                        allowImplicitSelf: false
+                    ).selfCapture
+            }
+            return APICallFact(
+                kind: .userTokenProducer(contract.tokenName ?? "the \(callee) token"),
+                position: position(of: node),
+                repeats: nil,
+                targetIsSelf: false,
+                closureSelfCapture: capture,
+                consumption: classifyConsumption(of: node)
+            )
+        }
+        return nil
     }
 
     // MARK: - KB matching helpers
