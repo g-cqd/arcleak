@@ -175,6 +175,13 @@ struct Analyze: AsyncParsableCommand {
     )
     var fixDryRun = false
 
+    @Flag(
+        name: .customLong("experimental-sil-confirm"),
+        help:
+            "Verify stored-closure captures against SILGen; positively refuted findings are dropped (single-file, SDK-imports-only; fails open)."
+    )
+    var experimentalSilConfirm = false
+
     func run() async throws {
         var configuration = try loadConfiguration()
         if !define.isEmpty {
@@ -201,6 +208,20 @@ struct Analyze: AsyncParsableCommand {
             let (kept, baselined) = loaded.filter(report.findings)
             report.findings = kept
             baselinedCount = baselined.count
+        }
+
+        if experimentalSilConfirm {
+            let candidates = report.findings.filter { $0.rule == .storedClosureStrongSelf }
+            let others = report.findings.filter { $0.rule != .storedClosureStrongSelf }
+            let (kept, demoted) = SILConfirmation.filter(findings: candidates) {
+                SILConfirmation.confirmSelfCapture(file: $0.path, line: $0.line)
+            }
+            for finding in demoted {
+                FileHandle.standardError.write(
+                    Data("sil-confirm: demoted \(finding.path):\(finding.line) (SILGen shows a weak capture)\n".utf8)
+                )
+            }
+            report.findings = (others + kept).sorted()
         }
 
         if fix || fixDryRun {
