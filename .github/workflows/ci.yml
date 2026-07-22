@@ -43,6 +43,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: swift-format lint
         run: Scripts/lint-format.sh
+      - name: GCD prohibition
+        run: Scripts/no-gcd.sh
 
   benchmarks:
     runs-on: macos-15
