@@ -1,5 +1,5 @@
-import Foundation
 import ArcLeakCore
+import Foundation
 import Testing
 
 /// Golden runner over the fixture corpus.

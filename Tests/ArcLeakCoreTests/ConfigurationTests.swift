@@ -1,5 +1,5 @@
-import Foundation
 import ArcLeakCore
+import Foundation
 import Testing
 
 @Suite struct ConfigurationTests {
@@ -27,16 +27,16 @@ import Testing
         #expect(config.isEnabled(.combineSinkSelfCycle))
 
         let source = """
-        import Foundation
-        final class Both {
-            var handler: (() -> Void)?
-            func arm() {
-                handler = { self.fire() }
-                Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in self.fire() }
+            import Foundation
+            final class Both {
+                var handler: (() -> Void)?
+                func arm() {
+                    handler = { self.fire() }
+                    Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in self.fire() }
+                }
+                func fire() {}
             }
-            func fire() {}
-        }
-        """
+            """
         let findings = Analyzer(configuration: config)
             .analyze(source: source, path: "test.swift").findings
         #expect(findings.map(\.rule) == [.storedClosureStrongSelf])

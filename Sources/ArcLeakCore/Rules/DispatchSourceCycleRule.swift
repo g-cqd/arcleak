@@ -13,11 +13,12 @@ struct DispatchSourceCycleRule: Rule {
 
         return type.apiCalls.compactMap { call in
             guard call.kind == .dispatchSourceHandler,
-                  call.receiverIsSelfMember,
-                  call.closureSelfCapture?.isStrong == true
+                call.receiverIsSelfMember,
+                call.closureSelfCapture?.isStrong == true
             else { return nil }
 
-            let note = deinitOnly
+            let note =
+                deinitOnly
                 ? "cancel() only appears in deinit — unreachable from inside the cycle; capture [weak self] or cancel from a reachable path"
                 : "no cancel() found in this type — capture [weak self] in the handler or cancel the source from a reachable path"
             return Finding(
@@ -26,7 +27,8 @@ struct DispatchSourceCycleRule: Rule {
                 path: path,
                 line: call.position.line,
                 column: call.position.column,
-                message: "retain cycle: dispatch source stored on self holds a handler that captures self strongly (self → source → handler → self)",
+                message:
+                    "retain cycle: dispatch source stored on self holds a handler that captures self strongly (self → source → handler → self)",
                 note: note
             )
         }
