@@ -86,6 +86,8 @@ struct UnstoredLifetimeTokenRule: Rule {
         case .timerScheduledBlock, .timerScheduledTarget, .displayLinkTarget,
             .urlSessionWithDelegate, .dispatchSourceHandler:
             "the token"
+        case .userTokenProducer(let name):
+            name
         }
     }
 
@@ -102,6 +104,8 @@ struct UnstoredLifetimeTokenRule: Rule {
         case .timerScheduledBlock, .timerScheduledTarget, .displayLinkTarget,
             .urlSessionWithDelegate, .dispatchSourceHandler:
             "the work it owns stops immediately"
+        case .userTokenProducer:
+            "the work it owns stops immediately (user contract)"
         }
     }
 }
