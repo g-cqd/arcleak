@@ -54,7 +54,7 @@ public struct Configuration: Sendable, Codable, Equatable {
     }
 
     public func isEnabled(_ rule: RuleID) -> Bool {
-        rules[rule.rawValue]?.enabled ?? true
+        rules[rule.rawValue]?.enabled ?? rule.enabledByDefault
     }
 
     public func severity(for rule: RuleID) -> Severity {
