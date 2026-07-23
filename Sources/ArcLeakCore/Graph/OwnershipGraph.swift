@@ -5,6 +5,9 @@
 /// type resolves to another corpus node. Weak/unowned properties and
 /// unresolved names produce no edge; self-edges (`var next: Node?`) are
 /// excluded — a strong self-type link models chains, not certain cycles.
+/// SwiftData `@Model` types contribute no outgoing edges: the macro rewrites
+/// stored properties into accessors over managed backing storage, so a
+/// `@Relationship` pair is not an ARC cycle (dogfood-exposed false positive).
 ///
 /// Construction is deterministic regardless of input order: the corpus is
 /// sorted by path, nodes by name, edges by (from, to, line).
@@ -48,6 +51,9 @@ struct OwnershipGraph {
         for file in files {
             for type in file.types {
                 guard let from = indexByName[type.name] else { continue }
+                // `@Model` storage is macro-managed, not ARC-owned. (Caveat:
+                // an `@Transient` property IS real storage; accepted gap.)
+                guard !type.attributeNames.contains("Model") else { continue }
                 for property in type.storedProperties where property.strength == .strong {
                     for target in property.referencedTypeNames {
                         guard let to = indexByName[target], to != from else { continue }
