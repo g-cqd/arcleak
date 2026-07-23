@@ -1,7 +1,8 @@
 import ArcLeakCore
 import Testing
 
-/// Upstream-finiteness classification: the dogfood-measured FP class.
+/// Upstream-finiteness classification: finite pipelines release their
+/// subscribers on completion, so only never-completing upstreams cycle.
 @Suite struct FinitenessTests {
     private func findings(_ source: String) -> [Finding] {
         Analyzer().analyze(source: source, path: "test.swift").findings

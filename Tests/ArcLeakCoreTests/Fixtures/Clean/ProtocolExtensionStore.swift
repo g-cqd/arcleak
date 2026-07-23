@@ -1,6 +1,6 @@
 // swift-format-ignore-file
 // store(in:) into a protocol `{ get set }` requirement from a protocol
-// extension: that is instance storage, not a local (dogfood-reported FP).
+// extension: that is instance storage, not a local.
 // The sinks are weak, so no cycle rule applies either.
 import Combine
 import Foundation

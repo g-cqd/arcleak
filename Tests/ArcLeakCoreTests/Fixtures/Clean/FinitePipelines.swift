@@ -4,7 +4,7 @@ import Foundation
 
 // Strong-self sinks over provably finite pipelines are transient keep-alives,
 // not cycles: Subscribers.Sink releases its closures on the terminal event.
-// Dogfooding (kickstarter Paginator, wikipedia CLI) proved these must stay
+// Finite upstreams release their subscribers on completion; these must stay
 // silent.
 final class OneShotFetcher {
     var cancellables = Set<AnyCancellable>()

@@ -14,7 +14,7 @@ public enum ResultConsumption: Sendable, Equatable, Codable {
     case chainedStoreIn(memberOfSelf: Bool)
     /// Chained `.store(in:)` into a local captured by an escaping closure —
     /// the box outlives the call with the closure, and nothing removes the
-    /// token from it (recall-first: flagged with a lifetime hedge, not silent).
+    /// token from it.
     case chainedStoreInCapturedLocal(String)
     case returned
     /// Passed as an argument, part of a larger expression, etc. — assume owned elsewhere.
