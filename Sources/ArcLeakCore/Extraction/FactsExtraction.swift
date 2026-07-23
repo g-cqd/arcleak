@@ -455,6 +455,7 @@ final class FactsExtractor: SyntaxVisitor {
                     strength: strength,
                     referencedTypeNames: typeNames,
                     hasPublishedAttribute: attributeNames.contains("Published"),
+                    hasTransientAttribute: attributeNames.contains("Transient"),
                     position: position(of: binding)
                 )
             )
@@ -507,10 +508,47 @@ final class FactsExtractor: SyntaxVisitor {
             appendTaskSpawn(spawn)
             return .visitChildren
         }
-        if let call = matchKnowledgeBase(node) ?? matchUserContract(node) {
+        if let call = matchKnowledgeBase(node) ?? matchUserContract(node)
+            ?? matchInferredTokenFactory(node)
+        {
             appendAPICall(call)
         }
         return .visitChildren
+    }
+
+    /// Same-file inference (recall-first): calling a member function whose
+    /// declared return type is a lifetime token and dropping the result loses
+    /// the token exactly like a direct sink discard. Matched by name against
+    /// this type's declared functions; locals/params shadow.
+    private func matchInferredTokenFactory(_ node: FunctionCallExprSyntax) -> APICallFact? {
+        guard let typeName = typeStack.last,
+            let functions = memberTable[typeName]?.tokenReturningFunctions,
+            !functions.isEmpty
+        else { return nil }
+
+        let calleeName: String?
+        if let reference = node.calledExpression.as(DeclReferenceExprSyntax.self) {
+            let name = reference.baseName.text
+            calleeName =
+                methodStack.last?.localDeclarations.contains(name) == true ? nil : name
+        } else if let member = node.calledExpression.as(MemberAccessExprSyntax.self) {
+            let base = member.base?.as(DeclReferenceExprSyntax.self)?.baseName.text
+            calleeName =
+                (base == "self" || base == "Self" || base == typeName)
+                ? member.declName.baseName.text : nil
+        } else {
+            calleeName = nil
+        }
+        guard let name = calleeName, functions.contains(name) else { return nil }
+
+        return APICallFact(
+            kind: .userTokenProducer("the token returned by \(name)()"),
+            position: position(of: node),
+            repeats: nil,
+            targetIsSelf: false,
+            closureSelfCapture: nil,
+            consumption: classifyConsumption(of: node)
+        )
     }
 
     /// User-KB fallback: `tokenProducer` calls feed the premature-release rules
@@ -568,12 +606,21 @@ final class FactsExtractor: SyntaxVisitor {
             }
             return literal.literal.text == "true"
         }
-        func attachedClosure(labels closureLabels: [String]) -> ClosureExprSyntax? {
-            if let trailing = node.trailingClosure { return trailing }
-            for label in closureLabels {
-                if let closure = argument(label)?.as(ClosureExprSyntax.self) { return closure }
+        // ALL attached closures: trailing, additional-trailing, and labeled.
+        // `sink(receiveCompletion:receiveValue:)` can hide its strong self in
+        // either closure — analyzing just one was a false-negative source.
+        func attachedClosures(labels closureLabels: [String]) -> [ClosureExprSyntax] {
+            var closures: [ClosureExprSyntax] = []
+            if let trailing = node.trailingClosure { closures.append(trailing) }
+            for additional in node.additionalTrailingClosures {
+                closures.append(additional.closure)
             }
-            return nil
+            for label in closureLabels {
+                if let closure = argument(label)?.as(ClosureExprSyntax.self) {
+                    closures.append(closure)
+                }
+            }
+            return closures
         }
 
         let kind: APICallFact.Kind
@@ -596,7 +643,7 @@ final class FactsExtractor: SyntaxVisitor {
                 closureLabels = ["using"]
             case "sink":
                 kind = .combineSink
-                closureLabels = ["receiveValue"]
+                closureLabels = ["receiveValue", "receiveCompletion"]
             case "assign" where labels.contains("to") && labels.contains("on"):
                 kind = .combineAssignOn
                 targetIsSelf = isSelf(argument("on"))
@@ -632,24 +679,43 @@ final class FactsExtractor: SyntaxVisitor {
             return nil
         }
 
+        // Strongest capture across every attached closure wins; the
+        // nested-list-only flag survives only if EVERY strong capture is
+        // nested-list evidence (any bare self makes the plain message right).
+        func rank(_ kind: SelfCaptureKind?) -> Int {
+            switch kind {
+            case nil, .some(.none): 0
+            case .some(.weak): 1
+            case .some(.unowned): 2
+            case .some(.strong): 3
+            }
+        }
         var closureCapture: SelfCaptureKind?
         var nestedListOnly = false
-        if let closure = attachedClosure(labels: closureLabels) {
+        for closure in attachedClosures(labels: closureLabels) {
             let analysis = ClosureCaptureAnalysis.analyze(
                 closure: closure,
                 memberNames: currentMemberNames,
                 allowImplicitSelf: false
             )
-            closureCapture = analysis.selfCapture
-            nestedListOnly = analysis.strongViaNestedCaptureOnly
-        } else {
-            // `sink(receiveValue: self.handle)` — a bound method value is a
-            // strong capture, same pipeline as a strong-self closure.
-            for label in closureLabels {
-                if let expr = argument(label), strongCaptureEquivalent(expr) {
-                    closureCapture = .strong(implicit: false)
-                    break
-                }
+            let newRank = rank(analysis.selfCapture)
+            if newRank > rank(closureCapture) {
+                closureCapture = analysis.selfCapture
+                nestedListOnly = analysis.strongViaNestedCaptureOnly
+            } else if newRank == 3 {
+                nestedListOnly = nestedListOnly && analysis.strongViaNestedCaptureOnly
+            }
+        }
+        // `sink(receiveValue: self.handle)` — a bound method value is a strong
+        // capture, same pipeline as a strong-self closure (checked alongside
+        // closures: arguments can mix both).
+        for label in closureLabels {
+            if let expr = argument(label), !expr.is(ClosureExprSyntax.self),
+                strongCaptureEquivalent(expr)
+            {
+                closureCapture = .strong(implicit: false)
+                nestedListOnly = false
+                break
             }
         }
 
@@ -894,7 +960,7 @@ final class FactsExtractor: SyntaxVisitor {
                     let argument = chained.arguments.first,
                     argument.label?.text == "in"
                 {
-                    return classifyStoreInTarget(argument.expression)
+                    return classifyStoreInTarget(argument.expression, tokenCall: call)
                 }
                 current = Syntax(chained)
                 continue
@@ -923,26 +989,110 @@ final class FactsExtractor: SyntaxVisitor {
         return .other
     }
 
-    /// `store(in:)` ownership: claim scope-death ONLY on positive evidence.
-    /// `self.x` and unshadowed members (including protocol requirements) are
-    /// instance storage. A bare identifier is a dying local only when this
-    /// method declared it AND the store runs at the local's own closure depth —
-    /// a deeper store means an escaping closure captured the box and extends
-    /// its lifetime. Everything else (`context.coordinator.x`, out-of-file
-    /// superclass members) is unknown ownership: no claim, no finding.
-    /// All three shapes were dogfood-reported false positives.
-    private func classifyStoreInTarget(_ target: ExprSyntax) -> ResultConsumption {
+    /// `store(in:)` ownership (recall-first). `self.x` and unshadowed members
+    /// (including protocol requirements) are instance storage. A bare local —
+    /// or a member chain ROOTED at a local (`holder.bag`) — dies at scope end
+    /// when the store runs at the local's own closure depth or only inside
+    /// known non-escaping closures (`forEach`, immediately-applied); through
+    /// an escaping capture the claim shifts to lifetime-tied-to-the-closure
+    /// instead of going silent. Parameter-rooted chains and out-of-file
+    /// superclass members stay silent: the probable truth is durable storage
+    /// (both were dogfood-reported false positives).
+    private func classifyStoreInTarget(
+        _ target: ExprSyntax,
+        tokenCall: FunctionCallExprSyntax
+    ) -> ResultConsumption {
         guard let stored = target.as(InOutExprSyntax.self)?.expression else { return .other }
         if memberOfSelfName(stored) != nil {
             return .chainedStoreIn(memberOfSelf: true)
         }
-        if let reference = stored.as(DeclReferenceExprSyntax.self),
-            let declarationDepth = methodStack.last?.localBindingDepths[reference.baseName.text],
-            declarationDepth == closureDepth
+        if let reference = stored.as(DeclReferenceExprSyntax.self) {
+            return classifyLocalStore(reference.baseName.text, tokenCall: tokenCall)
+        }
+        if let root = chainRootName(of: stored),
+            methodStack.last?.localBindingDepths[root] != nil
         {
-            return .chainedStoreIn(memberOfSelf: false)
+            return classifyLocalStore(root, tokenCall: tokenCall)
         }
         return .other
+    }
+
+    private func classifyLocalStore(
+        _ name: String,
+        tokenCall: FunctionCallExprSyntax
+    ) -> ResultConsumption {
+        guard let declarationDepth = methodStack.last?.localBindingDepths[name] else {
+            return .other
+        }
+        let delta = closureDepth - declarationDepth
+        if delta <= 0 { return .chainedStoreIn(memberOfSelf: false) }
+        let hops = enclosingClosures(of: Syntax(tokenCall), count: delta)
+        if hops.count == delta, hops.allSatisfy(Self.isNonEscapingContext) {
+            return .chainedStoreIn(memberOfSelf: false)
+        }
+        return .chainedStoreInCapturedLocal(name)
+    }
+
+    /// `context.coordinator.bag` → "context" (nil when the root is not a
+    /// plain identifier).
+    private func chainRootName(of expr: ExprSyntax) -> String? {
+        var current = expr
+        while let member = current.as(MemberAccessExprSyntax.self) {
+            guard let base = member.base else { return nil }
+            current = base
+        }
+        return current.as(DeclReferenceExprSyntax.self)?.baseName.text
+    }
+
+    private func enclosingClosures(of node: Syntax, count: Int) -> [ClosureExprSyntax] {
+        var closures: [ClosureExprSyntax] = []
+        var current: Syntax? = node.parent
+        while let some = current, closures.count < count {
+            if let closure = some.as(ClosureExprSyntax.self) {
+                closures.append(closure)
+            }
+            current = some.parent
+        }
+        return closures
+    }
+
+    /// Stdlib sequence/scope functions whose closures are documented
+    /// non-escaping — a store through them still dies with the enclosing scope.
+    private static let nonEscapingHOFs: Set<String> = [
+        "forEach", "map", "compactMap", "flatMap", "filter", "reduce", "sorted",
+        "sort", "contains", "first", "allSatisfy", "min", "max",
+        "withExtendedLifetime",
+    ]
+
+    /// Trailing/labeled closure of a known non-escaping HOF, or an
+    /// immediately-applied closure literal (`({ … })()`).
+    private static func isNonEscapingContext(_ closure: ClosureExprSyntax) -> Bool {
+        guard let parent = closure.parent else { return false }
+        if let call = parent.as(FunctionCallExprSyntax.self) {
+            var callee = call.calledExpression
+            if let tuple = callee.as(TupleExprSyntax.self),
+                tuple.elements.count == 1,
+                let inner = tuple.elements.first?.expression
+            {
+                callee = inner
+            }
+            if callee.id == closure.id { return true }
+            if call.trailingClosure?.id == closure.id,
+                let member = call.calledExpression.as(MemberAccessExprSyntax.self),
+                nonEscapingHOFs.contains(member.declName.baseName.text)
+            {
+                return true
+            }
+        }
+        if let labeled = parent.as(LabeledExprSyntax.self),
+            let list = labeled.parent?.as(LabeledExprListSyntax.self),
+            let call = list.parent?.as(FunctionCallExprSyntax.self),
+            let member = call.calledExpression.as(MemberAccessExprSyntax.self),
+            nonEscapingHOFs.contains(member.declName.baseName.text)
+        {
+            return true
+        }
+        return false
     }
 
     /// A bare expression statement is a discard — unless it is the *only*

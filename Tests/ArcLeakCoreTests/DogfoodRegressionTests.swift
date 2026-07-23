@@ -203,8 +203,8 @@ import Testing
         #expect(findings(source).isEmpty)
     }
 
-    @Test("A local bag captured by an escaping closure makes no scope-death claim")
-    func escapingCapturedLocalBagIsClean() {
+    @Test("A local bag captured by an escaping closure flags the lifetime hedge")
+    func escapingCapturedLocalBagFlagsHedged() {
         let source = """
             import Combine
             enum Bridge {
@@ -218,7 +218,46 @@ import Testing
                 }
             }
             """
-        #expect(findings(source).isEmpty)
+        let tokenFindings = findings(source).filter { $0.rule == .tokenStoredInLocal }
+        #expect(tokenFindings.count == 1)
+        // Recall-first: the claim is closure-tied lifetime + unbounded growth,
+        // NOT the disproven "dies at scope end".
+        #expect(tokenFindings.first?.message.contains("escaping closure captured") == true)
+    }
+
+    @Test("A store inside a non-escaping HOF still claims scope death")
+    func forEachStoreStillFires() {
+        let source = """
+            import Combine
+            final class EdgeA {
+                let subject = PassthroughSubject<Int, Never>()
+                func arm() {
+                    var bag = Set<AnyCancellable>()
+                    [1, 2, 3].forEach { _ in
+                        subject.sink { _ = $0 }.store(in: &bag)
+                    }
+                }
+            }
+            """
+        let tokenFindings = findings(source).filter { $0.rule == .tokenStoredInLocal }
+        #expect(tokenFindings.count == 1)
+        #expect(tokenFindings.first?.message.contains("dies at scope end") == true)
+    }
+
+    @Test("A store rooted at a dying local reference flags again")
+    func localRefRootedStoreFires() {
+        let source = """
+            import Combine
+            final class EdgeB {
+                let subject = PassthroughSubject<Int, Never>()
+                final class Holder { var bag = Set<AnyCancellable>() }
+                func arm() {
+                    let holder = Holder()
+                    subject.sink { _ = $0 }.store(in: &holder.bag)
+                }
+            }
+            """
+        #expect(findings(source).contains { $0.rule == .tokenStoredInLocal })
     }
 
     @Test("An unknown bare store target (out-of-file superclass member) makes no claim")
@@ -252,8 +291,11 @@ import Testing
 
     // MARK: - Sink cycles: XCTest noise and the nested-capture-list trap
 
-    @Test("A sink self-cycle inside an XCTestCase subclass is silenced")
-    func xctestSinkCycleSilenced() {
+    @Test("A sink self-cycle inside an XCTestCase subclass fires with test context")
+    func xctestSinkCycleFiresWithTestContext() {
+        // Recall-first: XCTest holds test instances for the run, so the leak
+        // is real (instances never deinit); the note names the context so
+        // deliberate assertion plumbing gets accepted, not silently missed.
         let source = """
             import Combine
             import XCTest
@@ -267,7 +309,86 @@ import Testing
                 }
             }
             """
+        let sinkFindings = findings(source).filter { $0.rule == .combineSinkSelfCycle }
+        #expect(sinkFindings.count == 1)
+        #expect(sinkFindings.first?.note?.contains("XCTest") == true)
+    }
+
+    @Test("Strong self only in receiveCompletion is caught (strongest closure wins)")
+    func receiveCompletionStrongSelfFires() {
+        let source = """
+            import Combine
+            final class Completer {
+                let subject = PassthroughSubject<Int, Never>()
+                var cancellables = Set<AnyCancellable>()
+                var done = false
+                func bind() {
+                    subject.sink(
+                        receiveCompletion: { _ in self.done = true },
+                        receiveValue: { [weak self] _ in _ = self }
+                    )
+                    .store(in: &cancellables)
+                }
+            }
+            """
+        #expect(findings(source).contains { $0.rule == .combineSinkSelfCycle })
+    }
+
+    // MARK: - Inferred token factories (same-file return types)
+
+    @Test("Discarding a call to a member function returning AnyCancellable fires")
+    func discardedFactoryCallFires() {
+        let source = """
+            import Combine
+            final class Owner {
+                let subject = PassthroughSubject<Int, Never>()
+                func make() -> AnyCancellable {
+                    subject.sink { _ = $0 }
+                }
+                func arm() {
+                    make()
+                    let extra = 1
+                    _ = extra
+                }
+            }
+            """
+        #expect(findings(source).contains { $0.rule == .unstoredLifetimeToken })
+    }
+
+    @Test("Storing the factory result on the instance stays clean (positive control)")
+    func storedFactoryCallIsClean() {
+        let source = """
+            import Combine
+            final class Owner {
+                let subject = PassthroughSubject<Int, Never>()
+                var token: AnyCancellable?
+                func make() -> AnyCancellable {
+                    subject.sink { _ = $0 }
+                }
+                func arm() {
+                    token = make()
+                }
+            }
+            """
         #expect(findings(source).isEmpty)
+    }
+
+    // MARK: - SwiftData @Transient (real ARC storage on @Model)
+
+    @Test("@Transient mutual strong properties on @Model types still cycle")
+    func transientModelPairStillFires() {
+        let source = """
+            import SwiftData
+            @Model final class NodeA {
+                @Transient var peer: NodeB?
+                init() {}
+            }
+            @Model final class NodeB {
+                @Transient var node: NodeA?
+                init() {}
+            }
+            """
+        #expect(findings(source).contains { $0.rule == .mutualStrongProperties })
     }
 
     @Test("The same sink cycle outside a test class still fires (positive control)")
