@@ -79,7 +79,10 @@ jobs:
           cat build-test.log
           exit $status
       - name: Runtime ground-truth oracle
-        timeout-minutes: 5
+        # The script bounds every scenario in its own process group and
+        # self-reaps before exiting (nightly runtimes race an exit-teardown
+        # deadlock under `leaks -atExit`); worst case is scenarios × 30 s.
+        timeout-minutes: 12
         run: |
           set +e
           Scripts/run-leak-oracle.sh "$(swift build --show-bin-path)/leak-oracle" > oracle.log 2>&1 < /dev/null
