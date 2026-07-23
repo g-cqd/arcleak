@@ -5,10 +5,9 @@ struct CombineSinkSelfCycleRule: Rule {
 
     static func check(type: TypeFacts, path: String, configuration: Configuration) -> [Finding] {
         guard type.isReferenceType == true else { return [] }
-        // Recall-first: XCTestCase cycles still fire (leaked test instances
-        // accumulate across a run and never deinit), with a note naming the
-        // test context so deliberate assertion plumbing gets accepted, not
-        // silently missed.
+        // XCTestCase cycles fire like any other — test instances never
+        // deinit during a run, so leaked ones accumulate; the note names the
+        // test context so deliberate assertion plumbing can be accepted.
         let isTestCase = type.inheritedTypeNames.contains("XCTestCase")
         return type.apiCalls.compactMap { call in
             guard call.kind == .combineSink,

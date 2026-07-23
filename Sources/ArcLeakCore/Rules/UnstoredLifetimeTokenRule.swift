@@ -10,8 +10,8 @@ struct UnstoredLifetimeTokenRule: Rule {
 
     static func check(type: TypeFacts, path: String, configuration: Configuration) -> [Finding] {
         // Test bodies hold tokens across a synchronous wait and rely on
-        // scope-end cancellation as teardown — dogfooding showed 100% of this
-        // rule's hits inside XCTestCase subclasses were that idiom.
+        // scope-end cancellation as teardown — correct usage of the token,
+        // not a premature release.
         guard !type.inheritedTypeNames.contains("XCTestCase") else { return [] }
 
         return type.apiCalls.compactMap { call in
@@ -66,10 +66,9 @@ struct UnstoredLifetimeTokenRule: Rule {
                     note: "store(in:) into a collection owned by the instance instead"
                 )
             case .chainedStoreInCapturedLocal(let name):
-                // Recall-first hedge: the escaping capture keeps the box alive
-                // with the closure, so the honest claim is unowned lifetime +
-                // unbounded growth, not scope-death (the field report called
-                // this out as a real bug in its own right).
+                // The escaping capture keeps the box alive with the
+                // closure, so the claim is closure-tied lifetime plus
+                // unbounded growth, not scope-death.
                 return Finding(
                     rule: .tokenStoredInLocal,
                     severity: configuration.severity(for: .tokenStoredInLocal),

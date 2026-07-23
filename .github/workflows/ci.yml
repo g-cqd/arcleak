@@ -39,6 +39,17 @@ jobs:
         run: Scripts/lint-format.sh
       - name: GCD prohibition
         run: Scripts/no-gcd.sh
+      - name: Release binary (static stdlib)
+        run: |
+          swift build -c release --static-swift-stdlib
+          BIN="$(swift build -c release --static-swift-stdlib --show-bin-path)/arcleak"
+          "$BIN" --version
+          cp "$BIN" arcleak
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arcleak-${{ github.sha }}-linux-x86_64
+          path: arcleak
+          retention-days: 14
 
   macos:
     runs-on: macos-15
@@ -89,6 +100,19 @@ jobs:
           status=$?
           cat oracle.log
           exit $status
+      - name: Release binary
+        run: |
+          set +e
+          swift build -c release > release-build.log 2>&1 < /dev/null
+          status=$?
+          cat release-build.log
+          [ $status -ne 0 ] && exit $status
+          cp "$(swift build -c release --show-bin-path)/arcleak" arcleak
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arcleak-${{ github.sha }}-macos-arm64
+          path: arcleak
+          retention-days: 14
       - name: Straggler census and reap
         # Prior steps' children hold file fds, not the log pipe, so this step
         # can finalize — its output names the orphan for future tightening.

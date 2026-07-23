@@ -4,8 +4,8 @@ import Foundation
 import UIKit
 import XCTest
 
-// Every case below is a real-world idiom that dogfooding on kickstarter,
-// wikipedia-ios, and isowords proved must stay silent.
+// Real-world idioms that must stay silent: each case is correct code whose
+// surface shape resembles a finding.
 
 // 1. XCTest: token held across a synchronous wait; scope-end cancellation is
 //    the intended teardown.
