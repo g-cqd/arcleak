@@ -153,6 +153,7 @@ final class FactsExtractor: SyntaxVisitor {
             type.memberNames = memberTable[name]?.members ?? []
             type.inheritedTypeNames = memberTable[name]?.inheritedTypes ?? []
             type.methodNames = memberTable[name]?.functionMembers ?? []
+            type.attributeNames = memberTable[name]?.typeAttributes ?? []
             type.deadWeakCaptures = collectedFacts.deadWeakCaptures
             type.storedProperties = collectedFacts.storedProperties
             type.storedClosures = collectedFacts.storedClosures
@@ -251,7 +252,15 @@ final class FactsExtractor: SyntaxVisitor {
     override func visitPost(_ node: FunctionDeclSyntax) { popMethod(node) }
 
     override func visit(_ node: InitializerDeclSyntax) -> SyntaxVisitorContinueKind {
-        pushMethodIfTopLevel(node, isDeinit: false)
+        let opened = pushMethodIfTopLevel(node, isDeinit: false)
+        if opened {
+            // Same shadowing discipline as `func`: `self.compositeId =
+            // compositeId` writes the parameter, not a member-method value.
+            for parameter in node.signature.parameterClause.parameters {
+                methodStack[methodStack.count - 1]
+                    .localDeclarations.insert((parameter.secondName ?? parameter.firstName).text)
+            }
+        }
         return .visitChildren
     }
 
@@ -819,10 +828,16 @@ final class FactsExtractor: SyntaxVisitor {
         }
         if let reference = expr.as(DeclReferenceExprSyntax.self) {
             let name = reference.baseName.text
-            if currentFunctionMembers.contains(name) { return true }
+            // Local funcs first: they live in `localDeclarations` too, but a
+            // self-referencing one used as a value IS a strong capture.
             if methodStack.last?.selfReferencingLocalFunctions.contains(name) == true {
                 return true
             }
+            // A parameter or local shadowing a method name wins the lookup:
+            // `defaultColor = color` inside `setDefaultColor(_ color: Color)`
+            // stores the parameter, not a bound `self.color` (dogfood-exposed).
+            if methodStack.last?.localDeclarations.contains(name) == true { return false }
+            if currentFunctionMembers.contains(name) { return true }
         }
         return false
     }
@@ -893,10 +908,41 @@ final class FactsExtractor: SyntaxVisitor {
                 return classifyBinding(initializer)
             }
             if parent.is(ReturnStmtSyntax.self) { return .returned }
-            if parent.is(CodeBlockItemSyntax.self) { return .discarded }
+            if let item = parent.as(CodeBlockItemSyntax.self) {
+                return classifyBareStatement(item)
+            }
             return .other
         }
         return .other
+    }
+
+    /// A bare expression statement is a discard — unless it is the *only*
+    /// statement of a value-returning body, where SE-0255 makes it the implicit
+    /// return value (token factories: `func to(…) -> AnyCancellable { …sink }`).
+    private func classifyBareStatement(_ item: CodeBlockItemSyntax) -> ResultConsumption {
+        guard
+            let list = item.parent?.as(CodeBlockItemListSyntax.self),
+            list.count == 1,
+            let owner = list.parent
+        else { return .discarded }
+        // `var token: T { …sink }` — shorthand getter bodies hang directly
+        // off the accessor block, with no CodeBlock wrapper.
+        if owner.is(AccessorBlockSyntax.self) { return .returned }
+        guard let blockOwner = owner.as(CodeBlockSyntax.self)?.parent else { return .discarded }
+        if let function = blockOwner.as(FunctionDeclSyntax.self),
+            function.signature.returnClause != nil
+        {
+            return .returned
+        }
+        if let accessor = blockOwner.as(AccessorDeclSyntax.self),
+            accessor.accessorSpecifier.tokenKind == .keyword(.get)
+        {
+            return .returned
+        }
+        // Closures stay discarded: without type information their context
+        // (Void or value-returning) is unknowable, and the common
+        // `queue.async { publisher.sink { … } }` really does drop the token.
+        return .discarded
     }
 
     private func classifyAssignment(sequence: SequenceExprSyntax, rhsID: SyntaxIdentifier) -> ResultConsumption {
