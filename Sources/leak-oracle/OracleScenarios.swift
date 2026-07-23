@@ -65,7 +65,7 @@
                 payments.orders = orders
             },
             "nested_weak_task_sink": {
-                // The disputed field-report shape: the sink body's ONLY `self`
+                // The nested-closure trap in sink form: the sink body's ONLY `self`
                 // is a nested `Task { [weak self] }`. Forming that weak box
                 // forces the sink closure itself to capture self strongly, so
                 // self → cancellables → sink closure → self IS a cycle. This

@@ -1,7 +1,7 @@
 // swift-format-ignore-file
 // SwiftData @Model pair with an inverse relationship: the macro rewrites
 // stored properties into accessors over managed backing storage, so the
-// mutual "strong" links are not ARC edges. Reduced from a dogfooded schema.
+// mutual "strong" links are not ARC edges.
 import Foundation
 import SwiftData
 

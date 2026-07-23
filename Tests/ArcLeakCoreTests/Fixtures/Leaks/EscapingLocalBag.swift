@@ -1,8 +1,8 @@
 // swift-format-ignore-file
 // A local Set<AnyCancellable> captured by an escaping closure: the box lives
 // exactly as long as the closure, and nothing ever removes entries — every
-// invocation grows the set (recall-first: flagged with the lifetime hedge,
-// not a false "dies at scope end" and not silence).
+// invocation grows the set — flagged with the lifetime claim, not
+// scope-death.
 import Combine
 
 enum Bridging {

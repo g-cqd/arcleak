@@ -1,8 +1,8 @@
 // swift-format-ignore-file
 // Bare identifiers that *shadow* member-method names: parameters win the
-// lookup, so these assignments store values, not bound self methods. Reduced
-// from two dogfooded apps (setter parameter vs `color(for:)` overloads; init
-// parameter vs a same-named static factory).
+// lookup, so these assignments store values, not bound self methods (setter
+// parameter vs `color(for:)` overloads; init parameter vs a same-named
+// static factory).
 import SwiftUI
 
 @Observable
