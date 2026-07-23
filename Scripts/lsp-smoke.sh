@@ -53,9 +53,18 @@ assert actions["result"], actions
 edit = actions["result"][0]["edit"]["changes"][uri][0]["newText"]
 assert "arcleak:deliberate" in edit, edit
 
-send({"jsonrpc": "2.0", "id": 3, "method": "shutdown", "params": {}})
-read()
-send({"jsonrpc": "2.0", "method": "exit"})
+# didClose must clear diagnostics (and drop the in-memory document).
+send({"jsonrpc": "2.0", "method": "textDocument/didClose",
+      "params": {"textDocument": {"uri": uri}}})
+cleared = read()
+assert cleared["method"] == "textDocument/publishDiagnostics", cleared
+assert cleared["params"]["diagnostics"] == [], cleared
+
+# Oversized Content-Length must drop the connection cleanly (no OOM, no hang).
+big = json.dumps({"jsonrpc": "2.0", "id": 9, "method": "initialize", "params": {}}).encode()
+proc.stdin.write(b"Content-Length: 99999999999\r\n\r\n" + big)
+proc.stdin.flush()
 proc.wait(timeout=5)
-print("lsp smoke: ok (diagnostics + code action round-trip)")
+assert proc.returncode is not None, "server should exit on absurd Content-Length"
+print("lsp smoke: ok (diagnostics + code action + didClose + oversized-length drop)")
 EOF
