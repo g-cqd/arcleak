@@ -65,6 +65,22 @@ struct UnstoredLifetimeTokenRule: Rule {
                         "\(token) is stored into a local collection via store(in:) and dies at scope end — \(consequence(for: call.kind))",
                     note: "store(in:) into a collection owned by the instance instead"
                 )
+            case .chainedStoreInCapturedLocal(let name):
+                // Recall-first hedge: the escaping capture keeps the box alive
+                // with the closure, so the honest claim is unowned lifetime +
+                // unbounded growth, not scope-death (the field report called
+                // this out as a real bug in its own right).
+                return Finding(
+                    rule: .tokenStoredInLocal,
+                    severity: configuration.severity(for: .tokenStoredInLocal),
+                    path: path,
+                    line: call.position.line,
+                    column: call.position.column,
+                    message:
+                        "\(token) is stored via local '\(name)', which an escaping closure captured — the subscription lives exactly as long as the closure, and nothing removes it from the collection",
+                    note:
+                        "every invocation adds an entry that is never removed (unbounded growth if the closure lives on); store into instance storage with explicit removal, or cancel after the work completes"
+                )
             case .storedToSelfMember, .storedToLocalEscaping, .chainedStoreIn(memberOfSelf: true),
                 .returned, .other:
                 return nil

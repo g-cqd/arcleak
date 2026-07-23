@@ -12,6 +12,9 @@ public struct StoredPropertyFact: Sendable, Equatable, Codable {
     /// `@Published` — the projected publisher never completes while the object
     /// lives; feeds upstream-finiteness resolution.
     public let hasPublishedAttribute: Bool
+    /// `@Transient` — on a SwiftData `@Model` type this is REAL ARC storage
+    /// (the macro manages everything else), so it still forms ownership edges.
+    public let hasTransientAttribute: Bool
     public let position: SourcePosition
 
     public init(
@@ -19,12 +22,14 @@ public struct StoredPropertyFact: Sendable, Equatable, Codable {
         strength: ReferenceStrength,
         referencedTypeNames: [String],
         hasPublishedAttribute: Bool = false,
+        hasTransientAttribute: Bool = false,
         position: SourcePosition
     ) {
         self.name = name
         self.strength = strength
         self.referencedTypeNames = referencedTypeNames
         self.hasPublishedAttribute = hasPublishedAttribute
+        self.hasTransientAttribute = hasTransientAttribute
         self.position = position
     }
 }

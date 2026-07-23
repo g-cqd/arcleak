@@ -18,6 +18,10 @@ final class MemberCollector: SyntaxVisitor {
         /// Attribute names on the type declaration itself (`Model`,
         /// `Observable`) — macro-managed storage changes ownership semantics.
         var typeAttributes: Set<String> = []
+        /// Member functions whose declared return type is a lifetime token
+        /// (`AnyCancellable`, `NSKeyValueObservation`): discarding their result
+        /// at a call site loses the token exactly like a direct sink discard.
+        var tokenReturningFunctions: Set<String> = []
     }
 
     private(set) var table: [String: Entry] = [:]
@@ -118,8 +122,36 @@ final class MemberCollector: SyntaxVisitor {
                 table[typeName, default: Entry(isReferenceType: nil)]
                     .functionMembers.insert(node.name.text)
             }
+            // Statics included: `Self.make()`/`TypeName.make()` discards lose
+            // the token the same way. (Matched by name only — a same-named
+            // Void overload would false-positive; recall-first accepts that.)
+            if let typeName = currentTypeName,
+                let returnType = node.signature.returnClause?.type,
+                let nominal = Self.nominalName(returnType),
+                Self.tokenTypeNames.contains(nominal)
+            {
+                table[typeName, default: Entry(isReferenceType: nil)]
+                    .tokenReturningFunctions.insert(node.name.text)
+            }
         }
         return .visitChildren
+    }
+
+    static let tokenTypeNames: Set<String> = ["AnyCancellable", "NSKeyValueObservation"]
+
+    /// Unwraps optionals/attributes to the nominal return type name.
+    private static func nominalName(_ type: TypeSyntax) -> String? {
+        var current = type
+        while true {
+            if let optional = current.as(OptionalTypeSyntax.self) {
+                current = optional.wrappedType
+            } else if let attributed = current.as(AttributedTypeSyntax.self) {
+                current = attributed.baseType
+            } else {
+                break
+            }
+        }
+        return current.as(IdentifierTypeSyntax.self)?.name.text
     }
 
     private var currentTypeName: String? { typeStack.last }
