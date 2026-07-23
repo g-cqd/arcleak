@@ -64,6 +64,27 @@
                 orders.payments = payments
                 payments.orders = orders
             },
+            "nested_weak_task_sink": {
+                // The disputed field-report shape: the sink body's ONLY `self`
+                // is a nested `Task { [weak self] }`. Forming that weak box
+                // forces the sink closure itself to capture self strongly, so
+                // self → cancellables → sink closure → self IS a cycle. This
+                // scenario is the runtime proof: if the compiler did not
+                // strongly capture, the instance would deallocate and the
+                // oracle would fail with "expected a leak, found none".
+                final class NestedTrap {
+                    let subject = PassthroughSubject<Int, Never>()
+                    var cancellables = Set<AnyCancellable>()
+                    func bind() {
+                        subject.sink { _ in
+                            Task { [weak self] in _ = self }
+                        }
+                        .store(in: &cancellables)
+                    }
+                }
+                let trap = NestedTrap()
+                trap.bind()
+            },
             "dispatch_source_cycle": {
                 final class Beeper {
                     // Never activated: a suspended source with a handler is a pure

@@ -65,6 +65,19 @@ final class MemberCollector: SyntaxVisitor {
 
     override func visitPost(_ node: StructDeclSyntax) { typeStack.removeLast() }
 
+    /// Protocol requirements are members too: a `{ get set }` var used from a
+    /// protocol-extension method (`store(in: &webSocketCancellables)`) resolves
+    /// to instance storage, not a local (dogfood-exposed false positive).
+    /// `isReferenceType` stays nil — requirement-level facts never prove
+    /// reference-ness, so cycle rules keep skipping protocol scopes.
+    override func visit(_ node: ProtocolDeclSyntax) -> SyntaxVisitorContinueKind {
+        push(name: node.name.text, isReference: nil)
+        addInheritedTypes(node.inheritanceClause, to: node.name.text)
+        return .visitChildren
+    }
+
+    override func visitPost(_ node: ProtocolDeclSyntax) { typeStack.removeLast() }
+
     override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
         push(name: node.name.text, isReference: false)
         return .visitChildren

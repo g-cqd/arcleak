@@ -166,4 +166,171 @@ import Testing
             """
         #expect(findings(source).contains { $0.rule == .mutualStrongProperties })
     }
+
+    // MARK: - store(in:) ownership classification (field report, 2603-file app)
+
+    @Test("store(in:) into a protocol { get set } requirement is instance storage")
+    func protocolRequirementStoreIsClean() {
+        let source = """
+            import Combine
+            protocol Listening: AnyObject {
+                var bag: Set<AnyCancellable> { get set }
+                var feed: PassthroughSubject<Int, Never> { get }
+            }
+            extension Listening {
+                func start() {
+                    feed.sink { [weak self] _ in _ = self }
+                        .store(in: &bag)
+                }
+            }
+            """
+        #expect(findings(source).isEmpty)
+    }
+
+    @Test("store(in:) through a non-self reference makes no scope-death claim")
+    func nonSelfReferenceStoreIsClean() {
+        let source = """
+            import Combine
+            final class Coordinator { var bag = Set<AnyCancellable>() }
+            struct Context { let coordinator: Coordinator }
+            enum Wiring {
+                static func wire(subject: PassthroughSubject<Int, Never>, context: Context) {
+                    subject.sink { _ = $0 }
+                        .store(in: &context.coordinator.bag)
+                }
+            }
+            """
+        #expect(findings(source).isEmpty)
+    }
+
+    @Test("A local bag captured by an escaping closure makes no scope-death claim")
+    func escapingCapturedLocalBagIsClean() {
+        let source = """
+            import Combine
+            enum Bridge {
+                static func makeSender(subject: PassthroughSubject<Int, Never>) -> (Int) -> Void {
+                    var bag = Set<AnyCancellable>()
+                    let send: (Int) -> Void = { value in
+                        subject.sink { _ = $0 }.store(in: &bag)
+                        subject.send(value)
+                    }
+                    return send
+                }
+            }
+            """
+        #expect(findings(source).isEmpty)
+    }
+
+    @Test("An unknown bare store target (out-of-file superclass member) makes no claim")
+    func unknownBareStoreTargetIsClean() {
+        let source = """
+            import Combine
+            final class Child: ExternalBase {
+                let subject = PassthroughSubject<Int, Never>()
+                func bind() {
+                    subject.sink { _ = $0 }.store(in: &inheritedBag)
+                }
+            }
+            """
+        #expect(findings(source).isEmpty)
+    }
+
+    @Test("A local bag stored at its own scope still fires (positive control)")
+    func sameScopeLocalStoreStillFires() {
+        let source = """
+            import Combine
+            final class Box {
+                let subject = PassthroughSubject<Int, Never>()
+                func arm() {
+                    var bag = Set<AnyCancellable>()
+                    subject.sink { _ = $0 }.store(in: &bag)
+                }
+            }
+            """
+        #expect(findings(source).contains { $0.rule == .tokenStoredInLocal })
+    }
+
+    // MARK: - Sink cycles: XCTest noise and the nested-capture-list trap
+
+    @Test("A sink self-cycle inside an XCTestCase subclass is silenced")
+    func xctestSinkCycleSilenced() {
+        let source = """
+            import Combine
+            import XCTest
+            final class QueueTests: XCTestCase {
+                let subject = PassthroughSubject<Int, Never>()
+                var cancellables = Set<AnyCancellable>()
+                var result: [Int] = []
+                func testDelivery() {
+                    subject.sink { self.result.append($0) }
+                        .store(in: &cancellables)
+                }
+            }
+            """
+        #expect(findings(source).isEmpty)
+    }
+
+    @Test("The same sink cycle outside a test class still fires (positive control)")
+    func nonTestSinkCycleStillFires() {
+        let source = """
+            import Combine
+            final class Collector {
+                let subject = PassthroughSubject<Int, Never>()
+                var cancellables = Set<AnyCancellable>()
+                var result: [Int] = []
+                func bind() {
+                    subject.sink { self.result.append($0) }
+                        .store(in: &cancellables)
+                }
+            }
+            """
+        #expect(findings(source).contains { $0.rule == .combineSinkSelfCycle })
+    }
+
+    @Test("Nested Task [weak self] inside a sink fires with the teaching message")
+    func nestedWeakTaskSinkFiresWithTeachingMessage() {
+        // The field-report shape verbatim: `where`-clause binds the init
+        // PARAMETER (shadowing the member), and the only `self` is a nested
+        // Task's [weak self] — which still forces the sink closure to capture
+        // self strongly (runtime-proved by the nested_weak_task_sink oracle
+        // scenario; the 6.4 compiler now warns implicit-strong-capture here).
+        let source = """
+            import Combine
+            final class ViewModel {
+                private let assetId: Int
+                var cancellables = Set<AnyCancellable>()
+                init(assetId: Int, publisher: AnyPublisher<Int, Never>) {
+                    self.assetId = assetId
+                    publisher
+                        .sink { id in
+                            guard id == assetId else { return }
+                            Task { [weak self] in _ = self }
+                        }
+                        .store(in: &cancellables)
+                }
+            }
+            """
+        let sinkFindings = findings(source).filter { $0.rule == .combineSinkSelfCycle }
+        #expect(sinkFindings.count == 1)
+        #expect(sinkFindings.first?.message.contains("nested closure's capture list") == true)
+    }
+
+    @Test("A direct strong sink keeps the plain message (no nested-trap addendum)")
+    func directStrongSinkKeepsPlainMessage() {
+        let source = """
+            import Combine
+            final class Plain {
+                let subject = PassthroughSubject<Int, Never>()
+                var cancellables = Set<AnyCancellable>()
+                var value = 0
+                func bind() {
+                    subject.sink { self.value = $0 }
+                        .store(in: &cancellables)
+                }
+            }
+            """
+        let sinkFindings = findings(source).filter { $0.rule == .combineSinkSelfCycle }
+        #expect(sinkFindings.count == 1)
+        #expect(sinkFindings.first?.message.contains("nested closure's capture list") == false)
+    }
 }
