@@ -1,3 +1,4 @@
+// swift-format-ignore-file
 // Immediately-applied initializer closures: the closure runs once and is
 // released — nothing is stored. Classic naive-linter false positive.
 final class Applied {
