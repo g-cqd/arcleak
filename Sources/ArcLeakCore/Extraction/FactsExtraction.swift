@@ -49,7 +49,7 @@ public enum FactsExtraction {
         return configuration
     }
 
-    /// One token sweep collecting `// arcleak:` comment directives with their lines.
+    /// One token sweep collecting `@al:`/`@arcleak:` comment directives with their lines.
     static func scanDirectives(
         tree: SourceFileSyntax,
         converter: SourceLocationConverter
@@ -116,12 +116,12 @@ final class FactsExtractor: SyntaxVisitor {
         var selfReferencingLocalFunctions: Set<String> = []
         /// Locals (bindings + parameters) that shadow member names: a bare
         /// `handler = { … }` writing a *local* must never be read as member
-        /// storage (gauntlet-exposed false positive).
+        /// storage.
         var localDeclarations: Set<String> = []
         /// Closure-nesting depth at each local's declaration (first wins).
         /// `store(in:)` claims scope-death only when the store runs at the
         /// SAME depth — a deeper store means the local was captured by a
-        /// closure that extends its lifetime (dogfood-exposed false positive).
+        /// closure that extends its lifetime.
         var localBindingDepths: [String: Int] = [:]
     }
 
@@ -291,7 +291,7 @@ final class FactsExtractor: SyntaxVisitor {
     /// Implicit getters (`var x: T { … }` with no `get` keyword) produce no
     /// `AccessorDeclSyntax` — the body hangs off the binding directly. They
     /// still need a method context, or local-escape analysis silently skips
-    /// them (found via dogfooding: `defer { _ = cancellable }` went uncounted).
+    /// them (`defer { _ = cancellable }` counts as a use).
     override func visit(_ node: PatternBindingSyntax) -> SyntaxVisitorContinueKind {
         if case .getter = node.accessorBlock?.accessors {
             methodStack.append(MethodContext(nodeID: node.id, isDeinit: false))
@@ -516,7 +516,7 @@ final class FactsExtractor: SyntaxVisitor {
         return .visitChildren
     }
 
-    /// Same-file inference (recall-first): calling a member function whose
+    /// Same-file inference: calling a member function whose
     /// declared return type is a lifetime token and dropping the result loses
     /// the token exactly like a direct sink discard. Matched by name against
     /// this type's declared functions; locals/params shadow.
@@ -906,7 +906,7 @@ final class FactsExtractor: SyntaxVisitor {
             }
             // A parameter or local shadowing a method name wins the lookup:
             // `defaultColor = color` inside `setDefaultColor(_ color: Color)`
-            // stores the parameter, not a bound `self.color` (dogfood-exposed).
+            // stores the parameter, not a bound `self.color` method value.
             if methodStack.last?.localDeclarations.contains(name) == true { return false }
             if currentFunctionMembers.contains(name) { return true }
         }
@@ -989,15 +989,15 @@ final class FactsExtractor: SyntaxVisitor {
         return .other
     }
 
-    /// `store(in:)` ownership (recall-first). `self.x` and unshadowed members
+    /// `store(in:)` ownership. `self.x` and unshadowed members
     /// (including protocol requirements) are instance storage. A bare local —
     /// or a member chain ROOTED at a local (`holder.bag`) — dies at scope end
     /// when the store runs at the local's own closure depth or only inside
     /// known non-escaping closures (`forEach`, immediately-applied); through
     /// an escaping capture the claim shifts to lifetime-tied-to-the-closure
     /// instead of going silent. Parameter-rooted chains and out-of-file
-    /// superclass members stay silent: the probable truth is durable storage
-    /// (both were dogfood-reported false positives).
+    /// superclass members stay silent: the probable truth is durable
+    /// instance storage.
     private func classifyStoreInTarget(
         _ target: ExprSyntax,
         tokenCall: FunctionCallExprSyntax

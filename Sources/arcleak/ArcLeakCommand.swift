@@ -8,105 +8,9 @@ struct ArcLeakCommand: AsyncParsableCommand {
         commandName: ToolInfo.name,
         abstract: "Static ARC analysis for Swift: retain cycles, anchor leaks, premature releases.",
         version: ToolInfo.version,
-        subcommands: [Analyze.self, Rules.self, Explain.self, Lsp.self, GenerateRepro.self],
+        subcommands: [Analyze.self, Rules.self, Lsp.self],
         defaultSubcommand: Analyze.self
     )
-}
-
-struct Explain: ParsableCommand {
-    static let configuration = CommandConfiguration(
-        abstract: "Explain a rule: the retention contract, why it bites, and the fix."
-    )
-
-    @Argument(help: "Rule id (see `arcleak rules`).")
-    var rule: String?
-
-    @Option(name: .long, help: "Finding fingerprint (prefix ok) from a --format json report.")
-    var finding: String?
-
-    @Option(name: .long, help: "Path to the JSON report containing the finding.")
-    var report: String?
-
-    func run() throws {
-        if let finding {
-            guard let report else {
-                throw ValidationError("--finding requires --report <analysis.json>")
-            }
-            let data = try Data(contentsOf: URL(fileURLWithPath: report))
-            let decoded = try JSONDecoder().decode(AnalysisReport.self, from: data)
-            guard
-                let match = decoded.findings.first(where: { $0.fingerprint.hasPrefix(finding) })
-            else {
-                throw ValidationError("no finding with fingerprint prefix \"\(finding)\" in \(report)")
-            }
-            print("\(match.path):\(match.line):\(match.column)  [\(match.severity.rawValue)]")
-            print("fingerprint: \(match.fingerprint)")
-            print("")
-            print(match.message)
-            if let note = match.note {
-                print("→ \(note)")
-            }
-            print("")
-            print(match.rule.explanation)
-            return
-        }
-        guard let rule else {
-            throw ValidationError("provide a rule id, or --finding <fp> --report <json>")
-        }
-        guard let id = RuleID(rawValue: rule) else {
-            let known = RuleID.allCases.map(\.rawValue).joined(separator: ", ")
-            throw ValidationError("unknown rule \"\(rule)\" — known rules: \(known)")
-        }
-        print("\(id.rawValue)  [default: \(id.defaultSeverity.rawValue)]")
-        print("")
-        print(id.explanation)
-    }
-}
-
-struct GenerateRepro: ParsableCommand {
-    static let configuration = CommandConfiguration(
-        commandName: "generate-repro",
-        abstract: "Emit a deinit-canary Swift Testing skeleton reproducing a finding."
-    )
-
-    @Option(name: .long, help: "Finding fingerprint (prefix ok).")
-    var finding: String
-
-    @Option(name: .long, help: "Path to the JSON report containing the finding.")
-    var report: String
-
-    func run() throws {
-        let data = try Data(contentsOf: URL(fileURLWithPath: report))
-        let decoded = try JSONDecoder().decode(AnalysisReport.self, from: data)
-        guard let match = decoded.findings.first(where: { $0.fingerprint.hasPrefix(finding) })
-        else {
-            throw ValidationError("no finding with fingerprint prefix \"\(finding)\" in \(report)")
-        }
-        let typeName = "Repro_\(match.fingerprint.prefix(8))"
-        print(
-            """
-            import Testing
-
-            // Reproduces: \(match.rule.rawValue) at \(match.path):\(match.line)
-            // \(match.message)
-            // Fill in the minimal construction that mirrors the flagged code, then
-            // run: the canary proves (or refutes) the leak at runtime.
-            @Suite struct \(typeName) {
-                @Test func objectDeallocates() {
-                    weak var canary: AnyObject?
-                    do {
-                        // TODO: construct the flagged object graph here, mirroring
-                        // \(match.path):\(match.line), and assign the instance:
-                        // let object = …
-                        // canary = object
-                        // object.trigger()
-                    }
-                    #expect(canary == nil, "leak reproduced — \(match.rule.rawValue)")
-                }
-            }
-            """
-        )
-    }
 }
 
 struct Lsp: ParsableCommand {
@@ -374,10 +278,23 @@ struct Analyze: AsyncParsableCommand {
 
 struct Rules: ParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "List every rule with its default severity."
+        abstract: "List every rule, or explain one: `rules <id>` prints its retention contract and fix."
     )
 
+    @Argument(help: "Rule id to explain in full; omit to list all rules.")
+    var rule: String?
+
     func run() throws {
+        if let rule {
+            guard let id = RuleID(rawValue: rule) else {
+                let known = RuleID.allCases.map(\.rawValue).joined(separator: ", ")
+                throw ValidationError("unknown rule \"\(rule)\" — known rules: \(known)")
+            }
+            print("\(id.rawValue)  [default: \(id.defaultSeverity.rawValue)]")
+            print("")
+            print(id.explanation)
+            return
+        }
         for rule in RuleID.allCases {
             print("\(rule.rawValue)  [\(rule.defaultSeverity.rawValue)]")
             print("    \(rule.summary)")
