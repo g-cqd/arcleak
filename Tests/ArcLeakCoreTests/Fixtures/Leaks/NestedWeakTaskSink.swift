@@ -17,3 +17,17 @@ final class Feed {
         .store(in: &cancellables)
     }
 }
+
+// The compiler-suggested ImplicitStrongCapture silencing — `[weak self = self]`
+// — changes nothing about the OUTER strong capture: still the same cycle.
+final class FeedExplicit {
+    let subject = PassthroughSubject<Int, Never>()
+    var cancellables = Set<AnyCancellable>()
+
+    func bind() {
+        subject.sink { _ in // #al:expect combine-sink-self-cycle
+            Task { [weak self = self] in _ = self }
+        }
+        .store(in: &cancellables)
+    }
+}

@@ -72,12 +72,15 @@
                 // scenario is the runtime proof: if the compiler did not
                 // strongly capture, the instance would deallocate and the
                 // oracle would fail with "expected a leak, found none".
+                // `[weak self = self]` is the compiler-suggested spelling that
+                // silences its ImplicitStrongCapture warning — the OUTER
+                // capture under test stays implicit and strong either way.
                 final class NestedTrap {
                     let subject = PassthroughSubject<Int, Never>()
                     var cancellables = Set<AnyCancellable>()
                     func bind() {
                         subject.sink { _ in
-                            Task { [weak self] in _ = self }
+                            Task { [weak self = self] in _ = self }
                         }
                         .store(in: &cancellables)
                     }
