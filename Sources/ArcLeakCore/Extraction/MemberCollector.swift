@@ -15,6 +15,9 @@ final class MemberCollector: SyntaxVisitor {
         /// Superclass + conformance names from the inheritance clause (classes/
         /// actors) — powers ownership heuristics (XCTestCase, app delegates).
         var inheritedTypes: Set<String> = []
+        /// Attribute names on the type declaration itself (`Model`,
+        /// `Observable`) — macro-managed storage changes ownership semantics.
+        var typeAttributes: Set<String> = []
     }
 
     private(set) var table: [String: Entry] = [:]
@@ -40,6 +43,7 @@ final class MemberCollector: SyntaxVisitor {
     override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
         push(name: node.name.text, isReference: true)
         addInheritedTypes(node.inheritanceClause, to: node.name.text)
+        addTypeAttributes(node.attributes, to: node.name.text)
         return .visitChildren
     }
 
@@ -48,6 +52,7 @@ final class MemberCollector: SyntaxVisitor {
     override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
         push(name: node.name.text, isReference: true)
         addInheritedTypes(node.inheritanceClause, to: node.name.text)
+        addTypeAttributes(node.attributes, to: node.name.text)
         return .visitChildren
     }
 
@@ -88,7 +93,15 @@ final class MemberCollector: SyntaxVisitor {
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
         if isDirectTypeMember(node) {
             addMember(node.name.text)
-            if let typeName = currentTypeName {
+            // static/class methods stay out of `functionMembers`: from instance
+            // context a bare or `self.`-qualified name can never resolve to
+            // them, so matching them fabricates bound-method self captures
+            // (dogfood-exposed: an init parameter sharing a static
+            // factory's name).
+            let isStatic = node.modifiers.contains {
+                $0.name.text == "static" || $0.name.text == "class"
+            }
+            if !isStatic, let typeName = currentTypeName {
                 table[typeName, default: Entry(isReferenceType: nil)]
                     .functionMembers.insert(node.name.text)
             }
@@ -127,6 +140,16 @@ final class MemberCollector: SyntaxVisitor {
         for inherited in clause.inheritedTypes {
             table[typeName, default: Entry(isReferenceType: nil)]
                 .inheritedTypes.insert(Self.extendedTypeName(inherited.type))
+        }
+    }
+
+    private func addTypeAttributes(_ attributes: AttributeListSyntax, to typeName: String) {
+        for attribute in attributes {
+            guard
+                let name = attribute.as(AttributeSyntax.self)?
+                    .attributeName.as(IdentifierTypeSyntax.self)?.name.text
+            else { continue }
+            table[typeName, default: Entry(isReferenceType: nil)].typeAttributes.insert(name)
         }
     }
 
