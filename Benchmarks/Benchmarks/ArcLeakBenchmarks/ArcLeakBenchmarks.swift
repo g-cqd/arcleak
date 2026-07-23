@@ -1,5 +1,6 @@
 import ArcLeakCore
 import Benchmark
+import Foundation
 
 private func generatedSource(types: Int) -> String {
     (0..<types).map { index in
@@ -16,10 +17,12 @@ private func generatedSource(types: Int) -> String {
 let benchmarks: @Sendable () -> Void = {
     let small = generatedSource(types: 1_000)
     let ring = generatedSource(types: 20_000)
+    let blob = Data(count: 8 * 1024 * 1024)  // 8 MB, exercises the fingerprint path
 
     Benchmark(
         "extract+rules 1k types",
-        configuration: .init(metrics: [.cpuTotal, .mallocCountTotal, .peakMemoryResident], maxDuration: .seconds(5))
+        configuration: .init(
+            metrics: [.cpuTotal, .mallocCountTotal, .peakMemoryResident], maxDuration: .seconds(5))
     ) { benchmark in
         for _ in benchmark.scaledIterations {
             blackHole(Analyzer().analyze(source: small, path: "bench.swift"))
@@ -32,6 +35,15 @@ let benchmarks: @Sendable () -> Void = {
     ) { benchmark in
         for _ in benchmark.scaledIterations {
             blackHole(Analyzer().analyze(source: ring, path: "ring.swift"))
+        }
+    }
+
+    Benchmark(
+        "fingerprint 8MB",
+        configuration: .init(metrics: [.cpuTotal, .mallocCountTotal], maxDuration: .seconds(5))
+    ) { benchmark in
+        for _ in benchmark.scaledIterations {
+            blackHole(FactsCache.fingerprint(of: blob))
         }
     }
 }
