@@ -7,9 +7,9 @@ struct CombineAssignSelfCycleRule: Rule {
 
     static func check(type: TypeFacts, path: String, configuration: Configuration) -> [Finding] {
         guard type.isReferenceType == true else { return [] }
-        // Same XCTest exemption as the sink rule: per-test instances are
-        // framework-held for the run regardless; in-test cycles are noise.
-        guard !type.inheritedTypeNames.contains("XCTestCase") else { return [] }
+        // Recall-first: XCTestCase cycles fire with a test-context note (see
+        // the sink rule) rather than being silently exempt.
+        let isTestCase = type.inheritedTypeNames.contains("XCTestCase")
         return type.apiCalls.compactMap { call in
             guard call.kind == .combineAssignOn,
                 call.targetIsSelf,
@@ -22,6 +22,12 @@ struct CombineAssignSelfCycleRule: Rule {
             let severity: Severity =
                 call.upstreamFiniteness == .infinite
                 ? configuration.severity(for: .combineAssignSelfCycle) : .warning
+            var note =
+                "assign to a @Published projection with assign(to: &$property) (no cancellable, no strong object reference), or use sink with [weak self]"
+            if isTestCase {
+                note +=
+                    " — XCTest holds test instances for the whole run, so this instance never deinits; if it is deliberate assertion plumbing, accept it with // @al:accept"
+            }
             return Finding(
                 rule: .combineAssignSelfCycle,
                 severity: severity,
@@ -30,8 +36,7 @@ struct CombineAssignSelfCycleRule: Rule {
                 column: call.position.column,
                 message:
                     "retain cycle: assign(to:on: self) retains self strongly while self stores the cancellable (self → cancellable → Assign → self)",
-                note:
-                    "assign to a @Published projection with assign(to: &$property) (no cancellable, no strong object reference), or use sink with [weak self]"
+                note: note
             )
         }
     }
