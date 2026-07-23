@@ -213,8 +213,10 @@ struct Analyze: AsyncParsableCommand {
         if experimentalSilConfirm {
             let candidates = report.findings.filter { $0.rule == .storedClosureStrongSelf }
             let others = report.findings.filter { $0.rule != .storedClosureStrongSelf }
-            let (kept, demoted) = SILConfirmation.filter(findings: candidates) {
-                SILConfirmation.confirmSelfCapture(file: $0.path, line: $0.line)
+            // One session memoizes SILGen per file across all candidates.
+            let session = SILConfirmationSession()
+            let (kept, demoted) = await SILConfirmation.filter(findings: candidates) {
+                await session.confirmSelfCapture(file: $0.path, line: $0.line)
             }
             for finding in demoted {
                 FileHandle.standardError.write(
@@ -276,6 +278,10 @@ struct Analyze: AsyncParsableCommand {
         let byPath = Dictionary(grouping: fixable, by: \.path).sorted { $0.key < $1.key }
         var applied = 0
         var skipped = 0
+        // Transactional: compute every file's fixed source first; only commit
+        // writes once all are computed, so a mid-loop failure can't leave a
+        // half-fixed tree.
+        var pendingWrites: [(path: String, source: String)] = []
         for (path, group) in byPath {
             guard let source = try? String(contentsOfFile: path, encoding: .utf8) else { continue }
             let result = FixItApplier.apply(findings: group, to: source, path: path)
@@ -287,7 +293,28 @@ struct Analyze: AsyncParsableCommand {
                 )
             }
             if fix, result.appliedCount > 0 {
-                try result.fixedSource.write(toFile: path, atomically: true, encoding: .utf8)
+                pendingWrites.append((path, result.fixedSource))
+            }
+        }
+        if fix {
+            var written: [String] = []
+            for write in pendingWrites {
+                do {
+                    try write.source.write(toFile: write.path, atomically: true, encoding: .utf8)
+                    written.append(write.path)
+                } catch {
+                    FileHandle.standardError.write(
+                        Data(
+                            """
+                            arcleak: write failed for \(write.path): \(error)
+                            arcleak: wrote \(written.count) of \(pendingWrites.count) file(s); \
+                            re-run --fix after resolving the error
+                            \n
+                            """.utf8
+                        )
+                    )
+                    throw ExitCode(74)
+                }
             }
         }
         FileHandle.standardError.write(
