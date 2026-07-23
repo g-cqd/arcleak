@@ -5,10 +5,11 @@ struct CombineSinkSelfCycleRule: Rule {
 
     static func check(type: TypeFacts, path: String, configuration: Configuration) -> [Finding] {
         guard type.isReferenceType == true else { return [] }
-        // XCTest keeps every test instance alive to the end of the run anyway;
-        // a cycle on a per-test instance is noise, not a leak that matters
-        // (dogfooding: 100% of in-test hits were assertion plumbing).
-        guard !type.inheritedTypeNames.contains("XCTestCase") else { return [] }
+        // Recall-first: XCTestCase cycles still fire (leaked test instances
+        // accumulate across a run and never deinit), with a note naming the
+        // test context so deliberate assertion plumbing gets accepted, not
+        // silently missed.
+        let isTestCase = type.inheritedTypeNames.contains("XCTestCase")
         return type.apiCalls.compactMap { call in
             guard call.kind == .combineSink,
                 call.closureSelfCapture?.isStrong == true,
@@ -36,6 +37,10 @@ struct CombineSinkSelfCycleRule: Rule {
                 message =
                     "retain cycle: the sink closure captures self strongly — its only `self` sits in a nested closure's capture list, and forming that nested [weak self] box forces the sink closure itself to capture self strongly (self → cancellable → closure → self)"
                 note = "the nested [weak self] does not protect the outer closure; " + note
+            }
+            if isTestCase {
+                note +=
+                    " — XCTest holds test instances for the whole run, so this instance never deinits; if it is deliberate assertion plumbing, accept it with // @al:accept"
             }
             return Finding(
                 rule: .combineSinkSelfCycle,
