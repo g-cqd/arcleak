@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
 
+# A push supersedes any still-running CI for the same ref: cancel it. This is
+# what stops hung macOS post-run phases from accumulating live runs.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 # The package requires swift-tools 6.4, which no *released* toolchain ships yet
 # — so every lane uses a nightly 6.4 toolchain. The REQUIRED gate is the Linux
 # job (the nightly container is the toolchain, no bootstrap). macOS installs a
