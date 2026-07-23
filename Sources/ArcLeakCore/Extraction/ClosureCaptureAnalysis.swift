@@ -138,11 +138,23 @@ private final class BodyWalker: SyntaxVisitor {
         return .skipChildren
     }
 
-    /// `self` appearing in a nested closure's capture list (`[weak self]`) is a
-    /// use of *our* `self` — the nested rebinding does not undo our capture.
+    /// `self` appearing in a nested closure's capture list is a use of *our*
+    /// `self` — the nested rebinding does not undo our capture. Covers the
+    /// bare entry (`[weak self]`), the explicitly-assigned spelling the 6.4
+    /// compiler suggests to silence ImplicitStrongCapture
+    /// (`[weak self = self]`), and aliases (`[weak s = self]`): a capture
+    /// initializer is evaluated in the ENCLOSING scope, so its `self` is the
+    /// outer one even though this node sits inside the rebound closure.
     override func visit(_ node: ClosureCaptureSyntax) -> SyntaxVisitorContinueKind {
         if node.name.text == "self", node.initializer == nil {
             sawNestedCaptureListSelf = true
+            return .visitChildren
+        }
+        if node.initializer?.value.as(DeclReferenceExprSyntax.self)?.baseName.text == "self" {
+            sawNestedCaptureListSelf = true
+            // Skip the initializer: its `self` must not be re-attributed to
+            // the rebound inner scope by the depth gate.
+            return .skipChildren
         }
         return .visitChildren
     }
