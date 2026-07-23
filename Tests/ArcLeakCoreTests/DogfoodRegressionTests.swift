@@ -436,6 +436,49 @@ import Testing
         #expect(sinkFindings.first?.message.contains("nested closure's capture list") == true)
     }
 
+    @Test("The compiler-suggested [weak self = self] spelling still fires with the teaching message")
+    func nestedExplicitAssignmentVariantFires() {
+        // The 6.4 ImplicitStrongCapture warning suggests explicitly assigning
+        // the capture item to silence it — real-world code will adopt that
+        // spelling, and the outer strong capture (and cycle) is unchanged.
+        let source = """
+            import Combine
+            final class Feed {
+                let subject = PassthroughSubject<Int, Never>()
+                var cancellables = Set<AnyCancellable>()
+                func bind() {
+                    subject.sink { _ in
+                        Task { [weak self = self] in _ = self }
+                    }
+                    .store(in: &cancellables)
+                }
+            }
+            """
+        let sinkFindings = findings(source).filter { $0.rule == .combineSinkSelfCycle }
+        #expect(sinkFindings.count == 1)
+        #expect(sinkFindings.first?.message.contains("nested closure's capture list") == true)
+    }
+
+    @Test("A nested aliased capture [weak s = self] still fires")
+    func nestedAliasCaptureStillFires() {
+        // A capture initializer is evaluated in the ENCLOSING scope, so its
+        // `self` forces the outer strong capture like any other use.
+        let source = """
+            import Combine
+            final class Feed {
+                let subject = PassthroughSubject<Int, Never>()
+                var cancellables = Set<AnyCancellable>()
+                func bind() {
+                    subject.sink { _ in
+                        Task { [weak weakSelf = self] in _ = weakSelf }
+                    }
+                    .store(in: &cancellables)
+                }
+            }
+            """
+        #expect(findings(source).contains { $0.rule == .combineSinkSelfCycle })
+    }
+
     @Test("A direct strong sink keeps the plain message (no nested-trap addendum)")
     func directStrongSinkKeepsPlainMessage() {
         let source = """
