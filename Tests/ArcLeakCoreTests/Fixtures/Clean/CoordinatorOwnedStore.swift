@@ -1,8 +1,8 @@
 // swift-format-ignore-file
 // store(in:) through a non-self reference (`context.coordinator.cancellables`):
 // the collection's owner is unknown to syntax-level analysis, so the tool must
-// make no scope-death claim (dogfood-reported FP: the coordinator outlives the
-// registering call).
+// make no scope-death claim — an owner like this coordinator outlives the
+// registering call.
 import Combine
 
 final class PreviewCoordinator {

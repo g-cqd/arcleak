@@ -1,6 +1,7 @@
 // swift-format-ignore-file
-// Field-report dispute, settled by the runtime oracle (nested_weak_task_sink):
-// the sink body's ONLY `self` is a nested `Task { [weak self] }`. Forming the
+// The nested-closure trap in sink form (runtime-proven by the
+// nested_weak_task_sink oracle scenario): the sink body's ONLY `self` is a
+// nested `Task { [weak self] }`. Forming the
 // nested weak box forces the sink closure itself to capture self strongly, so
 // self → cancellables → sink closure → self IS a cycle. The diagnostic must
 // teach this (message names the nested-capture-list mechanism).

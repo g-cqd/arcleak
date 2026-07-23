@@ -71,7 +71,7 @@ final class MemberCollector: SyntaxVisitor {
 
     /// Protocol requirements are members too: a `{ get set }` var used from a
     /// protocol-extension method (`store(in: &webSocketCancellables)`) resolves
-    /// to instance storage, not a local (dogfood-exposed false positive).
+    /// to instance storage, not a local.
     /// `isReferenceType` stays nil — requirement-level facts never prove
     /// reference-ness, so cycle rules keep skipping protocol scopes.
     override func visit(_ node: ProtocolDeclSyntax) -> SyntaxVisitorContinueKind {
@@ -112,9 +112,8 @@ final class MemberCollector: SyntaxVisitor {
             addMember(node.name.text)
             // static/class methods stay out of `functionMembers`: from instance
             // context a bare or `self.`-qualified name can never resolve to
-            // them, so matching them fabricates bound-method self captures
-            // (dogfood-exposed: an init parameter sharing a static
-            // factory's name).
+            // them, so matching them would fabricate bound-method self
+            // captures.
             let isStatic = node.modifiers.contains {
                 $0.name.text == "static" || $0.name.text == "class"
             }
@@ -123,8 +122,8 @@ final class MemberCollector: SyntaxVisitor {
                     .functionMembers.insert(node.name.text)
             }
             // Statics included: `Self.make()`/`TypeName.make()` discards lose
-            // the token the same way. (Matched by name only — a same-named
-            // Void overload would false-positive; recall-first accepts that.)
+            // the token the same way. Matched by name only — overloads are
+            // not distinguished.
             if let typeName = currentTypeName,
                 let returnType = node.signature.returnClause?.type,
                 let nominal = Self.nominalName(returnType),

@@ -113,7 +113,7 @@ public struct APICallFact: Sendable, Equatable, Codable {
 
     /// Copy with reclassified consumption (method-close post-pass for
     /// escaping locals). Copy methods, not field-list rebuilds: a rebuild
-    /// silently drops any field added later (it happened).
+    /// silently drops any field added later.
     public func withConsumption(_ consumption: ResultConsumption) -> APICallFact {
         APICallFact(
             kind: kind,

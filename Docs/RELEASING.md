@@ -1,20 +1,23 @@
 # Releasing arcleak
 
-Publishing is deliberately manual — nothing in the repo pushes anywhere.
+Pushing a tag `vX.Y.Z` runs `.github/workflows/release.yml`: it builds
+release binaries for Linux (static stdlib, x86_64) and macOS (arm64),
+verifies `arcleak --version` matches the tag, and publishes a GitHub release
+with the archives, SHA-256 checksums, and generated notes. Every CI run on
+`main` also uploads per-commit binaries as workflow artifacts (14-day
+retention).
 
-## Checklist
+## Checklist before tagging
 
-1. `Scripts/ci-local.sh` green on the release toolchain.
-2. Re-run the dogfood corpus (clone 2-3 large OSS Swift apps, `arcleak
-   analyze` each) and record the counts; investigate any new finding class
-   before tagging.
+1. `Scripts/ci-local.sh` green on the pinned toolchain (`swiftly run`).
+2. Analyze 2-3 large real Swift apps and investigate any new finding class.
 3. Bump `ToolInfo.version` (single source of truth: CLI `--version`, SARIF
-   driver, baseline headers, cache invalidation key all follow it).
+   driver, baseline headers, cache invalidation key; the release workflow
+   fails on a tag/version mismatch).
 4. Update the README rules table if the catalog changed.
 5. `swift package --package-path Benchmarks --allow-writing-to-package-directory benchmark baseline update local`
    on quiet hardware; commit the baseline.
-6. Tag `vX.Y.Z`; write release notes from the commit history since the
-   last tag.
+6. Tag `vX.Y.Z` and push the tag.
 
 ## Homebrew formula template
 

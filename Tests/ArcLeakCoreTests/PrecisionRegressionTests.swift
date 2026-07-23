@@ -1,14 +1,14 @@
 import ArcLeakCore
 import Testing
 
-/// Precision regressions from dogfooding real apps. Every false-positive fix
-/// is pinned twice: the FP shape stays silent, and a positive control proves
-/// the rule still fires on the genuine bug next door.
-@Suite struct DogfoodRegressionTests {
+/// Precision pins: every false-positive-prone shape is asserted twice — the
+/// shape stays silent (or carries its corrected claim), and a positive
+/// control proves the rule still fires on the genuine bug beside it.
+@Suite struct PrecisionRegressionTests {
     private let analyzer = Analyzer()
 
     private func findings(_ source: String) -> [Finding] {
-        analyzer.analyze(source: source, path: "dogfood.swift").findings
+        analyzer.analyze(source: source, path: "case.swift").findings
     }
 
     // MARK: - Implicit-return token factories (SE-0255)
@@ -167,7 +167,7 @@ import Testing
         #expect(findings(source).contains { $0.rule == .mutualStrongProperties })
     }
 
-    // MARK: - store(in:) ownership classification (field report, 2603-file app)
+    // MARK: - store(in:) ownership classification
 
     @Test("store(in:) into a protocol { get set } requirement is instance storage")
     func protocolRequirementStoreIsClean() {
@@ -220,8 +220,8 @@ import Testing
             """
         let tokenFindings = findings(source).filter { $0.rule == .tokenStoredInLocal }
         #expect(tokenFindings.count == 1)
-        // Recall-first: the claim is closure-tied lifetime + unbounded growth,
-        // NOT the disproven "dies at scope end".
+        // The claim is closure-tied lifetime plus unbounded growth, not
+        // "dies at scope end".
         #expect(tokenFindings.first?.message.contains("escaping closure captured") == true)
     }
 
@@ -293,9 +293,9 @@ import Testing
 
     @Test("A sink self-cycle inside an XCTestCase subclass fires with test context")
     func xctestSinkCycleFiresWithTestContext() {
-        // Recall-first: XCTest holds test instances for the run, so the leak
-        // is real (instances never deinit); the note names the context so
-        // deliberate assertion plumbing gets accepted, not silently missed.
+        // XCTest holds test instances for the run, so the leak is real
+        // (instances never deinit); the note names the context so deliberate
+        // assertion plumbing can be accepted.
         let source = """
             import Combine
             import XCTest
@@ -410,11 +410,11 @@ import Testing
 
     @Test("Nested Task [weak self] inside a sink fires with the teaching message")
     func nestedWeakTaskSinkFiresWithTeachingMessage() {
-        // The field-report shape verbatim: `where`-clause binds the init
-        // PARAMETER (shadowing the member), and the only `self` is a nested
-        // Task's [weak self] — which still forces the sink closure to capture
-        // self strongly (runtime-proved by the nested_weak_task_sink oracle
-        // scenario; the 6.4 compiler now warns implicit-strong-capture here).
+        // The `where` clause binds the init PARAMETER (shadowing the member),
+        // and the only `self` is a nested Task's [weak self] — which still
+        // forces the sink closure to capture self strongly (runtime-proved by
+        // the nested_weak_task_sink oracle scenario; the compiler warns
+        // implicit-strong-capture on this shape).
         let source = """
             import Combine
             final class ViewModel {
@@ -438,9 +438,9 @@ import Testing
 
     @Test("The compiler-suggested [weak self = self] spelling still fires with the teaching message")
     func nestedExplicitAssignmentVariantFires() {
-        // The 6.4 ImplicitStrongCapture warning suggests explicitly assigning
-        // the capture item to silence it — real-world code will adopt that
-        // spelling, and the outer strong capture (and cycle) is unchanged.
+        // The compiler's ImplicitStrongCapture warning suggests explicitly
+        // assigning the capture item to silence it; the outer strong capture
+        // (and the cycle) is unchanged under that spelling.
         let source = """
             import Combine
             final class Feed {
