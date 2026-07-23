@@ -4,6 +4,12 @@ import SwiftSyntax
 struct ClosureCaptureAnalysis: Sendable, Equatable {
     let selfCapture: SelfCaptureKind
     let hasNonterminatingBody: Bool
+    /// True when the ONLY evidence for a strong capture is `self` in a nested
+    /// closure's capture list (`sink { Task { [weak self] … } }`): the outer
+    /// closure still captures `self` strongly to materialize the nested weak
+    /// box, but the source shows no bare `self` — diagnostics must teach the
+    /// trap or developers will verify by eye and disbelieve the finding.
+    let strongViaNestedCaptureOnly: Bool
 
     /// Analyzes `closure` without type information.
     ///
@@ -29,7 +35,8 @@ struct ClosureCaptureAnalysis: Sendable, Equatable {
             walker.walk(closure.statements)
             return ClosureCaptureAnalysis(
                 selfCapture: listed,
-                hasNonterminatingBody: walker.sawNonterminatingLoop
+                hasNonterminatingBody: walker.sawNonterminatingLoop,
+                strongViaNestedCaptureOnly: false
             )
         }
 
@@ -46,7 +53,8 @@ struct ClosureCaptureAnalysis: Sendable, Equatable {
         }
         return ClosureCaptureAnalysis(
             selfCapture: capture,
-            hasNonterminatingBody: walker.sawNonterminatingLoop
+            hasNonterminatingBody: walker.sawNonterminatingLoop,
+            strongViaNestedCaptureOnly: !walker.sawDirectSelf && walker.sawNestedCaptureListSelf
         )
     }
 
@@ -76,9 +84,14 @@ struct ClosureCaptureAnalysis: Sendable, Equatable {
         return nil
     }
 
-    private init(selfCapture: SelfCaptureKind, hasNonterminatingBody: Bool) {
+    private init(
+        selfCapture: SelfCaptureKind,
+        hasNonterminatingBody: Bool,
+        strongViaNestedCaptureOnly: Bool
+    ) {
         self.selfCapture = selfCapture
         self.hasNonterminatingBody = hasNonterminatingBody
+        self.strongViaNestedCaptureOnly = strongViaNestedCaptureOnly
     }
 }
 
@@ -87,7 +100,16 @@ private final class BodyWalker: SyntaxVisitor {
     private let memberNames: Set<String>
     private let allowImplicitSelf: Bool
 
-    private(set) var sawExplicitSelf = false
+    /// Bare `self` in the body (or `guard let self` shorthand) — excluding
+    /// occurrences under a nested closure that REBINDS `self` in its capture
+    /// list, where `self` refers to the rebinding, not the outer capture.
+    private(set) var sawDirectSelf = false
+    /// `self` only via a nested closure's capture list — still forces a strong
+    /// capture of the analyzed closure, but with no `self` token in its body.
+    private(set) var sawNestedCaptureListSelf = false
+    var sawExplicitSelf: Bool { sawDirectSelf || sawNestedCaptureListSelf }
+    /// Depth of enclosing nested closures whose capture lists rebind `self`.
+    private var selfRebindingDepth = 0
     private var memberCandidates: Set<String> = []
     private var localNames: Set<String> = []
     private(set) var sawNonterminatingLoop = false
@@ -107,7 +129,7 @@ private final class BodyWalker: SyntaxVisitor {
     override func visit(_ node: DeclReferenceExprSyntax) -> SyntaxVisitorContinueKind {
         let name = node.baseName.text
         if name == "self" {
-            sawExplicitSelf = true
+            if selfRebindingDepth == 0 { sawDirectSelf = true }
             return .skipChildren
         }
         if allowImplicitSelf, memberNames.contains(name), !isMemberAccessName(node) {
@@ -120,18 +142,26 @@ private final class BodyWalker: SyntaxVisitor {
     /// use of *our* `self` — the nested rebinding does not undo our capture.
     override func visit(_ node: ClosureCaptureSyntax) -> SyntaxVisitorContinueKind {
         if node.name.text == "self", node.initializer == nil {
-            sawExplicitSelf = true
+            sawNestedCaptureListSelf = true
         }
         return .visitChildren
     }
 
     override func visit(_ node: ClosureExprSyntax) -> SyntaxVisitorContinueKind {
         nestingDepth += 1
+        if Self.rebindsSelf(node) { selfRebindingDepth += 1 }
         return .visitChildren
     }
 
     override func visitPost(_ node: ClosureExprSyntax) {
         nestingDepth -= 1
+        if Self.rebindsSelf(node) { selfRebindingDepth -= 1 }
+    }
+
+    /// A capture-list entry named `self` (weak, unowned, or `[self]`) rebinds
+    /// `self` for the closure's body — bare `self` inside refers to it.
+    private static func rebindsSelf(_ node: ClosureExprSyntax) -> Bool {
+        node.signature?.capture?.items.contains { $0.name.text == "self" } == true
     }
 
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
@@ -174,9 +204,10 @@ private final class BodyWalker: SyntaxVisitor {
         // `guard let self` shorthand has no initializer expression — the
         // pattern itself is the use of the captured weak `self` (SE-0365).
         if node.initializer == nil,
-            node.pattern.as(IdentifierPatternSyntax.self)?.identifier.text == "self"
+            node.pattern.as(IdentifierPatternSyntax.self)?.identifier.text == "self",
+            selfRebindingDepth == 0
         {
-            sawExplicitSelf = true
+            sawDirectSelf = true
         }
         collectPatternNames(node.pattern)
         return .visitChildren
