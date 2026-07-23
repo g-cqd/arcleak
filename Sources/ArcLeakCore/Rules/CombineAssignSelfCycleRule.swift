@@ -7,6 +7,9 @@ struct CombineAssignSelfCycleRule: Rule {
 
     static func check(type: TypeFacts, path: String, configuration: Configuration) -> [Finding] {
         guard type.isReferenceType == true else { return [] }
+        // Same XCTest exemption as the sink rule: per-test instances are
+        // framework-held for the run regardless; in-test cycles are noise.
+        guard !type.inheritedTypeNames.contains("XCTestCase") else { return [] }
         return type.apiCalls.compactMap { call in
             guard call.kind == .combineAssignOn,
                 call.targetIsSelf,
