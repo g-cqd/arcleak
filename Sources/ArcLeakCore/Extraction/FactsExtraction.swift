@@ -118,7 +118,15 @@ final class FactsExtractor: SyntaxVisitor {
         /// `handler = { … }` writing a *local* must never be read as member
         /// storage (gauntlet-exposed false positive).
         var localDeclarations: Set<String> = []
+        /// Closure-nesting depth at each local's declaration (first wins).
+        /// `store(in:)` claims scope-death only when the store runs at the
+        /// SAME depth — a deeper store means the local was captured by a
+        /// closure that extends its lifetime (dogfood-exposed false positive).
+        var localBindingDepths: [String: Int] = [:]
     }
+
+    /// Closure-nesting depth below the current method body.
+    private var closureDepth = 0
 
     init(
         path: String,
@@ -321,17 +329,7 @@ final class FactsExtractor: SyntaxVisitor {
         let key = typeStack.last ?? Self.fileScopeKey
         for call in context.apiCalls {
             collected[key, default: CollectedFacts()].apiCalls.append(
-                APICallFact(
-                    kind: call.kind,
-                    position: call.position,
-                    repeats: call.repeats,
-                    targetIsSelf: call.targetIsSelf,
-                    receiverIsSelfMember: call.receiverIsSelfMember,
-                    upstreamFiniteness: call.upstreamFiniteness,
-                    upstreamRootMember: call.upstreamRootMember,
-                    closureSelfCapture: call.closureSelfCapture,
-                    consumption: finalize(call.consumption)
-                )
+                call.withConsumption(finalize(call.consumption))
             )
         }
         for spawn in context.taskSpawns {
@@ -365,6 +363,10 @@ final class FactsExtractor: SyntaxVisitor {
                 for binding in node.bindings {
                     if let name = binding.pattern.as(IdentifierPatternSyntax.self)?.identifier.text {
                         methodStack[methodStack.count - 1].localDeclarations.insert(name)
+                        if methodStack[methodStack.count - 1].localBindingDepths[name] == nil {
+                            methodStack[methodStack.count - 1].localBindingDepths[name] =
+                                closureDepth
+                        }
                     }
                 }
             }
@@ -631,13 +633,15 @@ final class FactsExtractor: SyntaxVisitor {
         }
 
         var closureCapture: SelfCaptureKind?
+        var nestedListOnly = false
         if let closure = attachedClosure(labels: closureLabels) {
-            closureCapture =
-                ClosureCaptureAnalysis.analyze(
-                    closure: closure,
-                    memberNames: currentMemberNames,
-                    allowImplicitSelf: false
-                ).selfCapture
+            let analysis = ClosureCaptureAnalysis.analyze(
+                closure: closure,
+                memberNames: currentMemberNames,
+                allowImplicitSelf: false
+            )
+            closureCapture = analysis.selfCapture
+            nestedListOnly = analysis.strongViaNestedCaptureOnly
         } else {
             // `sink(receiveValue: self.handle)` — a bound method value is a
             // strong capture, same pipeline as a strong-self closure.
@@ -664,6 +668,7 @@ final class FactsExtractor: SyntaxVisitor {
             upstreamFiniteness: finiteness,
             upstreamRootMember: rootMember,
             closureSelfCapture: closureCapture,
+            selfCaptureViaNestedListOnly: nestedListOnly,
             consumption: classifyConsumption(of: node)
         )
     }
@@ -848,8 +853,10 @@ final class FactsExtractor: SyntaxVisitor {
     }
 
     /// `[weak self]` whose body never touches `self` is capture-list noise —
-    /// collected for the opt-in dead-weak-capture rule.
+    /// collected for the opt-in dead-weak-capture rule. Also tracks closure
+    /// nesting depth for `store(in:)` local-lifetime classification.
     override func visit(_ node: ClosureExprSyntax) -> SyntaxVisitorContinueKind {
+        closureDepth += 1
         if let items = node.signature?.capture?.items,
             items.contains(where: {
                 $0.name.text == "self" && $0.initializer == nil
@@ -862,6 +869,8 @@ final class FactsExtractor: SyntaxVisitor {
         }
         return .visitChildren
     }
+
+    override func visitPost(_ node: ClosureExprSyntax) { closureDepth -= 1 }
 
     // MARK: - Consumption classification
 
@@ -885,9 +894,7 @@ final class FactsExtractor: SyntaxVisitor {
                     let argument = chained.arguments.first,
                     argument.label?.text == "in"
                 {
-                    let target = argument.expression.as(InOutExprSyntax.self)?.expression
-                    let memberOfSelf = target.flatMap(memberOfSelfName) != nil
-                    return .chainedStoreIn(memberOfSelf: memberOfSelf)
+                    return classifyStoreInTarget(argument.expression)
                 }
                 current = Syntax(chained)
                 continue
@@ -912,6 +919,28 @@ final class FactsExtractor: SyntaxVisitor {
                 return classifyBareStatement(item)
             }
             return .other
+        }
+        return .other
+    }
+
+    /// `store(in:)` ownership: claim scope-death ONLY on positive evidence.
+    /// `self.x` and unshadowed members (including protocol requirements) are
+    /// instance storage. A bare identifier is a dying local only when this
+    /// method declared it AND the store runs at the local's own closure depth —
+    /// a deeper store means an escaping closure captured the box and extends
+    /// its lifetime. Everything else (`context.coordinator.x`, out-of-file
+    /// superclass members) is unknown ownership: no claim, no finding.
+    /// All three shapes were dogfood-reported false positives.
+    private func classifyStoreInTarget(_ target: ExprSyntax) -> ResultConsumption {
+        guard let stored = target.as(InOutExprSyntax.self)?.expression else { return .other }
+        if memberOfSelfName(stored) != nil {
+            return .chainedStoreIn(memberOfSelf: true)
+        }
+        if let reference = stored.as(DeclReferenceExprSyntax.self),
+            let declarationDepth = methodStack.last?.localBindingDepths[reference.baseName.text],
+            declarationDepth == closureDepth
+        {
+            return .chainedStoreIn(memberOfSelf: false)
         }
         return .other
     }
