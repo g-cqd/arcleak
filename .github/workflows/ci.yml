@@ -14,6 +14,8 @@ jobs:
   linux:
     runs-on: ubuntu-latest
     container: swiftlang/swift:nightly-6.4.x-jammy
+    # Hard bound: also caps post-run cleanup, which has been seen stalling.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - name: Build (warnings are errors via package settings)
@@ -34,6 +36,10 @@ jobs:
     # Informational: bootstraps a nightly toolchain; covers the macOS-only
     # runtime leak oracle and SILGen confirmation the Linux lane skips.
     continue-on-error: true
+    # Hard bound: the post-run phase has stalled (lingering toolchain/build
+    # child processes keep the runner's process group open); the job timeout
+    # kills post steps too.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - name: Install nightly Swift (swiftly)
