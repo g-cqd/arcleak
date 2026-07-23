@@ -15,7 +15,7 @@
         }
 
         @Test("SILGen confirms a strong self capture the analyzer flagged")
-        func confirmsStrongCapture() throws {
+        func confirmsStrongCapture() async throws {
             let source = """
                 final class Box {
                     var handler: (() -> Void)?
@@ -31,12 +31,12 @@
             let findings = Analyzer().analyze(source: source, path: path).findings
             let line = try #require(findings.first?.line)
 
-            let outcome = SILConfirmation.confirmSelfCapture(file: path, line: line)
+            let outcome = await SILConfirmation.confirmSelfCapture(file: path, line: line)
             #expect(outcome == .confirmedStrong, "\(outcome)")
         }
 
         @Test("SILGen refutes a weak capture, and the seam demotes the crafted finding")
-        func refutesWeakAndDemotes() throws {
+        func refutesWeakAndDemotes() async throws {
             let source = """
                 final class Box {
                     var handler: (() -> Void)?
@@ -60,20 +60,20 @@
                 message: "crafted over-approximation"
             )
 
-            let outcome = SILConfirmation.confirmSelfCapture(file: path, line: 5)
+            let outcome = await SILConfirmation.confirmSelfCapture(file: path, line: 5)
             #expect(outcome == .refutedWeak, "\(outcome)")
 
-            let (kept, demoted) = SILConfirmation.filter(findings: [crafted]) {
-                SILConfirmation.confirmSelfCapture(file: $0.path, line: $0.line)
+            let (kept, demoted) = await SILConfirmation.filter(findings: [crafted]) {
+                await SILConfirmation.confirmSelfCapture(file: $0.path, line: $0.line)
             }
             #expect(kept.isEmpty)
             #expect(demoted.count == 1)
         }
 
         @Test("Uncompilable files fail open as unavailable")
-        func unavailableFailsOpen() throws {
+        func unavailableFailsOpen() async throws {
             let path = try write("import NotARealModuleAnywhere\n")
-            let outcome = SILConfirmation.confirmSelfCapture(file: path, line: 1)
+            let outcome = await SILConfirmation.confirmSelfCapture(file: path, line: 1)
             guard case .unavailable = outcome else {
                 Issue.record("expected unavailable, got \(outcome)")
                 return
@@ -86,7 +86,7 @@
                 column: 1,
                 message: "kept on unavailable"
             )
-            let (kept, demoted) = SILConfirmation.filter(findings: [finding]) { _ in outcome }
+            let (kept, demoted) = await SILConfirmation.filter(findings: [finding]) { _ in outcome }
             #expect(kept.count == 1)
             #expect(demoted.isEmpty)
         }
