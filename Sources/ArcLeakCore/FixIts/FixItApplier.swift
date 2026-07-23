@@ -47,6 +47,10 @@ public enum FixItApplier {
         var insertions: [Insertion] = []
         var applied = 0
         var skipped: [Finding] = []
+        // A closure already fixed by an earlier finding must not be fixed
+        // again — two rules co-anchoring on one closure would otherwise write
+        // `{ [weak self] [weak self] in … }`, which does not compile.
+        var fixedClosures: Set<SyntaxIdentifier> = []
 
         for finding in findings where fixableRules.contains(finding.rule) {
             // The finding anchors at the call/closure start; the fixable
@@ -60,6 +64,12 @@ public enum FixItApplier {
                 closure.signature?.capture == nil
             else {
                 skipped.append(finding)
+                continue
+            }
+            // Already covered by another finding's fix — count it applied
+            // (the closure gets `[weak self]`), don't insert twice.
+            guard fixedClosures.insert(closure.id).inserted else {
+                applied += 1
                 continue
             }
 
