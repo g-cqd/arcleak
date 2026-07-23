@@ -35,11 +35,22 @@ public struct FactsCache: Sendable {
     }
 
     public static func fingerprint(of data: Data, salt: String = "") -> String {
-        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
         let prime: UInt64 = 0x0000_0100_0000_01b3
-        for byte in data {
-            hash ^= UInt64(byte)
-            hash &*= prime
+        // FNV-1a over the raw contiguous buffer. `withUnsafeBytes` is the only
+        // fast path — `Data`'s element iterator is O(n) with per-byte bridging
+        // overhead, and this runs on every file on every run (even cache hits).
+        // Invariant: the buffer never escapes the closure; `unsafe` is confined
+        // here and covered by the fingerprint stability tests.
+        var hash: UInt64 = unsafe data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) -> UInt64 in
+            var h: UInt64 = 0xcbf2_9ce4_8422_2325
+            let count = raw.count
+            var i = 0
+            while i < count {
+                h ^= UInt64(unsafe raw[i])
+                h &*= prime
+                i += 1
+            }
+            return h
         }
         for byte in salt.utf8 {
             hash ^= UInt64(byte)
@@ -57,10 +68,13 @@ public struct FactsCache: Sendable {
         entries[path] = Entry(fingerprint: fingerprint, facts: facts)
     }
 
-    /// Fail-open load: any failure returns an empty cache.
+    /// Fail-open load: any failure — including an over-cap file — returns an
+    /// empty cache (the cache is an optimization, never a trust boundary).
+    public static let maxCacheBytes = 64 * 1024 * 1024
+
     public static func load(url: URL) -> FactsCache {
         guard
-            let data = try? Data(contentsOf: url),
+            let data = try? BoundedFileReader.read(path: url.path, cap: maxCacheBytes),
             let payload = try? JSONDecoder().decode(Payload.self, from: data),
             payload.tool == ToolInfo.name,
             payload.version == ToolInfo.version
