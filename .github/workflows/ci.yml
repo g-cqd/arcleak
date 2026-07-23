@@ -39,10 +39,13 @@ jobs:
         run: Scripts/lint-format.sh
       - name: GCD prohibition
         run: Scripts/no-gcd.sh
-      - name: Release binary (static stdlib)
+      - name: Release binary
+        # Dynamic link — the nightly container's static-stdlib SDK does not
+        # link. Portability comes from SwiftPM's $ORIGIN rpath: the release
+        # workflow bundles the runtime .so files next to the binary.
         run: |
-          swift build -c release --static-swift-stdlib
-          BIN="$(swift build -c release --static-swift-stdlib --show-bin-path)/arcleak"
+          swift build -c release
+          BIN="$(swift build -c release --show-bin-path)/arcleak"
           "$BIN" --version
           cp "$BIN" arcleak
       - uses: actions/upload-artifact@v4
