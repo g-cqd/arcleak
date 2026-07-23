@@ -1,3 +1,4 @@
+// swift-format-ignore-file
 // Non-escaping higher-order functions cannot create cycles — the closure dies
 // before the call returns.
 final class Mapper {

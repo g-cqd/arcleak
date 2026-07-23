@@ -386,10 +386,10 @@ struct Rules: ParsableCommand {
             """
 
             Suppression:
-              // arcleak:deliberate -- <why this strong reference is intentional>
-              // arcleak:disable:this <rule|all> [-- reason]
-              // arcleak:disable:next <rule|all> [-- reason]
-              // arcleak:disable <rule|all> … // arcleak:enable <rule|all>
+              // @al:accept -- <why this strong reference is intentional>
+              // @al:accept:this <rule|all> [-- reason]
+              // @al:accept:next <rule|all> [-- reason]
+              // @al:disable <rule|all> … // @al:enable <rule|all>
             """)
     }
 }

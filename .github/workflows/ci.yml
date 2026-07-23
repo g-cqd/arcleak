@@ -5,49 +5,56 @@ on:
     branches: [main]
   pull_request:
 
-# Toolchain note: the package requires swift-tools 6.4. The REQUIRED gate is
-# the Linux job (nightly-6.4.x container has the toolchain). The macOS job is
-# informational until 6.4 GA reaches hosted runners — flip continue-on-error
-# off then. Scripts/ci-local.sh runs the full gate on a 6.4 machine.
+# The package requires swift-tools 6.4, which no *released* toolchain ships yet
+# — so every lane uses a nightly 6.4 toolchain. The REQUIRED gate is the Linux
+# job (the nightly container is the toolchain, no bootstrap). macOS installs a
+# nightly via swiftly for the Darwin-only coverage (leaks oracle, SILGen) and
+# is informational until 6.4 GA. Scripts/ci-local.sh is the full local gate.
 jobs:
-  macos:
-    runs-on: macos-15
-    # Pending 6.4 GA on hosted runners (stock Xcode cannot parse tools 6.4).
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - name: Select newest Xcode
-        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
-      - name: Build (warnings are errors via package settings)
-        run: swift build --build-tests
-      - name: Tests (fixture corpus gates FP and FN both ways)
-        run: swift test
-      - name: Self-dogfood
-        run: swift run arcleak analyze Sources --strict --no-cache
-      - name: Runtime ground-truth oracle
-        run: Scripts/run-leak-oracle.sh "$(swift build --show-bin-path)/leak-oracle"
-
   linux:
     runs-on: ubuntu-latest
     container: swiftlang/swift:nightly-6.4.x-jammy
     steps:
       - uses: actions/checkout@v4
-      - name: Build
+      - name: Build (warnings are errors via package settings)
         run: swift build --build-tests
       - name: Tests
-        run: swift test
-
-  format:
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v4
+        # --no-parallel: the nightly Linux concurrency runtime has crashed under
+        # swift-testing's parallel executor; serial is stable and fast enough.
+        run: swift test --no-parallel
+      - name: Self-dogfood
+        run: swift run arcleak analyze Sources --strict --no-cache
       - name: swift-format lint
         run: Scripts/lint-format.sh
       - name: GCD prohibition
         run: Scripts/no-gcd.sh
 
-  benchmarks:
+  macos:
     runs-on: macos-15
+    # Informational: bootstraps a nightly toolchain; covers the macOS-only
+    # runtime leak oracle and SILGen confirmation the Linux lane skips.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install nightly Swift (swiftly)
+        run: |
+          curl -fsSL -o swiftly.pkg https://download.swift.org/swiftly/darwin/swiftly.pkg
+          installer -pkg swiftly.pkg -target CurrentUserHomeDirectory
+          "$HOME/.swiftly/bin/swiftly" init --assume-yes --skip-install --quiet-shell-followup || true
+          "$HOME/.swiftly/bin/swiftly" install main-snapshot --use --assume-yes
+          echo "$HOME/.swiftly/bin" >> "$GITHUB_PATH"
+      - name: Version
+        run: swift --version
+      - name: Build & test
+        run: |
+          swift build --build-tests
+          swift test
+      - name: Runtime ground-truth oracle
+        run: Scripts/run-leak-oracle.sh "$(swift build --show-bin-path)/leak-oracle"
+
+  benchmarks:
+    runs-on: ubuntu-latest
+    container: swiftlang/swift:nightly-6.4.x-jammy
     # Informational: thresholds compare against committed baselines.
     continue-on-error: true
     steps:

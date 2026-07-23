@@ -1,3 +1,4 @@
+// swift-format-ignore-file
 import Combine
 import Dispatch
 import Foundation

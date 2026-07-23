@@ -1,3 +1,4 @@
+// swift-format-ignore-file
 import Foundation
 
 // The center "strongly holds the copied block until you remove the observer
@@ -7,7 +8,7 @@ final class NoteObserver {
     var token: (any NSObjectProtocol)?
 
     func start() {
-        token = NotificationCenter.default.addObserver(forName: Notification.Name("tick"), object: nil, queue: nil) { _ in // arcleak-expect: notification-observer-leak
+        token = NotificationCenter.default.addObserver(forName: Notification.Name("tick"), object: nil, queue: nil) { _ in // #al:expect notification-observer-leak
             self.handle()
         }
     }

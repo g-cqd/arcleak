@@ -1,3 +1,4 @@
+// swift-format-ignore-file
 import Combine
 
 // self → cancellables → AnyCancellable → sink closure → self.
@@ -7,7 +8,7 @@ final class Sinker {
     var latest = 0
 
     func bind() {
-        subject.sink { value in // arcleak-expect: combine-sink-self-cycle
+        subject.sink { value in // #al:expect combine-sink-self-cycle
             self.latest = value
         }
         .store(in: &cancellables)

@@ -1,3 +1,4 @@
+// swift-format-ignore-file
 import Combine
 
 // Bound method references are strong captures with no capture-list syntax —
@@ -9,11 +10,11 @@ final class Referencer {
     var handler: (() -> Void)?
 
     func armStored() {
-        handler = self.fire  // arcleak-expect: stored-closure-strong-self
+        handler = self.fire  // #al:expect stored-closure-strong-self
     }
 
     func armSink() {
-        subject.sink(receiveValue: handle)  // arcleak-expect: combine-sink-self-cycle
+        subject.sink(receiveValue: handle)  // #al:expect combine-sink-self-cycle
             .store(in: &cancellables)
     }
 
@@ -32,7 +33,7 @@ final class LocalFunctioner {
         func bump(_ value: Int) {
             self.count += value
         }
-        subject.sink(receiveValue: bump)  // arcleak-expect: combine-sink-self-cycle
+        subject.sink(receiveValue: bump)  // #al:expect combine-sink-self-cycle
             .store(in: &cancellables)
     }
 }

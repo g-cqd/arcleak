@@ -118,30 +118,35 @@ if command -v arcleak >/dev/null; then
 fi
 ```
 
-## Telling the analyzer a strong reference is deliberate
+## Accepting a finding (the `@` directive DSL)
 
-Every diagnostic can be silenced *at the site*, with an auditable reason. The
-`deliberate` marker is the intended way to document an intentional strong
-reference; it works trailing on the flagged line or on the line above:
+Directives to the analyzer use the `@` sigil and either the `@al:` or the
+`@arcleak:` namespace (synonyms). `accept` documents an intentional strong
+reference with an auditable reason; it covers the flagged line **and** the next,
+so it works trailing on the code or on the line above:
 
 ```swift
-// arcleak:deliberate -- owner tears this down in shutdown(); lifetime is intentional
+// @al:accept -- owner tears this down in shutdown(); lifetime is intentional
 onTick = { self.tick() }
 ```
 
-Precise forms:
+Precise forms (optionally scoped to specific rule ids):
 
 ```swift
-// arcleak:disable:this timer-retains-self -- invalidated by the scene lifecycle
-// arcleak:disable:next stored-closure-strong-self
-// arcleak:disable combine-sink-self-cycle
+// @al:accept:this timer-retains-self -- invalidated by the scene lifecycle
+// @al:accept:next stored-closure-strong-self
+// @al:disable combine-sink-self-cycle
 …
-// arcleak:enable combine-sink-self-cycle
+// @al:enable combine-sink-self-cycle
 ```
 
-Suppressed findings are not dropped: they are counted in the summary and
-carried (with their reasons) in the JSON report, so suppression debt stays
-visible. A directive naming only unknown rule ids suppresses **nothing**.
+Accepted findings are not dropped: they are counted in the summary and carried
+(with their reasons) in the JSON report, so acceptance debt stays visible. A
+directive naming only unknown rule ids accepts **nothing**.
+
+Test fixtures use a separate `#` sigil for expectations the fixture runner
+asserts (`// #al:expect <rule>`, `// #al:expect-suppressed <rule>`) — the `#`
+vs `@` split keeps assertions and directives from ever colliding.
 
 ## Configuration (`.arcleak.json`)
 

@@ -1,25 +1,33 @@
 import Foundation
 
-/// One parsed `// arcleak:` comment.
+/// One parsed `@al:` / `@arcleak:` directive comment.
 ///
-/// Grammar (whitespace-tolerant, rule ids comma- or space-separated):
+/// The `@` sigil marks an instruction to the analyzer; `al` and `arcleak` are
+/// interchangeable namespaces. Grammar (whitespace-tolerant, rule ids comma-
+/// or space-separated; `all` or no rule = every rule):
 ///
-///     // arcleak:disable:this <rules|all> [-- reason]
-///     // arcleak:disable:next <rules|all> [-- reason]
-///     // arcleak:disable <rules|all>          (region start, to EOF if unbalanced)
-///     // arcleak:enable <rules|all>           (region end)
-///     // arcleak:deliberate [-- reason]       (sugar: disable:this all — marks an
-///                                              intentional strong reference)
+///     // @al:accept [rules] [-- reason]        accept the finding here AND on
+///                                              the next line (works trailing
+///                                              or on the line above the code)
+///     // @al:accept:this [rules] [-- reason]   this line only
+///     // @al:accept:next [rules] [-- reason]   next line only
+///     // @al:disable [rules|all]               region start (to EOF if unbalanced)
+///     // @al:enable  [rules|all]               region end
+///
+/// `@arcleak:` is an exact synonym for `@al:`.
 public struct SuppressionDirective: Sendable, Equatable, Codable {
     public enum Kind: Sendable, Equatable, Codable {
-        case disableThis
-        case disableNext
-        /// `arcleak:deliberate` — covers its own line *and* the next, so it
-        /// works both as a trailing comment and on the line above the code.
-        case deliberate
+        case acceptThis
+        case acceptNext
+        /// `@al:accept` — covers its own line *and* the next, so it works both
+        /// as a trailing comment and on the line above the flagged code.
+        case accept
         case regionDisable
         case regionEnable
     }
+
+    /// The accepted namespace prefixes after the `@` sigil.
+    public static let namespaces = ["al:", "arcleak:"]
 
     /// Empty set means "all rules".
     public let rules: Set<RuleID>
@@ -39,18 +47,21 @@ public struct SuppressionDirective: Sendable, Equatable, Codable {
         rules.isEmpty || rules.contains(rule)
     }
 
-    /// Parses the text of a single comment. Returns nil when the comment is not
-    /// a arcleak directive. Unknown rule ids inside a directive are ignored
-    /// (they may belong to a future arcleak version) — but if *nothing* parses,
-    /// the directive suppresses nothing rather than everything.
+    /// Parses one comment. Returns nil when it isn't an `@al:`/`@arcleak:`
+    /// directive. Unknown rule ids inside a directive are ignored (they may
+    /// belong to a future version) — but if a rule-scoped verb names *only*
+    /// unknown rules, the directive suppresses nothing rather than everything.
     public static func parse(comment: String, line: Int) -> SuppressionDirective? {
         var text = comment
         if text.hasPrefix("//") { text.removeFirst(2) }
         if text.hasPrefix("/*") { text.removeFirst(2) }
         if text.hasSuffix("*/") { text.removeLast(2) }
         text = text.trimmingCharacters(in: .whitespaces)
-        guard text.hasPrefix("arcleak:") else { return nil }
-        text.removeFirst("arcleak:".count)
+
+        guard text.hasPrefix("@") else { return nil }
+        text.removeFirst()
+        guard let namespace = namespaces.first(where: text.hasPrefix) else { return nil }
+        text.removeFirst(namespace.count)
 
         var reason: String?
         if let range = text.range(of: "--") {
@@ -63,10 +74,9 @@ public struct SuppressionDirective: Sendable, Equatable, Codable {
 
         let kind: Kind
         switch verb {
-        case "deliberate":
-            return SuppressionDirective(rules: [], kind: .deliberate, line: line, reason: reason)
-        case "disable:this": kind = .disableThis
-        case "disable:next": kind = .disableNext
+        case "accept": kind = .accept
+        case "accept:this": kind = .acceptThis
+        case "accept:next": kind = .acceptNext
         case "disable": kind = .regionDisable
         case "enable": kind = .regionEnable
         default: return nil

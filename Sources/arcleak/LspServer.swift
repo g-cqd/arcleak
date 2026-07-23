@@ -7,7 +7,7 @@ import Foundation
 ///
 /// - `initialize` / `shutdown` / `exit`
 /// - `textDocument/didOpen|didChange|didSave|didClose` → `publishDiagnostics`
-/// - `textDocument/codeAction` → suppress-with-`deliberate` quick fix
+/// - `textDocument/codeAction` → suppress-with-`@al:accept` quick fix
 ///
 /// Analysis reuses `Analyzer` per document (single-file corpus); documents are
 /// kept in memory with full-sync semantics.
@@ -188,10 +188,10 @@ struct LspServer {
             .map { finding in
                 let insertion = [
                     "range": Self.range(line: finding.line, column: 1),
-                    "newText": "// arcleak:deliberate -- reviewed: \(finding.rule.rawValue)\n",
+                    "newText": "// @al:accept -- reviewed: \(finding.rule.rawValue)\n",
                 ]
                 return [
-                    "title": "Suppress with arcleak:deliberate",
+                    "title": "Suppress with @al:accept",
                     "kind": "quickfix",
                     "diagnostics": [],
                     "edit": ["changes": [uri: [insertion]]] as [String: Any],

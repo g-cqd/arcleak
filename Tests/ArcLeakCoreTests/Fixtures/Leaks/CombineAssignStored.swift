@@ -1,3 +1,4 @@
+// swift-format-ignore-file
 import Combine
 
 // "The Subscribers.Assign instance created by this operator maintains a strong
@@ -9,7 +10,7 @@ final class Assigner {
     var latest = 0
 
     func bind() {
-        subject.assign(to: \.latest, on: self) // arcleak-expect: combine-assign-self-cycle
+        subject.assign(to: \.latest, on: self) // #al:expect combine-assign-self-cycle
             .store(in: &cancellables)
     }
 }

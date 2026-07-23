@@ -16,11 +16,11 @@ public struct SuppressionTable: Sendable {
         var regionReason: String?
         for directive in directives {
             switch directive.kind {
-            case .disableThis where directive.line == line && directive.covers(rule):
+            case .acceptThis where directive.line == line && directive.covers(rule):
                 return .some(directive.reason)
-            case .disableNext where directive.line == line - 1 && directive.covers(rule):
+            case .acceptNext where directive.line == line - 1 && directive.covers(rule):
                 return .some(directive.reason)
-            case .deliberate
+            case .accept
             where (directive.line == line || directive.line == line - 1)
                 && directive.covers(rule):
                 return .some(directive.reason)
