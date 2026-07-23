@@ -1,10 +1,11 @@
+// swift-format-ignore-file
 // Actors are reference types — the same cycle rules apply.
 actor Ledger {
     var onCommit: (() -> Void)?
     var entries = 0
 
     func arm() {
-        onCommit = {  // arcleak-expect: stored-closure-strong-self
+        onCommit = {  // #al:expect stored-closure-strong-self
             Task { await self.bump() }
         }
     }
@@ -21,7 +22,7 @@ enum Namespace {
         var value = 0
 
         func arm() {
-            handler = {  // arcleak-expect: stored-closure-strong-self
+            handler = {  // #al:expect stored-closure-strong-self
                 self.value += 1
             }
         }
@@ -33,7 +34,7 @@ final class AliasStrong {
     var onChange: (() -> Void)?
 
     func arm() {
-        onChange = { [s = self] in s.fire() }  // arcleak-expect: stored-closure-strong-self
+        onChange = { [s = self] in s.fire() }  // #al:expect stored-closure-strong-self
     }
 
     func fire() {}

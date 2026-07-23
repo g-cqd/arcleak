@@ -1,3 +1,4 @@
+// swift-format-ignore-file
 import Foundation
 
 // Transient escaping closures: retained only until they run once. Strong self

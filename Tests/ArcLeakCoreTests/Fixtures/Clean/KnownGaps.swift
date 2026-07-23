@@ -1,3 +1,4 @@
+// swift-format-ignore-file
 // (Gap: strong alias captures — FIXED, moved to Leaks/ActorAndNested.swift.)
 // Documented false-NEGATIVE candidates: real leaks the current analyzer does
 // not see. Asserted silent so the ledger is executable — if detection lands,

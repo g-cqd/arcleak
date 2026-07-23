@@ -6,7 +6,7 @@
     // This file intentionally constructs every leak arcleak detects — it is the
     // runtime proof of the rules. Suppress the analyzer over the whole file, with
     // the reason on record.
-    // arcleak:disable all -- deliberate leaks: this file IS the runtime oracle for the rules
+    // @al:disable all -- deliberate leaks: this file IS the runtime oracle for the rules
 
     enum OracleScenarios {
         // MARK: - Cycle scenarios judged by `leaks -atExit` (expected to leak)

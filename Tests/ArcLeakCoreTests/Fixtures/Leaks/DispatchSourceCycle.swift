@@ -1,3 +1,4 @@
+// swift-format-ignore-file
 import Dispatch
 
 // self → source → handler → self: dispatch sources hold their handlers until
@@ -7,7 +8,7 @@ final class Beeper {
     var beeps = 0
 
     func start() {
-        source.setEventHandler { // arcleak-expect: dispatch-source-cycle
+        source.setEventHandler { // #al:expect dispatch-source-cycle
             self.beeps += 1
         }
         source.activate()

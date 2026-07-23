@@ -1,3 +1,4 @@
+// swift-format-ignore-file
 import Foundation
 
 // Repeating timer with strong self, but invalidate() is reachable outside
