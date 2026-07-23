@@ -15,11 +15,8 @@ import Testing
         let big = dir.appending(path: "Big.swift")
         // Sparse file: 64 MB logical, ~0 bytes on disk — the stat-first guard
         // must reject it before Data(contentsOf:) allocates 64 MB.
-        let handle = try FileHandle(
-            forWritingTo: {
-                FileManager.default.createFile(atPath: big.path, contents: nil)
-                return big
-            }())
+        #expect(FileManager.default.createFile(atPath: big.path, contents: nil))
+        let handle = try FileHandle(forWritingTo: big)
         try handle.truncate(atOffset: 64 * 1024 * 1024)
         try handle.close()
 
