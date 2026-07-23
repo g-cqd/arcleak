@@ -5,13 +5,15 @@ on:
     branches: [main]
   pull_request:
 
-# Toolchain note: the package requires swift-tools 6.4. Until 6.4 GA reaches
-# hosted runners, the macOS job installs the matching swift.org snapshot and
-# the Linux job uses the nightly container. Scripts/ci-local.sh runs the
-# identical steps and is the day-to-day gate on a 6.4 machine.
+# Toolchain note: the package requires swift-tools 6.4. The REQUIRED gate is
+# the Linux job (nightly-6.4.x container has the toolchain). The macOS job is
+# informational until 6.4 GA reaches hosted runners — flip continue-on-error
+# off then. Scripts/ci-local.sh runs the full gate on a 6.4 machine.
 jobs:
   macos:
     runs-on: macos-15
+    # Pending 6.4 GA on hosted runners (stock Xcode cannot parse tools 6.4).
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: Select newest Xcode
@@ -27,9 +29,7 @@ jobs:
 
   linux:
     runs-on: ubuntu-latest
-    container: swiftlang/swift:nightly-6.4-jammy
-    # Experimental until 6.4 GA: failures here inform, not block.
-    continue-on-error: true
+    container: swiftlang/swift:nightly-6.4.x-jammy
     steps:
       - uses: actions/checkout@v4
       - name: Build
