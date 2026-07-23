@@ -1,3 +1,4 @@
+// swift-format-ignore-file
 import Foundation
 
 // Docs: "The session object keeps a strong reference to the delegate until
@@ -8,7 +9,7 @@ final class Api: NSObject, URLSessionDelegate {
     var session: URLSession?
 
     func start() {
-        session = URLSession(configuration: .default, delegate: self, delegateQueue: nil) // arcleak-expect: urlsession-delegate-leak
+        session = URLSession(configuration: .default, delegate: self, delegateQueue: nil) // #al:expect urlsession-delegate-leak
     }
 
     deinit {

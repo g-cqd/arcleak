@@ -1,3 +1,4 @@
+// swift-format-ignore-file
 import Foundation
 
 final class Box {
@@ -5,7 +6,7 @@ final class Box {
     var value = 0
 
     func arm() {
-        onChange = { // arcleak-expect: stored-closure-strong-self
+        onChange = { // #al:expect stored-closure-strong-self
             self.value += 1
         }
         self.onChange = { [weak self] in
@@ -19,7 +20,7 @@ final class Collector {
     var count = 0
 
     func register() {
-        handlers.append { // arcleak-expect: stored-closure-strong-self
+        handlers.append { // #al:expect stored-closure-strong-self
             self.count += 1
         }
     }

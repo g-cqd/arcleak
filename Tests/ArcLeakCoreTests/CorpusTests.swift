@@ -31,7 +31,7 @@ import Testing
             var expected: Set<FileExpectation> = []
             for file in files {
                 let source = try String(contentsOf: file, encoding: .utf8)
-                for expectation in FixtureRunnerTests.expectations(in: source, marker: "arcleak-expect: ") {
+                for expectation in FixtureRunnerTests.expectations(in: source, verb: "expect") {
                     expected.insert(
                         FileExpectation(
                             file: file.lastPathComponent,
@@ -133,7 +133,7 @@ import Testing
     func corpusFindingSuppression() {
         let source = """
             final class Left {
-                // arcleak:deliberate -- torn down manually in close()
+                // @al:accept -- torn down manually in close()
                 var right: Right?
             }
             final class Right {
