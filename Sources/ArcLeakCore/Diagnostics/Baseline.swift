@@ -46,12 +46,7 @@ public struct Baseline: Sendable, Equatable {
     }
 
     public static func load(path: String) throws(ArcLeakError) -> Baseline {
-        let data: Data
-        do {
-            data = try Data(contentsOf: URL(fileURLWithPath: path))
-        } catch {
-            throw .configurationUnreadable(path: path, underlying: String(describing: error))
-        }
+        let data = try BoundedFileReader.read(path: path)
         let payload: Payload
         do {
             payload = try JSONDecoder().decode(Payload.self, from: data)

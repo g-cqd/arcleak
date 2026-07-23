@@ -184,12 +184,23 @@ public struct Analyzer: Sendable {
 
     private static func read(path: String) throws(ArcLeakError) -> Data {
         let url = URL(fileURLWithPath: path)
+        // Stat BEFORE reading: the size cap must reject a 4 GB file (or a
+        // fifo/device masquerading as a source file) before it is pulled into
+        // RAM. `Data(contentsOf:)` would OOM first if we checked count after.
+        let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+        guard values?.isRegularFile == true else {
+            throw .fileUnreadable(path: path, underlying: "not a regular file")
+        }
+        if let size = values?.fileSize, size > maxFileBytes {
+            throw .fileUnreadable(path: path, underlying: "exceeds \(maxFileBytes) byte cap")
+        }
         let data: Data
         do {
             data = try Data(contentsOf: url)
         } catch {
             throw .fileUnreadable(path: path, underlying: String(describing: error))
         }
+        // Defense in depth: a growing/lying file could still exceed the cap.
         guard data.count <= maxFileBytes else {
             throw .fileUnreadable(path: path, underlying: "exceeds \(maxFileBytes) byte cap")
         }
