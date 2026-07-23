@@ -11,12 +11,10 @@ concurrency:
   cancel-in-progress: true
 
 # The package requires swift-tools 6.4, which no *released* toolchain ships
-# yet — the gate is the Linux job, whose nightly container IS the toolchain
-# (no bootstrap). There is deliberately NO macOS lane until 6.4 GA reaches
-# Xcode: the swiftly nightly bootstrap left orphaned child processes holding
-# the runner's log pipes, so the job's post-run phase hung on every run.
-# Darwin-only coverage (runtime leak oracle, SILGen confirmation) runs in
-# Scripts/ci-local.sh on developer machines instead.
+# yet — so both lanes run a nightly 6.4 toolchain. The REQUIRED gate is the
+# Linux job (its container IS the toolchain, no bootstrap). The macOS lane
+# bootstraps a nightly via swiftly for the Darwin-only coverage (runtime leak
+# oracle, SILGen confirmation) and is informational until 6.4 GA.
 jobs:
   linux:
     runs-on: ubuntu-latest
@@ -41,3 +39,50 @@ jobs:
         run: Scripts/lint-format.sh
       - name: GCD prohibition
         run: Scripts/no-gcd.sh
+
+  macos:
+    runs-on: macos-15
+    # Informational until 6.4 GA reaches Xcode.
+    continue-on-error: true
+    # Root cause of the historical post-run stalls: children spawned under the
+    # nightly toolchain survived their step, kept the runner's log pipes open,
+    # and job finalization waited on pipe EOF forever (hung jobs never even
+    # uploaded logs). Countermeasures, outermost first: hard job bound;
+    # per-step timeouts so a wedged child fails ITS step and gets its process
+    # group killed; serial tests (the same nightly runtime wedged Linux under
+    # the parallel executor); and an always-on reaper that reports survivors
+    # then kills them before the post-run phase starts.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Install nightly Swift (swiftly)
+        timeout-minutes: 10
+        run: |
+          curl -fsSL -o swiftly.pkg https://download.swift.org/swiftly/darwin/swiftly.pkg
+          installer -pkg swiftly.pkg -target CurrentUserHomeDirectory
+          "$HOME/.swiftly/bin/swiftly" init --assume-yes --skip-install --quiet-shell-followup || true
+          "$HOME/.swiftly/bin/swiftly" install main-snapshot --use --assume-yes
+          echo "$HOME/.swiftly/bin" >> "$GITHUB_PATH"
+      - name: Version
+        run: swift --version
+      - name: Build & test
+        timeout-minutes: 15
+        run: |
+          swift build --build-tests
+          swift test --no-parallel
+      - name: Runtime ground-truth oracle
+        timeout-minutes: 5
+        run: Scripts/run-leak-oracle.sh "$(swift build --show-bin-path)/leak-oracle"
+      - name: Reap toolchain stragglers
+        # Survivors hold the runner's log pipes and hang post-run: report them
+        # (telemetry for any future stall), then kill them.
+        if: always()
+        run: |
+          echo "toolchain processes still alive before reaping:"
+          pgrep -fl 'swift-frontend|swift-driver|swift-build|swift-testing|SourceKitService|sourcekit-lsp|leak-oracle' || echo "(none)"
+          for pattern in swift-frontend swift-driver swift-build swift-testing SourceKitService sourcekit-lsp leak-oracle; do
+            pkill -9 -f "$pattern" 2>/dev/null || true
+          done
+          exit 0
