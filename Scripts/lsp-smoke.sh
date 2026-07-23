@@ -51,7 +51,7 @@ send({"jsonrpc": "2.0", "id": 2, "method": "textDocument/codeAction",
 actions = read()
 assert actions["result"], actions
 edit = actions["result"][0]["edit"]["changes"][uri][0]["newText"]
-assert "arcleak:deliberate" in edit, edit
+assert "@al:accept" in edit, edit
 
 # didClose must clear diagnostics (and drop the in-memory document).
 send({"jsonrpc": "2.0", "method": "textDocument/didClose",
