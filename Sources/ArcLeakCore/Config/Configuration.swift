@@ -75,12 +75,7 @@ public struct Configuration: Sendable, Codable, Equatable {
     public static let `default` = Configuration()
 
     public static func load(path: String) throws(ArcLeakError) -> Configuration {
-        let data: Data
-        do {
-            data = try Data(contentsOf: URL(fileURLWithPath: path))
-        } catch {
-            throw .configurationUnreadable(path: path, underlying: String(describing: error))
-        }
+        let data = try BoundedFileReader.read(path: path)
         let config: Configuration
         do {
             config = try JSONDecoder().decode(Configuration.self, from: data)

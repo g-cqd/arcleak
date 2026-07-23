@@ -6,11 +6,16 @@ import Foundation
 /// the research on record). Hard-capped scope:
 ///
 /// - `initialize` / `shutdown` / `exit`
-/// - `textDocument/didOpen|didChange|didSave` → `publishDiagnostics`
+/// - `textDocument/didOpen|didChange|didSave|didClose` → `publishDiagnostics`
 /// - `textDocument/codeAction` → suppress-with-`deliberate` quick fix
 ///
 /// Analysis reuses `Analyzer` per document (single-file corpus); documents are
 /// kept in memory with full-sync semantics.
+///
+/// Known limit: `didChange` re-analyzes synchronously with no debounce — fine
+/// for a hard-capped single-file analyzer, but a busy-typing large file
+/// re-parses per keystroke. Debounce needs an async server loop redesign;
+/// tracked as future work, deliberately out of scope here.
 struct LspServer {
     private let analyzer = Analyzer()
     private var openDocuments: [String: String] = [:]
@@ -29,22 +34,30 @@ struct LspServer {
 
     // MARK: - Framing
 
+    /// Bounds against a malicious/confused client: a header with no terminator
+    /// or an absurd `Content-Length` must drop the connection, not buffer to
+    /// OOM. Returning nil ends the read loop cleanly.
+    private static let maxHeaderBytes = 4 * 1024
+    private static let maxBodyBytes = 16 * 1024 * 1024
+
     private static func readMessage(from handle: FileHandle) -> [String: Any]? {
         var header = Data()
-        // Read byte-wise until the blank line — header sizes are tiny.
         while !header.suffix(4).elementsEqual([13, 10, 13, 10]) {
             guard let byte = try? handle.read(upToCount: 1), !byte.isEmpty else { return nil }
             header.append(byte)
+            if header.count > maxHeaderBytes { return nil }
         }
         guard
             let text = String(data: header, encoding: .utf8),
             let lengthLine = text.split(separator: "\r\n").first(where: {
                 $0.lowercased().hasPrefix("content-length:")
             }),
-            let length = Int(lengthLine.split(separator: ":")[1].trimmingCharacters(in: .whitespaces))
+            let length = Int(lengthLine.split(separator: ":")[1].trimmingCharacters(in: .whitespaces)),
+            length >= 0, length <= maxBodyBytes
         else { return nil }
 
         var body = Data()
+        body.reserveCapacity(length)
         while body.count < length {
             guard let chunk = try? handle.read(upToCount: length - body.count), !chunk.isEmpty
             else { return nil }
@@ -107,6 +120,20 @@ struct LspServer {
                 let source = openDocuments[uri]
             {
                 publishDiagnostics(uri: uri, source: source)
+            }
+        case "textDocument/didClose":
+            // Without this the two maps grow for the whole session — a leak in
+            // the leak tool. Drop the document and clear its diagnostics.
+            if let document = params["textDocument"] as? [String: Any],
+                let uri = document["uri"] as? String
+            {
+                openDocuments.removeValue(forKey: uri)
+                lastFindings.removeValue(forKey: uri)
+                Self.send([
+                    "jsonrpc": "2.0",
+                    "method": "textDocument/publishDiagnostics",
+                    "params": ["uri": uri, "diagnostics": []] as [String: Any],
+                ])
             }
         case "textDocument/codeAction":
             respond(id: id, result: codeActions(params: params))
