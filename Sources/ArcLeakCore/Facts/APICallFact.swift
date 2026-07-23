@@ -63,6 +63,11 @@ public struct APICallFact: Sendable, Equatable, Codable {
     public let upstreamRootMember: String?
     /// Capture analysis of the trailing/`using:`/`block:` closure, when present.
     public let closureSelfCapture: SelfCaptureKind?
+    /// True when the strong capture's only evidence is `self` in a NESTED
+    /// closure's capture list (`sink { Task { [weak self] … } }`) — the outer
+    /// closure still captures `self` strongly to build the weak box, but the
+    /// body shows no bare `self`; diagnostics must explain the trap.
+    public let selfCaptureViaNestedListOnly: Bool
     public let consumption: ResultConsumption
 
     public init(
@@ -74,6 +79,7 @@ public struct APICallFact: Sendable, Equatable, Codable {
         upstreamFiniteness: UpstreamFiniteness = .unknown,
         upstreamRootMember: String? = nil,
         closureSelfCapture: SelfCaptureKind?,
+        selfCaptureViaNestedListOnly: Bool = false,
         consumption: ResultConsumption
     ) {
         self.kind = kind
@@ -84,6 +90,7 @@ public struct APICallFact: Sendable, Equatable, Codable {
         self.upstreamFiniteness = upstreamFiniteness
         self.upstreamRootMember = upstreamRootMember
         self.closureSelfCapture = closureSelfCapture
+        self.selfCaptureViaNestedListOnly = selfCaptureViaNestedListOnly
         self.consumption = consumption
     }
 
@@ -99,6 +106,25 @@ public struct APICallFact: Sendable, Equatable, Codable {
             upstreamFiniteness: finiteness,
             upstreamRootMember: upstreamRootMember,
             closureSelfCapture: closureSelfCapture,
+            selfCaptureViaNestedListOnly: selfCaptureViaNestedListOnly,
+            consumption: consumption
+        )
+    }
+
+    /// Copy with reclassified consumption (method-close post-pass for
+    /// escaping locals). Copy methods, not field-list rebuilds: a rebuild
+    /// silently drops any field added later (it happened).
+    public func withConsumption(_ consumption: ResultConsumption) -> APICallFact {
+        APICallFact(
+            kind: kind,
+            position: position,
+            repeats: repeats,
+            targetIsSelf: targetIsSelf,
+            receiverIsSelfMember: receiverIsSelfMember,
+            upstreamFiniteness: upstreamFiniteness,
+            upstreamRootMember: upstreamRootMember,
+            closureSelfCapture: closureSelfCapture,
+            selfCaptureViaNestedListOnly: selfCaptureViaNestedListOnly,
             consumption: consumption
         )
     }
