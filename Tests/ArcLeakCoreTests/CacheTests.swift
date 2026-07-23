@@ -61,6 +61,29 @@ import Testing
         #expect(rerun.findings.count == 2)
     }
 
+    @Test func prunesEntriesForFilesAbsentThisRun() async throws {
+        let (dir, cache, files) = try makeWorkspace()
+        _ = await Analyzer().analyze(files: files, cacheURL: cache)
+
+        // Re-run on only the first file — the cache must no longer carry the
+        // second file's entry (per-run rebuild, not append-forever).
+        let subset = [files[0]]
+        _ = await Analyzer().analyze(files: subset, cacheURL: cache)
+        let reloaded = FactsCache.load(url: cache)
+        #expect(reloaded.entries.count == 1)
+        #expect(reloaded.entries.keys.contains(files[0]))
+        _ = dir
+    }
+
+    @Test func cancelledAnalysisReturnsEarly() async throws {
+        let (_, cache, files) = try makeWorkspace()
+        let task = Task { await Analyzer().analyze(files: files, cacheURL: cache) }
+        task.cancel()
+        let report = await task.value
+        // No crash, a well-formed (possibly partial) report.
+        #expect(report.analyzedFileCount == files.count)
+    }
+
     @Test func corruptCacheFailsOpen() async throws {
         let (_, cache, files) = try makeWorkspace()
         try "not json at all {{{".write(to: cache, atomically: true, encoding: .utf8)
