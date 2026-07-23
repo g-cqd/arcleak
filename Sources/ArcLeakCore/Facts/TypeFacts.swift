@@ -14,6 +14,9 @@ public struct TypeFacts: Sendable, Codable {
     public var inheritedTypeNames: Set<String>
     /// Member functions — `self.method` used as a value is a strong capture.
     public var methodNames: Set<String>
+    /// Attribute names on the type declaration (`Model`, `Observable`) —
+    /// macro-managed storage (SwiftData) changes ownership semantics.
+    public var attributeNames: Set<String>
     /// Positions of `[weak self]` captures whose bodies never use `self`.
     public var deadWeakCaptures: [SourcePosition]
     /// Stored properties with their declared strength and referenced type names —
@@ -30,6 +33,7 @@ public struct TypeFacts: Sendable, Codable {
         self.memberNames = []
         self.inheritedTypeNames = []
         self.methodNames = []
+        self.attributeNames = []
         self.deadWeakCaptures = []
         self.storedProperties = []
         self.storedClosures = []
