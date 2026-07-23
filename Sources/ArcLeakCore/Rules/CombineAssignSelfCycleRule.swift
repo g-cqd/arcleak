@@ -7,8 +7,8 @@ struct CombineAssignSelfCycleRule: Rule {
 
     static func check(type: TypeFacts, path: String, configuration: Configuration) -> [Finding] {
         guard type.isReferenceType == true else { return [] }
-        // Recall-first: XCTestCase cycles fire with a test-context note (see
-        // the sink rule) rather than being silently exempt.
+        // XCTestCase cycles fire with a test-context note (see the sink
+        // rule).
         let isTestCase = type.inheritedTypeNames.contains("XCTestCase")
         return type.apiCalls.compactMap { call in
             guard call.kind == .combineAssignOn,

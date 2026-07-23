@@ -7,9 +7,9 @@
 /// excluded — a strong self-type link models chains, not certain cycles.
 /// SwiftData `@Model` types contribute only their `@Transient` strong edges:
 /// the macro rewrites every other stored property into accessors over managed
-/// backing storage (a `@Relationship` pair is not an ARC cycle — dogfood FP),
-/// but `@Transient` opts a property OUT of management, so it is real ARC
-/// storage and still cycles (recall-first).
+/// backing storage (a `@Relationship` pair is not an ARC cycle), but
+/// `@Transient` opts a property OUT of management, so it is real ARC
+/// storage and still cycles.
 ///
 /// Construction is deterministic regardless of input order: the corpus is
 /// sorted by path, nodes by name, edges by (from, to, line).
