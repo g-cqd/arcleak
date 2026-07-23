@@ -6,7 +6,9 @@
 /// Type-level honesty: an SCC proves the *types* can form a cycle; specific
 /// instances may still be acyclic (two objects chained, not looped). Hence
 /// "potential", warning by default, and a note naming every link so the reader
-/// can pick which direction becomes weak/unowned.
+/// can pick which direction becomes weak/unowned. SwiftData `@Model` types are
+/// exempt at graph construction — their stored properties are macro-managed,
+/// so `@Relationship` pairs are not ARC cycles.
 struct MutualStrongPropertiesRule: CorpusRule {
     static let emits: [RuleID] = [.mutualStrongProperties]
 
