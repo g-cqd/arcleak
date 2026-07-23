@@ -1,3 +1,4 @@
+// swift-format-ignore-file
 import Foundation
 
 // Selector form: "The timer maintains a strong reference to target until it
@@ -6,7 +7,7 @@ final class LegacyTicker: NSObject {
     var fired = 0
 
     func start() {
-        Timer.scheduledTimer(timeInterval: 1, target: self, selector: #selector(tick), userInfo: nil, repeats: true) // arcleak-expect: timer-retains-self
+        Timer.scheduledTimer(timeInterval: 1, target: self, selector: #selector(tick), userInfo: nil, repeats: true) // #al:expect timer-retains-self
     }
 
     @objc func tick() {

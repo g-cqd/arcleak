@@ -1,3 +1,4 @@
+// swift-format-ignore-file
 // Finite tasks extending self's lifetime briefly are NOT leaks (stay silent),
 // and weak-self loops exit when self dies.
 final class Saver {

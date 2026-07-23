@@ -1,3 +1,4 @@
+// swift-format-ignore-file
 import Foundation
 
 // Selector-based addObserver does NOT retain the observer — removing in deinit

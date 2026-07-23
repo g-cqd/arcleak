@@ -1,3 +1,4 @@
+// swift-format-ignore-file
 // Facts follow the active `#if` clause. Under the default configuration the
 // custom condition is unset, so only the weak-capture branch exists — silent.
 // (The IfConfigTests suite proves the flip: with the define set, the strong

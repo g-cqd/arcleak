@@ -1,3 +1,4 @@
+// swift-format-ignore-file
 import SwiftUI
 
 // Value types cannot participate in reference cycles: capturing struct `self`

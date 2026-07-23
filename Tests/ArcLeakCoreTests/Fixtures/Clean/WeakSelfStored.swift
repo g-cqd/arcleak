@@ -1,3 +1,4 @@
+// swift-format-ignore-file
 // Correctly broken cycle: [weak self] with SE-0365 implicit self after
 // `guard let self`. The rebound strong self lives only per-invocation.
 final class Weakly {

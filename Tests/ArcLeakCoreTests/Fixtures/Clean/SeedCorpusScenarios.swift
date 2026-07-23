@@ -1,3 +1,4 @@
+// swift-format-ignore-file
 import Dispatch
 import Foundation
 import UIKit
