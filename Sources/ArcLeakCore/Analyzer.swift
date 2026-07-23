@@ -31,75 +31,47 @@ public struct Analyzer: Sendable {
         index: (any IndexReading)? = nil
     ) async -> AnalysisReport {
         let included = files.filter { !configuration.isExcluded(path: $0) }
-        var cache = cacheURL.map(FactsCache.load(url:))
-        let snapshot = cache ?? FactsCache()
+        // `snapshot` serves cache hits (all historical entries); the persisted
+        // cache is rebuilt from ONLY this run's files, so it stays shaped to the
+        // project and never grows without bound in a shifting monorepo.
+        let snapshot = cacheURL.map(FactsCache.load(url:)) ?? FactsCache()
+        var freshCache = FactsCache()
         // Facts depend on the `#if` configuration and user contracts — salt
         // fingerprints so neither can serve stale facts.
         let definesSalt =
             configuration.activeDefines.sorted().joined(separator: ",") + "|"
             + (configuration.contracts ?? []).map(\.callee).sorted().joined(separator: ",")
 
-        struct FileOutcome: Sendable {
-            var facts: FileFacts?
-            var effectiveFacts: FileFacts?
-            var fingerprint: String?
-            var cacheHit = false
-            var findings: [Finding] = []
-            var degraded: AnalysisReport.DegradedFile?
-        }
+        // Bounded fan-out: one blocking read + parse per file would otherwise
+        // spawn `included.count` tasks that block the (core-count-sized)
+        // cooperative pool on I/O and hold every file's Data+tree in flight at
+        // once. A sliding window caps concurrency, descriptor pressure, and
+        // peak memory. `analyze` is cancellation-aware: a cancelled host stops
+        // scheduling new files.
+        let width = max(1, ProcessInfo.processInfo.activeProcessorCount)
 
         let outcomes = await withTaskGroup(of: FileOutcome.self) { group in
-            for path in included {
-                group.addTask { [configuration] in
-                    let data: Data
-                    do {
-                        data = try Self.read(path: path)
-                    } catch {
-                        return FileOutcome(
-                            degraded: AnalysisReport.DegradedFile(
-                                path: path,
-                                detail: String(describing: error)
-                            )
-                        )
-                    }
-                    let fingerprint = FactsCache.fingerprint(of: data, salt: definesSalt)
-
-                    let facts: FileFacts
-                    var cacheHit = false
-                    if let cached = snapshot.facts(for: path, fingerprint: fingerprint) {
-                        facts = cached
-                        cacheHit = true
-                    } else {
-                        guard let source = String(data: data, encoding: .utf8) else {
-                            return FileOutcome(
-                                degraded: AnalysisReport.DegradedFile(
-                                    path: path,
-                                    detail: "not valid UTF-8"
-                                )
-                            )
-                        }
-                        facts = FactsExtraction.extract(
-                            path: path,
-                            source: source,
-                            defines: configuration.activeDefines,
-                            contracts: configuration.contracts ?? []
-                        )
-                    }
-                    // Cache stores raw facts; index upgrades apply after so a
-                    // changed index can never serve stale resolutions.
-                    let effective = index.map { facts.upgraded(with: $0) } ?? facts
-                    let findings = RuleEngine.check(file: effective, configuration: configuration)
-                    return FileOutcome(
-                        facts: facts,
-                        effectiveFacts: effective,
-                        fingerprint: fingerprint,
-                        cacheHit: cacheHit,
-                        findings: findings
-                    )
-                }
-            }
             var collected: [FileOutcome] = []
             collected.reserveCapacity(included.count)
+            var scheduled = 0
+            for path in included {
+                if Task.isCancelled { break }
+                // Sliding window: keep at most `width` tasks in flight, draining
+                // one before scheduling the next.
+                if scheduled >= width {
+                    if let done = await group.next() { collected.append(done) }
+                }
+                group.addTask { [configuration] in
+                    Self.makeOutcome(
+                        path: path,
+                        snapshot: snapshot,
+                        index: index,
+                        configuration: configuration,
+                        definesSalt: definesSalt
+                    )
+                }
+                scheduled += 1
+            }
             for await outcome in group {
                 collected.append(outcome)
             }
@@ -114,7 +86,7 @@ public struct Analyzer: Sendable {
             if let facts = outcome.facts {
                 corpus.append(outcome.effectiveFacts ?? facts)
                 if let fingerprint = outcome.fingerprint {
-                    cache?.update(path: facts.path, fingerprint: fingerprint, facts: facts)
+                    freshCache.update(path: facts.path, fingerprint: fingerprint, facts: facts)
                 }
             }
             if outcome.cacheHit { hits += 1 }
@@ -126,8 +98,8 @@ public struct Analyzer: Sendable {
         corpus.sort { $0.path < $1.path }
         raw.append(contentsOf: RuleEngine.checkCorpus(corpus: corpus, configuration: configuration))
 
-        if let cache, let cacheURL {
-            cache.persist(url: cacheURL)
+        if let cacheURL {
+            freshCache.persist(url: cacheURL)
         }
 
         var report = Self.assemble(raw: raw, corpus: corpus)
@@ -180,6 +152,65 @@ public struct Analyzer: Sendable {
         report.findings.sort()
         report.suppressed.sort { $0.finding < $1.finding }
         return report
+    }
+
+    /// Per-file work result — value type so it crosses task boundaries freely.
+    struct FileOutcome: Sendable {
+        var facts: FileFacts?
+        var effectiveFacts: FileFacts?
+        var fingerprint: String?
+        var cacheHit = false
+        var findings: [Finding] = []
+        var degraded: AnalysisReport.DegradedFile?
+    }
+
+    /// Reads, fingerprints, extracts (or reuses cached facts), and runs the
+    /// per-file rules. All parameters are `Sendable`, so this is safe to call
+    /// from a task-group child.
+    static func makeOutcome(
+        path: String,
+        snapshot: FactsCache,
+        index: (any IndexReading)?,
+        configuration: Configuration,
+        definesSalt: String
+    ) -> FileOutcome {
+        let data: Data
+        do {
+            data = try read(path: path)
+        } catch {
+            return FileOutcome(
+                degraded: AnalysisReport.DegradedFile(path: path, detail: String(describing: error))
+            )
+        }
+        let fingerprint = FactsCache.fingerprint(of: data, salt: definesSalt)
+
+        let facts: FileFacts
+        var cacheHit = false
+        if let cached = snapshot.facts(for: path, fingerprint: fingerprint) {
+            facts = cached
+            cacheHit = true
+        } else {
+            guard let source = String(data: data, encoding: .utf8) else {
+                return FileOutcome(
+                    degraded: AnalysisReport.DegradedFile(path: path, detail: "not valid UTF-8")
+                )
+            }
+            facts = FactsExtraction.extract(
+                path: path,
+                source: source,
+                defines: configuration.activeDefines,
+                contracts: configuration.contracts ?? []
+            )
+        }
+        let effective = index.map { facts.upgraded(with: $0) } ?? facts
+        let findings = RuleEngine.check(file: effective, configuration: configuration)
+        return FileOutcome(
+            facts: facts,
+            effectiveFacts: effective,
+            fingerprint: fingerprint,
+            cacheHit: cacheHit,
+            findings: findings
+        )
     }
 
     private static func read(path: String) throws(ArcLeakError) -> Data {

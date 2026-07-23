@@ -197,12 +197,18 @@ private final class BodyWalker: SyntaxVisitor {
         return .skipChildren
     }
 
+    /// Explicit worklist rather than recursion (repo policy: our code stays
+    /// iteration-only, so adversarially deep tuple patterns can't grow the
+    /// stack even though SwiftParser bounds nesting first).
     private func collectPatternNames(_ pattern: PatternSyntax) {
-        if let identifier = pattern.as(IdentifierPatternSyntax.self) {
-            localNames.insert(identifier.identifier.text)
-        } else if let tuple = pattern.as(TuplePatternSyntax.self) {
-            for element in tuple.elements {
-                collectPatternNames(element.pattern)
+        var worklist: [PatternSyntax] = [pattern]
+        while let current = worklist.popLast() {
+            if let identifier = current.as(IdentifierPatternSyntax.self) {
+                localNames.insert(identifier.identifier.text)
+            } else if let tuple = current.as(TuplePatternSyntax.self) {
+                for element in tuple.elements {
+                    worklist.append(element.pattern)
+                }
             }
         }
     }
