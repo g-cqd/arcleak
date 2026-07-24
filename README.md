@@ -29,9 +29,16 @@ Every retention contract the rules encode is runtime-proven: the leak oracle
 
 ## Requirements
 
-Swift 6.4 toolchain, macOS 14+ or Linux. No released toolchain ships tools
+Swift 6.4 toolchain, macOS 15+ or Linux. No released toolchain ships tools
 6.4 yet; the repo pins a swiftly snapshot via `.swift-version` (build with
 `swiftly run swift build`), and CI runs nightly toolchains.
+
+> **Platform floor.** The floor is **macOS 15** (raised from 14 in 0.3.0): the
+> opt-in `--index-store` backend links IndexStoreDB, whose target floor is
+> macOS 15. arcleak is a developer tool, so the bump is deliberate and
+> acceptable. The default syntax-only analysis is unaffected, and Linux builds
+> gate the index out entirely (`#if canImport(IndexStoreDB)`) with no behavior
+> change.
 
 ## CLI
 
@@ -40,6 +47,7 @@ arcleak analyze Sources             # xcode-format diagnostics, exit 1 on errors
 arcleak analyze --format json .     # machine-readable report (also: --format sarif)
 arcleak analyze --strict Sources    # exit 1 on any finding
 arcleak analyze --fix Sources       # apply [weak self] fix-its (--fix-dry-run to preview)
+arcleak analyze --index-store .     # resolve cross-module types via the index (macOS-only)
 arcleak rules                       # list rules, severities, suppression syntax
 arcleak rules timer-retains-self    # one rule's retention contract and fix
 arcleak lsp                         # LSP server over stdio: diagnostics + accept quick-fix
@@ -65,6 +73,36 @@ with `--cache-path`, disable with `--no-cache`). Only parsed facts are
 cached, keyed by content fingerprint and tool version; rules always re-run,
 so findings never go stale relative to rules or configuration. The cache
 fails open: corrupt or mismatched caches behave as empty.
+
+## Cross-module resolution (`--index-store`, macOS-only)
+
+By default arcleak reasons only about types declared in the analyzed corpus —
+a stored property whose type lives in another module or the SDK is skipped as
+unknown. `--index-store` consults the IndexStoreDB index that SourceKit-LSP /
+`swift build` already produce to resolve those types' class-ness, so a strong
+stored property pointing at a class in another module can complete a
+cross-module `mutual-strong-properties` cycle:
+
+```sh
+arcleak analyze Sources --index-store                       # discover the store (.build/…, DerivedData)
+arcleak analyze Sources --index-store-path .build/index/store   # explicit store
+arcleak analyze Sources --index-store-build                 # `swift build` one first if missing
+```
+
+It is **opt-in, macOS-only, and always fails open**. With no index, on Linux,
+or when the store is stale relative to the analyzed sources, arcleak prints a
+one-line note and runs the corpus-only analysis unchanged — byte-identical to
+the default. Resolution is conservative: an edge is added only when the index
+**confirms** a type is a class/actor, never on a guess. The dylib
+(`libIndexStore.dylib`) is loaded from your active toolchain (a regular file
+owned by root or you, not world-writable).
+
+## Experimental: `--experimental-embedding-rank` (macOS-only)
+
+Groups findings of similar shape together in the report using on-device
+embeddings (`NLContextualEmbedding`; zero download, with a deterministic
+fallback offline). This is **ordering only** — it never changes which findings
+fire, their severity, or the exit code. Experimental and off by default.
 
 ## Build-time integration
 
@@ -164,7 +202,9 @@ task handle is stored on `self`) — the release is unreachable by construction.
 
 Cross-file cycle detection covers the analyzed corpus: every file passed in
 one run. Types, weak-ness, and class-ness declared in other modules and the
-SDK are outside it, as is release-call reachability across files.
+SDK are outside it by default — the opt-in macOS `--index-store` backend
+resolves class-ness for those (see above); release-call reachability across
+files remains corpus-only.
 `mutual-strong-properties` is type-level: an SCC proves the types *can*
 cycle; verify instance ownership before restructuring. Analysis is of
 written source — macro-generated storage is invisible (SwiftData `@Model` is
