@@ -20,6 +20,8 @@
         public let embeddingDimension: Int
         public let ngramSize: Int
 
+        public var providerName: String { "deterministic (n-gram hash, fallback)" }
+
         public func embed(snippet: String) async throws -> [Float] {
             var buckets = [Float](repeating: 0, count: embeddingDimension)
             let scalars = Array(snippet.unicodeScalars)
