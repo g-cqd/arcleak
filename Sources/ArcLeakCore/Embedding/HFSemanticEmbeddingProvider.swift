@@ -1,11 +1,12 @@
 #if canImport(CoreML)
     import CoreML
     public import Foundation
-    import Tokenizers
 
-    /// A ``SemanticEmbeddingProvider`` backed by a Core ML model plus the
-    /// HuggingFace tokenizer it was trained with (`swift-transformers`). Selected
-    /// by `--embedding-bundle <dir>`, or auto-discovered next to the executable
+    /// A ``SemanticEmbeddingProvider`` backed by a Core ML model plus the BERT
+    /// WordPiece tokenizer it was trained with — ``WordPieceTokenizer``, built in
+    /// rather than pulled from `swift-transformers` (that file documents why, and
+    /// `WordPieceParityTests` pins the two token-for-token). Selected by
+    /// `--embedding-bundle <dir>`, or auto-discovered next to the executable
     /// (see ``EmbeddingRank/bundledModelDirectory()``).
     ///
     /// Why bother, when arcleak already embeds with zero download? Because both
@@ -19,9 +20,11 @@
     ///
     /// `bundleDir` holds both halves of the model: the Core ML bundle
     /// (`.mlpackage`, compiled on first use, or a prebuilt `.mlmodelc`) and the HF
-    /// tokenizer files (`tokenizer.json`, `config.json`, …). This covers the
-    /// standard HF feature-extraction shape — MiniLM, CodeBERT, GraphCodeBERT,
-    /// jina-embeddings-v2-base-code, CodeT5+.
+    /// tokenizer files (`vocab.txt` / `tokenizer.json`). This covers the
+    /// WordPiece feature-extraction shape — MiniLM, CodeBERT, GraphCodeBERT.
+    /// Bundles whose tokenizer is BPE or SentencePiece (not WordPiece) are out of
+    /// scope: they fail to load rather than tokenizing wrongly, and the caller
+    /// falls back to the zero-download provider.
     public final class HFSemanticEmbeddingProvider: SemanticEmbeddingProvider, @unchecked Sendable {
         public let embeddingDimension: Int
         public let providerName: String
@@ -78,7 +81,7 @@
             }
 
             do {
-                self.tokenizer = try await AutoTokenizer.from(modelFolder: bundleDir)
+                self.tokenizer = try WordPieceTokenizer(bundleDir: bundleDir)
             } catch {
                 throw SemanticEmbeddingError.modelLoadFailed(underlying: error)
             }
@@ -198,7 +201,7 @@
         // MARK: - Private
 
         private let model: MLModel
-        private let tokenizer: any Tokenizer
+        private let tokenizer: WordPieceTokenizer
         private let maxLength: Int
         private let inputIDsName: String
         private let attentionMaskName: String
