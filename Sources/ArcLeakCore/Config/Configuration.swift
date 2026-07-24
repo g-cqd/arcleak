@@ -24,8 +24,11 @@ public struct Configuration: Sendable, Codable, Equatable {
     /// so existing configuration files keep decoding.
     public var defines: [String]?
     /// User-supplied retention contracts extending the knowledge base.
-    /// v1 supports `tokenProducer` (the call returns a lifetime token that
-    /// must be owned); `anchorLeak` lands with cross-file release plumbing.
+    /// Supports `tokenProducer` (the call returns a lifetime token that must be
+    /// owned) and `sinkWrapper` (a custom Combine wrapper such as `React.to`
+    /// that returns an AnyCancellable-like token AND whose closure argument is
+    /// analyzed for a strong-`self` cycle exactly like `.sink`); `anchorLeak`
+    /// lands with cross-file release plumbing.
     public var contracts: [UserContract]?
 
     public init(
@@ -42,12 +45,23 @@ public struct Configuration: Sendable, Codable, Equatable {
 
     public struct UserContract: Sendable, Codable, Equatable {
         public enum Template: String, Sendable, Codable {
+            /// The call returns a lifetime token that must be owned — feeds the
+            /// premature-release rules (`unstored-lifetime-token`,
+            /// `token-stored-in-local`).
             case tokenProducer
+            /// A custom Combine wrapper (`React.to`, `bind`, …) that wraps
+            /// `.sink`/`.assign`: the call returns an AnyCancellable-like token
+            /// AND its trailing closure is analyzed for strong-`self` capture.
+            /// Superset of `tokenProducer` — a discarded token still feeds the
+            /// premature-release rules; a strong-`self` closure whose token is
+            /// stored on `self` feeds `combine-sink-self-cycle`.
+            case sinkWrapper
         }
 
-        /// Callee name (`subscribe` in `bus.subscribe(handler:)`).
+        /// Callee name (`subscribe` in `bus.subscribe(handler:)`, `to` in
+        /// `React.to(_:with:)`).
         public var callee: String
-        /// Optional receiver base name (`EventBus` for static calls).
+        /// Optional receiver base name (`EventBus`/`React` for static calls).
         public var base: String?
         /// Labels that must all be present for the call to match.
         public var requiredLabels: [String]?

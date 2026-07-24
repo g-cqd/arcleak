@@ -552,7 +552,9 @@ final class FactsExtractor: SyntaxVisitor {
     }
 
     /// User-KB fallback: `tokenProducer` calls feed the premature-release rules
-    /// exactly like built-in token APIs.
+    /// exactly like built-in token APIs; `sinkWrapper` calls additionally have
+    /// their closure argument analyzed for a strong-`self` cycle exactly like
+    /// `.sink` (`React.to { self.… }` stored on `self`).
     private func matchUserContract(_ node: FunctionCallExprSyntax) -> APICallFact? {
         guard !userContracts.isEmpty,
             let member = node.calledExpression.as(MemberAccessExprSyntax.self)
@@ -568,25 +570,84 @@ final class FactsExtractor: SyntaxVisitor {
             if let required = contract.requiredLabels, !required.allSatisfy(labels.contains) {
                 continue
             }
-            var capture: SelfCaptureKind?
-            if let trailing = node.trailingClosure {
-                capture =
-                    ClosureCaptureAnalysis.analyze(
-                        closure: trailing,
-                        memberNames: currentMemberNames,
-                        allowImplicitSelf: false
-                    ).selfCapture
+            let name = contract.tokenName ?? "the \(callee) token"
+            let (capture, nestedListOnly) = closureSelfCapture(in: node)
+            switch contract.template {
+            case .tokenProducer:
+                return APICallFact(
+                    kind: .userTokenProducer(name),
+                    position: position(of: node),
+                    repeats: nil,
+                    targetIsSelf: false,
+                    closureSelfCapture: capture,
+                    consumption: classifyConsumption(of: node)
+                )
+            case .sinkWrapper:
+                // The wrapper hides the real `.sink`/upstream, so finiteness is
+                // genuinely unknown — the cycle fires at warning severity with
+                // an honest "completion could not be determined" note.
+                return APICallFact(
+                    kind: .userSinkWrapper(name),
+                    position: position(of: node),
+                    repeats: nil,
+                    targetIsSelf: false,
+                    upstreamFiniteness: .unknown,
+                    closureSelfCapture: capture,
+                    selfCaptureViaNestedListOnly: nestedListOnly,
+                    consumption: classifyConsumption(of: node)
+                )
             }
-            return APICallFact(
-                kind: .userTokenProducer(contract.tokenName ?? "the \(callee) token"),
-                position: position(of: node),
-                repeats: nil,
-                targetIsSelf: false,
-                closureSelfCapture: capture,
-                consumption: classifyConsumption(of: node)
-            )
         }
         return nil
+    }
+
+    /// Strongest `self` capture across every closure a wrapper call carries —
+    /// trailing, additional-trailing, and closure-literal arguments — plus
+    /// bound-method values (`React.to(.x, with: self.handle)`). Mirrors the
+    /// `.sink` matcher: any bare `self` beats nested-list-only evidence.
+    private func closureSelfCapture(
+        in node: FunctionCallExprSyntax
+    ) -> (SelfCaptureKind?, Bool) {
+        func rank(_ kind: SelfCaptureKind?) -> Int {
+            switch kind {
+            case nil, .some(.none): 0
+            case .some(.weak): 1
+            case .some(.unowned): 2
+            case .some(.strong): 3
+            }
+        }
+        var closures: [ClosureExprSyntax] = []
+        if let trailing = node.trailingClosure { closures.append(trailing) }
+        for additional in node.additionalTrailingClosures { closures.append(additional.closure) }
+        for argument in node.arguments {
+            if let closure = argument.expression.as(ClosureExprSyntax.self) {
+                closures.append(closure)
+            }
+        }
+        var capture: SelfCaptureKind?
+        var nestedListOnly = false
+        for closure in closures {
+            let analysis = ClosureCaptureAnalysis.analyze(
+                closure: closure,
+                memberNames: currentMemberNames,
+                allowImplicitSelf: false
+            )
+            let newRank = rank(analysis.selfCapture)
+            if newRank > rank(capture) {
+                capture = analysis.selfCapture
+                nestedListOnly = analysis.strongViaNestedCaptureOnly
+            } else if newRank == 3 {
+                nestedListOnly = nestedListOnly && analysis.strongViaNestedCaptureOnly
+            }
+        }
+        // A bound method / self-referencing local passed as the action is a
+        // strong capture with no capture-list syntax available.
+        for argument in node.arguments where !argument.expression.is(ClosureExprSyntax.self) {
+            if strongCaptureEquivalent(argument.expression) {
+                return (.strong(implicit: false), false)
+            }
+        }
+        return (capture, nestedListOnly)
     }
 
     // MARK: - KB matching helpers
