@@ -172,7 +172,15 @@
                 throw IndexStoreError.dylibNotFound
             }
 
-            let storePath = URL(fileURLWithPath: indexStorePath)
+            // libIndexStore aborts on a relative store path
+            // ("passed relative path without working-dir"), so absolutize it
+            // against the current directory before handing it over — a relative
+            // `--index-store-path` must degrade gracefully, never crash.
+            let absolute =
+                (indexStorePath as NSString).isAbsolutePath
+                ? indexStorePath
+                : FileManager.default.currentDirectoryPath + "/" + indexStorePath
+            let storePath = URL(fileURLWithPath: absolute).standardizedFileURL
             let databasePath = storePath.deletingLastPathComponent()
                 .appendingPathComponent("IndexDatabase")
 
@@ -388,23 +396,23 @@
     public struct IndexStorePathFinder: Sendable {
         public static func findIndexStorePath(in projectRoot: String) -> String? {
             let buildDir = URL(fileURLWithPath: projectRoot).appendingPathComponent(".build")
-
-            for configuration in ["debug", "release"] {
-                let store =
-                    buildDir
-                    .appendingPathComponent(configuration)
-                    .appendingPathComponent("index")
-                    .appendingPathComponent("store")
-                if FileManager.default.fileExists(atPath: store.path) {
-                    return store.path
-                }
+            // Only stores that record ABSOLUTE source paths are safe to query:
+            // SourceKit-LSP's background index (`.build/index-build`), the classic
+            // SwiftPM index (`.build/<config>/index/store`), arcleak's own
+            // auto-build target (`.build/index/store`), and Xcode DerivedData all
+            // qualify. The current Swift Build system's `.build/out` store records
+            // RELATIVE unit paths, which abort an asserts build of libIndexStore
+            // on query — it is deliberately NOT discovered. Only a POPULATED store
+            // counts, so an empty override target loses to a populated sibling.
+            let candidates = [
+                buildDir.appendingPathComponent("index-build/index/store"),
+                buildDir.appendingPathComponent("debug/index/store"),
+                buildDir.appendingPathComponent("release/index/store"),
+                buildDir.appendingPathComponent("index/store"),
+            ]
+            for candidate in candidates where isPopulatedStore(candidate) {
+                return candidate.path
             }
-            // SourceKit-LSP's background index.
-            let indexBuild = buildDir.appendingPathComponent("index-build/index/store")
-            if FileManager.default.fileExists(atPath: indexBuild.path) {
-                return indexBuild.path
-            }
-
             return findDerivedDataStore(projectRoot: projectRoot)
         }
 
@@ -427,32 +435,37 @@
                 // libIndexStore is handed the store ROOT (the `-index-store-path`
                 // / `INDEX_DATA_STORE_DIR` value); it navigates the internal `vN`
                 // layout itself. Returning the versioned subdir instead makes
-                // per-file unit lookups miss (empirically a false-stale). So
-                // validate a versioned store exists, but return the root.
-                if hasVersionedStore(in: dataStore)
-                    || FileManager.default.fileExists(atPath: dataStore.path)
-                {
+                // per-file unit lookups miss (empirically a false-stale).
+                if isPopulatedStore(dataStore) {
                     return dataStore.path
                 }
             }
             return nil
         }
 
-        /// Whether `dataStore` contains a modern versioned index (v5, v6, …) with
-        /// records/units — used only to validate, never as the returned path.
-        private static func hasVersionedStore(in dataStore: URL) -> Bool {
-            guard
-                let contents = try? FileManager.default.contentsOfDirectory(atPath: dataStore.path)
-            else { return false }
-            for dir in contents where dir.hasPrefix("v") && dir.dropFirst().allSatisfy(\.isNumber) {
-                let path = dataStore.appendingPathComponent(dir)
-                if FileManager.default.fileExists(atPath: path.appendingPathComponent("records").path)
-                    || FileManager.default.fileExists(atPath: path.appendingPathComponent("units").path)
-                {
-                    return true
-                }
+        /// A store is usable only if it actually holds index records — directly,
+        /// or under its newest `vN` subdir. An empty `vN/units` (a build that
+        /// emitted nothing to this path) does not count, so a populated sibling
+        /// store wins discovery.
+        private static func isPopulatedStore(_ url: URL) -> Bool {
+            guard (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else {
+                return false
+            }
+            if hasRecords(in: url) { return true }
+            guard let entries = try? FileManager.default.contentsOfDirectory(atPath: url.path) else {
+                return false
+            }
+            for entry in entries where entry.hasPrefix("v") && entry.dropFirst().allSatisfy(\.isNumber) {
+                if hasRecords(in: url.appendingPathComponent(entry)) { return true }
             }
             return false
+        }
+
+        /// Whether `url/records` exists and is non-empty.
+        private static func hasRecords(in url: URL) -> Bool {
+            let records = url.appendingPathComponent("records")
+            let entries = try? FileManager.default.contentsOfDirectory(atPath: records.path)
+            return !(entries ?? []).isEmpty
         }
 
         private static func normalizeProjectName(_ name: String) -> String {

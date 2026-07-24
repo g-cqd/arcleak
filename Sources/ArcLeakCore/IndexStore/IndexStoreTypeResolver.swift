@@ -36,18 +36,30 @@
             return IndexStoreTypeResolver(reader: reader, defines: defines)
         }
 
-        /// Analyzed files the index has never seen, or whose on-disk mtime is
-        /// newer than the index's latest unit for them. A non-empty result means
-        /// the store is stale relative to the corpus — the caller downgrades to
-        /// corpus-only, never resolving against a store that could be wrong.
+        /// Analyzed files the index has never seen (by absolute path), or whose
+        /// on-disk mtime is newer than the index's latest unit for them. A
+        /// non-empty result means the store is stale relative to the corpus — the
+        /// caller downgrades to corpus-only, never resolving against a store that
+        /// could be wrong.
+        ///
+        /// Paths are resolved to absolute+canonical form first. This is also the
+        /// safety gate for stores that record RELATIVE unit paths (the current
+        /// Swift Build system's `.build/out`): absolute analyzed paths never
+        /// match relative units, so such a store reports every file stale and is
+        /// downgraded *before* any symbol query runs — that query aborts an
+        /// asserts/`report_fatal_error` build of libIndexStore on a relative path.
         public func staleFiles(among files: [String]) -> [String] {
             var stale: [String] = []
             for file in files {
+                let absolute = URL(fileURLWithPath: file).resolvingSymlinksInPath().path
                 guard
-                    let attributes = try? FileManager.default.attributesOfItem(atPath: file),
+                    let attributes = try? FileManager.default.attributesOfItem(atPath: absolute),
                     let sourceDate = attributes[.modificationDate] as? Date
-                else { continue }
-                guard let unitDate = reader.latestUnitDate(forFile: file) else {
+                else {
+                    stale.append(file)
+                    continue
+                }
+                guard let unitDate = reader.latestUnitDate(forFile: absolute) else {
                     stale.append(file)
                     continue
                 }
