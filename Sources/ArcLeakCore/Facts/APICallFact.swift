@@ -1,6 +1,9 @@
+public import ADJSON
+
 /// A call site matching one of the knowledge-base API shapes, with the facts a
 /// rule needs: how the attached closure captures `self`, whether the call's
 /// target is `self`, and where the returned token went.
+@JSONCodable
 public struct APICallFact: Sendable, Equatable, Codable {
     public enum Kind: Sendable, Hashable, Codable {
         /// `Timer.scheduledTimer(withTimeInterval:repeats:block:)` — run loop retains the

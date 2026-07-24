@@ -1,4 +1,7 @@
+public import ADJSON
+
 /// A `Task { … }` / `Task.detached { … }` spawn site.
+@JSONCodable
 public struct TaskSpawnFact: Sendable, Equatable, Codable {
     public let position: SourcePosition
     public let selfCapture: SelfCaptureKind
