@@ -22,10 +22,31 @@ public struct FactsCache: Sendable {
         }
     }
 
-    private struct Payload: Codable {
+    fileprivate struct Payload: Codable {
         var tool: String
         var version: String
         var entries: [String: Entry]
+    }
+
+    // MARK: - Coder seam
+
+    // The single encode/decode seam. `load`/`persist` and the `@_spi(Benchmarks)`
+    // hooks all route through these two functions, so swapping the JSON coder
+    // touches exactly one place and every path is measured/exercised identically.
+    fileprivate static func encodePayload(_ payload: Payload) throws -> Data {
+        // `.sortedKeys` makes the persisted cache byte-stable across a
+        // decode -> re-encode: the only hash-ordered container in the payload is
+        // the top-level `entries` map (every other collection is an array or a
+        // Set-as-array), and sorting its keys pins its order. Within a process
+        // Set element order is already stable (one hash seed), so the whole
+        // round-trip is byte-identical.
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return try encoder.encode(payload)
+    }
+
+    fileprivate static func decodePayload(from data: Data) throws -> Payload {
+        try JSONDecoder().decode(Payload.self, from: data)
     }
 
     public private(set) var entries: [String: Entry]
@@ -75,7 +96,7 @@ public struct FactsCache: Sendable {
     public static func load(url: URL) -> FactsCache {
         guard
             let data = try? BoundedFileReader.read(path: url.path, cap: maxCacheBytes),
-            let payload = try? JSONDecoder().decode(Payload.self, from: data),
+            let payload = try? decodePayload(from: data),
             payload.tool == ToolInfo.name,
             payload.version == ToolInfo.version
         else {
@@ -88,13 +109,39 @@ public struct FactsCache: Sendable {
     /// swallows failures — a read-only cache location must never fail a run.
     public func persist(url: URL) {
         let payload = Payload(tool: ToolInfo.name, version: ToolInfo.version, entries: entries)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        guard let data = try? encoder.encode(payload) else { return }
+        guard let data = try? Self.encodePayload(payload) else { return }
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
         try? data.write(to: url, options: .atomic)
+    }
+}
+
+// MARK: - Benchmark hooks (SPI)
+
+/// SPI surface for the local `Benchmarks/` package: time the cache's
+/// encode/decode seam in isolation on a real payload, independent of file I/O
+/// and the rest of the analysis pipeline. Not supported public API. The opaque
+/// `Payload` handle hides the cache's private payload shape while letting the
+/// encode benchmark reuse one decoded instance across iterations. Both hooks
+/// route through the exact seam `load`/`persist` use, so a coder swap is
+/// measured here identically to production.
+@_spi(Benchmarks)
+public enum FactsCacheBenchmark {
+    public struct Payload: Sendable {
+        fileprivate let inner: FactsCache.Payload
+        public var entryCount: Int { inner.entries.count }
+    }
+
+    /// Decode facts.json bytes into an opaque payload using the cache's
+    /// current decoder.
+    public static func decode(_ data: Data) throws -> Payload {
+        Payload(inner: try FactsCache.decodePayload(from: data))
+    }
+
+    /// Encode a payload back to bytes using the cache's current encoder.
+    public static func encode(_ payload: Payload) throws -> Data {
+        try FactsCache.encodePayload(payload.inner)
     }
 }
