@@ -37,7 +37,23 @@ struct OwnershipGraph {
         edgeByPair[Pair(from: from, to: to)]
     }
 
-    static func build(from corpus: [FileFacts]) -> OwnershipGraph {
+    /// A resolved edge before node indices are assigned (endpoints are still
+    /// type *names*, so corpus and index-resolved external edges compose).
+    private struct NamedEdge {
+        let from: String
+        let to: String
+        let property: String
+        let path: String
+        let position: SourcePosition
+    }
+
+    /// Builds the graph. When `index` is non-nil, a strong stored property whose
+    /// referenced type is *not* in the corpus is resolved through the index: if
+    /// the index CONFIRMS the type is a class/actor it is added as an external
+    /// node carrying its own strong references, so a cross-module back-reference
+    /// can close a cycle. When `index` is nil (or resolves nothing) the result
+    /// is byte-identical to corpus-only construction — never a guess.
+    static func build(from corpus: [FileFacts], index: (any IndexReading)? = nil) -> OwnershipGraph {
         let files = corpus.sorted { $0.path < $1.path }
 
         var referenceTypes: Set<String> = []
@@ -46,30 +62,83 @@ struct OwnershipGraph {
                 referenceTypes.insert(type.name)
             }
         }
-        let names = referenceTypes.sorted()
-        let indexByName = Dictionary(uniqueKeysWithValues: names.enumerated().map { ($1, $0) })
 
-        var edges: [Edge] = []
+        // Corpus strong edges, endpoints kept as names. Targets not resolvable
+        // within the corpus are queued for index resolution.
+        var namedEdges: [NamedEdge] = []
+        var unresolved: Set<String> = []
         for file in files {
-            for type in file.types {
-                guard let from = indexByName[type.name] else { continue }
+            for type in file.types where referenceTypes.contains(type.name) {
                 let isModel = type.attributeNames.contains("Model")
                 for property in type.storedProperties
                 where property.strength == .strong && (!isModel || property.hasTransientAttribute) {
-                    for target in property.referencedTypeNames {
-                        guard let to = indexByName[target], to != from else { continue }
-                        edges.append(
-                            Edge(
-                                from: from,
-                                to: to,
+                    for target in property.referencedTypeNames where target != type.name {
+                        namedEdges.append(
+                            NamedEdge(
+                                from: type.name,
+                                to: target,
                                 property: property.name,
                                 path: file.path,
                                 position: property.position
                             )
                         )
+                        if !referenceTypes.contains(target) {
+                            unresolved.insert(target)
+                        }
                     }
                 }
             }
+        }
+
+        // Bounded, deterministic BFS: pull in index-confirmed external reference
+        // types and their outgoing strong edges. New external targets are queued
+        // so a chain (A→B→C→A across modules) can still close.
+        var externalNodes: Set<String> = []
+        if let index {
+            var frontier = unresolved.sorted()
+            var visited: Set<String> = []
+            var budget = 256
+            while !frontier.isEmpty, budget > 0 {
+                let name = frontier.removeFirst()
+                if visited.contains(name) { continue }
+                visited.insert(name)
+                budget -= 1
+                guard referenceTypes.contains(name) == false,
+                    let external = index.externalTypeFacts(name: name),
+                    external.isReferenceType
+                else { continue }
+                externalNodes.insert(name)
+                let path = external.declaringPath ?? "<external>"
+                for reference in external.strongReferences {
+                    for target in reference.referencedTypeNames where target != name {
+                        namedEdges.append(
+                            NamedEdge(
+                                from: name,
+                                to: target,
+                                property: reference.property,
+                                path: path,
+                                position: reference.position
+                            )
+                        )
+                        if !referenceTypes.contains(target), !visited.contains(target) {
+                            frontier.append(target)
+                            frontier.sort()
+                        }
+                    }
+                }
+            }
+        }
+
+        let names = referenceTypes.union(externalNodes).sorted()
+        let indexByName = Dictionary(uniqueKeysWithValues: names.enumerated().map { ($1, $0) })
+
+        var edges: [Edge] = []
+        for edge in namedEdges {
+            guard let from = indexByName[edge.from], let to = indexByName[edge.to], to != from
+            else { continue }
+            edges.append(
+                Edge(from: from, to: to, property: edge.property, path: edge.path, position: edge.position)
+            )
         }
         edges.sort {
             ($0.from, $0.to, $0.position.line, $0.position.column)
