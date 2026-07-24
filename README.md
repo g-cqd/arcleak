@@ -99,10 +99,47 @@ owned by root or you, not world-writable).
 
 ## Experimental: `--experimental-embedding-rank` (macOS-only)
 
-Groups findings of similar shape together in the report using on-device
-embeddings (`NLContextualEmbedding`; zero download, with a deterministic
-fallback offline). This is **ordering only** — it never changes which findings
-fire, their severity, or the exit code. Experimental and off by default.
+Groups findings of similar shape together in the report by embedding each
+finding's flagged-site line and clustering by cosine similarity. This is
+**ordering only** — it never changes which findings fire, their severity, or
+the exit code. Experimental and off by default.
+
+Out of the box it uses Apple's on-device `NLContextualEmbedding` (zero
+download, with a deterministic n-gram fallback when the system asset is
+missing). Be aware of what that model is: an **English natural-language**
+model. It reads source lines as prose, so it over-clusters — anything that
+"looks like a statement" lands in one narrow cone of the vector space. A
+code-trained sentence model groups noticeably tighter, and being far smaller,
+runs several times faster.
+
+So `--embedding-bundle` takes a directory holding a Core ML model plus the
+HuggingFace tokenizer it was trained with — a `.mlpackage` (compiled on first
+use) or `.mlmodelc`, alongside `tokenizer.json` / `config.json`. Any standard
+HF feature-extraction export works (all-MiniLM-L6-v2, CodeBERT,
+jina-embeddings-v2-base-code, CodeT5+):
+
+```sh
+arcleak analyze Sources --experimental-embedding-rank \
+    --embedding-bundle /path/to/Models/MiniLM
+export ARCLEAK_EMBEDDING_BUNDLE=/path/to/Models/MiniLM   # same, without the flag
+```
+
+A build that ships a model next to the binary needs neither: `Models/MiniLM`
+beside the executable, or `share/arcleak/Models/MiniLM` for a `bin/`+`share/`
+install, is discovered automatically. Precedence is
+`--embedding-bundle` → `ARCLEAK_EMBEDDING_BUNDLE` → executable-adjacent →
+`NLContextualEmbedding` → deterministic fallback, and the run's status note
+names the model that actually ran:
+
+```
+arcleak: experimental embedding-rank grouped 12 finding(s) by flagged-site similarity [provider: bundle:MiniLM]
+```
+
+A bundle that fails to load is reported and ignored — ranking falls back to
+the default provider, and the finding set and exit code are untouched. The
+flag has no effect without `--experimental-embedding-rank`, and none of this
+exists on Linux (`#if canImport(CoreML)`), where the flag is accepted and
+ranking is skipped with a note.
 
 ## Build-time integration
 
