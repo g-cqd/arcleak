@@ -86,6 +86,28 @@ struct Analyze: AsyncParsableCommand {
     )
     var experimentalSilConfirm = false
 
+    @Flag(
+        name: .customLong("index-store"),
+        help: ArgumentHelp(
+            "Resolve cross-module types via IndexStoreDB (macOS-only, opt-in).",
+            discussion:
+                "Lets cross-file rules reason about class-ness of types declared in other modules or the SDK. Fails open: with no index (or on Linux) the analysis is corpus-only, byte-identical, with a note."
+        )
+    )
+    var indexStore = false
+
+    @Option(
+        name: .customLong("index-store-path"),
+        help: "Explicit index-store directory (implies --index-store)."
+    )
+    var indexStorePath: String?
+
+    @Flag(
+        name: .customLong("index-store-build"),
+        help: "Build the index with `swift build` if none is found (implies --index-store)."
+    )
+    var indexStoreBuild = false
+
     func run() async throws {
         var configuration = try loadConfiguration()
         if !define.isEmpty {
@@ -96,8 +118,10 @@ struct Analyze: AsyncParsableCommand {
             throw ValidationError(ArcLeakError.noInputs.description)
         }
 
+        let index = await resolveIndex(files: files, configuration: configuration)
+
         var report = await Analyzer(configuration: configuration)
-            .analyze(files: files, cacheURL: cacheURL())
+            .analyze(files: files, cacheURL: cacheURL(), index: index)
 
         if let writeBaseline {
             try Baseline(findings: report.findings).write(path: writeBaseline)
@@ -162,6 +186,44 @@ struct Analyze: AsyncParsableCommand {
         if failed {
             throw ExitCode(1)
         }
+    }
+
+    /// Resolves the opt-in index-backed type resolver, printing any fallback
+    /// note. Off unless one of the `--index-store*` flags is set; never fails.
+    private func resolveIndex(
+        files: [String],
+        configuration: Configuration
+    ) async -> (any IndexReading)? {
+        guard indexStore || indexStorePath != nil || indexStoreBuild else { return nil }
+        let outcome = await IndexStoreResolution.resolve(
+            projectRoot: Self.projectRoot(for: files),
+            explicitStorePath: indexStorePath,
+            autoBuild: indexStoreBuild,
+            analyzedFiles: files,
+            defines: configuration.activeDefines
+        )
+        if let note = outcome.note {
+            FileHandle.standardError.write(Data("arcleak: \(note)\n".utf8))
+        }
+        return outcome.index
+    }
+
+    /// Nearest ancestor of the first analyzed file containing `Package.swift`,
+    /// else the current directory — the root for index-store discovery/build.
+    private static func projectRoot(for files: [String]) -> String {
+        let start =
+            files.first.map { URL(fileURLWithPath: $0).deletingLastPathComponent() }
+            ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        var directory = start.standardizedFileURL
+        while directory.path != "/" {
+            if FileManager.default.fileExists(
+                atPath: directory.appendingPathComponent("Package.swift").path
+            ) {
+                return directory.path
+            }
+            directory = directory.deletingLastPathComponent()
+        }
+        return FileManager.default.currentDirectoryPath
     }
 
     private func loadConfiguration() throws -> Configuration {
