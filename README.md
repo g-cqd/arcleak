@@ -113,10 +113,15 @@ code-trained sentence model groups noticeably tighter, and being far smaller,
 runs several times faster.
 
 So `--embedding-bundle` takes a directory holding a Core ML model plus the
-HuggingFace tokenizer it was trained with — a `.mlpackage` (compiled on first
-use) or `.mlmodelc`, alongside `tokenizer.json` / `config.json`. Any standard
-HF feature-extraction export works (all-MiniLM-L6-v2, CodeBERT,
-jina-embeddings-v2-base-code, CodeT5+):
+WordPiece vocabulary it was trained with — a `.mlpackage` (compiled on first
+use) or `.mlmodelc`, alongside `vocab.txt` / `tokenizer.json` / `config.json`.
+
+**WordPiece (BERT-family) bundles only**, e.g. all-MiniLM-L6-v2: arcleak
+tokenizes in-house (`WordPieceTokenizer`, pinned token-for-token against
+`swift-transformers` before that dependency was dropped) rather than linking a
+9-package HuggingFace stack into every binary. A BPE/SentencePiece bundle
+(CodeBERT, GraphCodeBERT, jina-v2-code, CodeT5+) fails to load and falls back to
+the zero-download provider rather than tokenizing wrongly:
 
 ```sh
 arcleak analyze Sources --experimental-embedding-rank \
