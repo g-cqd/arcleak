@@ -108,6 +108,16 @@ struct Analyze: AsyncParsableCommand {
     )
     var indexStoreBuild = false
 
+    @Flag(
+        name: .customLong("experimental-embedding-rank"),
+        help: ArgumentHelp(
+            "Group findings of similar shape together in the report (experimental, macOS-only).",
+            discussion:
+                "Embeds each finding's flagged-site snippet with on-device NLContextualEmbedding (zero download; deterministic fallback offline) and clusters by cosine similarity. Ordering only — never changes which findings fire, their severity, or the exit code."
+        )
+    )
+    var experimentalEmbeddingRank = false
+
     func run() async throws {
         var configuration = try loadConfiguration()
         if !define.isEmpty {
@@ -159,6 +169,10 @@ struct Analyze: AsyncParsableCommand {
             if fix { return }
         }
 
+        if experimentalEmbeddingRank {
+            report.findings = await rankFindings(report.findings)
+        }
+
         let output = ReportFormatter.format(report, as: format)
         if !output.isEmpty {
             print(output)
@@ -185,6 +199,57 @@ struct Analyze: AsyncParsableCommand {
         }
         if failed {
             throw ExitCode(1)
+        }
+    }
+
+    /// Experimental: reorders findings so shape-similar ones are adjacent.
+    /// Ordering only — the finding set, severities, and exit code are untouched.
+    private func rankFindings(_ findings: [Finding]) async -> [Finding] {
+        #if canImport(NaturalLanguage)
+            guard findings.count > 1 else { return findings }
+            let ranked = await EmbeddingRank.reorder(
+                findings: findings,
+                snippets: Self.snippets(for: findings),
+                provider: EmbeddingRank.defaultProvider()
+            )
+            FileHandle.standardError.write(
+                Data(
+                    "arcleak: experimental embedding-rank grouped \(ranked.count) finding(s) by flagged-site similarity\n"
+                        .utf8
+                )
+            )
+            return ranked
+        #else
+            FileHandle.standardError.write(
+                Data(
+                    "arcleak: experimental embedding-rank is unavailable on this platform; order unchanged\n"
+                        .utf8
+                )
+            )
+            return findings
+        #endif
+    }
+
+    /// The flagged-site source line per finding (trimmed), for embedding-rank.
+    /// Falls back to the rule id when the line can't be read.
+    private static func snippets(for findings: [Finding]) -> [String] {
+        var cache: [String: [String]] = [:]
+        return findings.map { finding in
+            let lines: [String]
+            if let cached = cache[finding.path] {
+                lines = cached
+            } else {
+                lines =
+                    (try? String(contentsOfFile: finding.path, encoding: .utf8))?
+                    .split(separator: "\n", omittingEmptySubsequences: false).map(String.init) ?? []
+                cache[finding.path] = lines
+            }
+            let index = finding.line - 1
+            if index >= 0, index < lines.count {
+                let text = lines[index].trimmingCharacters(in: .whitespacesAndNewlines)
+                if !text.isEmpty { return text }
+            }
+            return finding.rule.rawValue
         }
     }
 
