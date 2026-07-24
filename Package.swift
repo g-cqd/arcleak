@@ -18,7 +18,11 @@ let strictSwiftSettings: [SwiftSetting] = [
 
 let package = Package(
     name: "arcleak",
-    platforms: [.macOS(.v14)],
+    // Floor bump 14 → 15: IndexStoreDB (the opt-in `--index-store` backend)
+    // targets macOS 15. arcleak is a developer tool, so the bump is acceptable;
+    // the syntax-only analysis path is unaffected and Linux builds gate the
+    // index out entirely (`#if canImport(IndexStoreDB)`).
+    platforms: [.macOS(.v15)],
     products: [
         .library(name: "ArcLeakCore", targets: ["ArcLeakCore"]),
         .executable(name: "arcleak", targets: ["arcleak"]),
@@ -28,6 +32,12 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "603.0.2"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.8.2"),
+        // indexstore-db has no semver tags — revision-pinned per DESIGN.md.
+        // Linked into ArcLeakCore on macOS only (see the target dependency).
+        .package(
+            url: "https://github.com/swiftlang/indexstore-db.git",
+            revision: "cb3b960568f18a3cc018923f5824323b5c4edd0b"
+        ),
     ],
     targets: [
         .target(
@@ -36,6 +46,11 @@ let package = Package(
                 .product(name: "SwiftSyntax", package: "swift-syntax"),
                 .product(name: "SwiftParser", package: "swift-syntax"),
                 .product(name: "SwiftIfConfig", package: "swift-syntax"),
+                .product(
+                    name: "IndexStoreDB",
+                    package: "indexstore-db",
+                    condition: .when(platforms: [.macOS])
+                ),
             ],
             swiftSettings: strictSwiftSettings
         ),
