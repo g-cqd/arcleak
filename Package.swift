@@ -38,6 +38,16 @@ let package = Package(
             url: "https://github.com/swiftlang/indexstore-db.git",
             revision: "cb3b960568f18a3cc018923f5824323b5c4edd0b"
         ),
+        // ADJSON (g-cqd) backs ONLY the internal, version-gated FactsCache coder
+        // — its reflection-free `@JSONCodable` fast path. No tag exists yet, so
+        // it is revision-pinned (this commit carries the `JSONWriter(adopting:)`
+        // CoW fix the fast encode path needs). Report/SARIF/baseline stay on
+        // Foundation: they hash encoded bytes across runs and ADJSON differs on
+        // number/slash formatting, which is harmless only inside the cache.
+        .package(
+            url: "https://github.com/g-cqd/ADJSON.git",
+            revision: "1d7fb25c0175f6ff42676dbdd1f104ad29ed8348"
+        ),
     ],
     targets: [
         .target(
@@ -46,6 +56,7 @@ let package = Package(
                 .product(name: "SwiftSyntax", package: "swift-syntax"),
                 .product(name: "SwiftParser", package: "swift-syntax"),
                 .product(name: "SwiftIfConfig", package: "swift-syntax"),
+                .product(name: "ADJSON", package: "ADJSON"),
                 .product(
                     name: "IndexStoreDB",
                     package: "indexstore-db",

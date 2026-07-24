@@ -1,5 +1,8 @@
+public import ADJSON
+
 /// The complete, `Sendable` extraction result for one source file. The syntax
 /// tree is dropped as soon as this is built — memory stays bounded by facts.
+@JSONCodable
 public struct FileFacts: Sendable, Codable {
     public let path: String
     public var types: [TypeFacts]
