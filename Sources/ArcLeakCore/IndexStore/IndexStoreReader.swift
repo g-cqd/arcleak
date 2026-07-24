@@ -424,36 +424,35 @@
                     .appendingPathComponent(dir)
                     .appendingPathComponent("Index.noindex")
                     .appendingPathComponent("DataStore")
-                if let versioned = findVersionedIndexStore(in: dataStore) {
-                    return versioned
-                }
-                if FileManager.default.fileExists(atPath: dataStore.path) {
+                // libIndexStore is handed the store ROOT (the `-index-store-path`
+                // / `INDEX_DATA_STORE_DIR` value); it navigates the internal `vN`
+                // layout itself. Returning the versioned subdir instead makes
+                // per-file unit lookups miss (empirically a false-stale). So
+                // validate a versioned store exists, but return the root.
+                if hasVersionedStore(in: dataStore)
+                    || FileManager.default.fileExists(atPath: dataStore.path)
+                {
                     return dataStore.path
                 }
             }
             return nil
         }
 
-        /// Modern Xcode stores index data in versioned subdirectories (v5, v6…).
-        private static func findVersionedIndexStore(in dataStore: URL) -> String? {
+        /// Whether `dataStore` contains a modern versioned index (v5, v6, …) with
+        /// records/units — used only to validate, never as the returned path.
+        private static func hasVersionedStore(in dataStore: URL) -> Bool {
             guard
                 let contents = try? FileManager.default.contentsOfDirectory(atPath: dataStore.path)
-            else { return nil }
-            let versioned =
-                contents
-                .filter { $0.hasPrefix("v") && $0.dropFirst().allSatisfy(\.isNumber) }
-                .sorted { (Int($0.dropFirst()) ?? 0) > (Int($1.dropFirst()) ?? 0) }
-            for dir in versioned {
+            else { return false }
+            for dir in contents where dir.hasPrefix("v") && dir.dropFirst().allSatisfy(\.isNumber) {
                 let path = dataStore.appendingPathComponent(dir)
-                let records = path.appendingPathComponent("records")
-                let units = path.appendingPathComponent("units")
-                if FileManager.default.fileExists(atPath: records.path)
-                    || FileManager.default.fileExists(atPath: units.path)
+                if FileManager.default.fileExists(atPath: path.appendingPathComponent("records").path)
+                    || FileManager.default.fileExists(atPath: path.appendingPathComponent("units").path)
                 {
-                    return path.path
+                    return true
                 }
             }
-            return nil
+            return false
         }
 
         private static func normalizeProjectName(_ name: String) -> String {
