@@ -1,3 +1,9 @@
+// ADJSON backs ONLY this internal, version-gated cache coder — its
+// reflection-free `@JSONCodable` fast path. Report/SARIF/baseline stay on
+// Foundation (they hash encoded bytes across runs; ADJSON differs on number and
+// slash formatting, which is harmless only here). `public import` because the
+// hand-written `Entry` fast conformance below is public API of the public type.
+public import ADJSON
 public import Foundation
 
 /// Per-file facts cache. Parsing + extraction dominate runtime; rules are
@@ -34,19 +40,27 @@ public struct FactsCache: Sendable {
     // hooks all route through these two functions, so swapping the JSON coder
     // touches exactly one place and every path is measured/exercised identically.
     fileprivate static func encodePayload(_ payload: Payload) throws -> Data {
-        // `.sortedKeys` makes the persisted cache byte-stable across a
-        // decode -> re-encode: the only hash-ordered container in the payload is
-        // the top-level `entries` map (every other collection is an array or a
-        // Set-as-array), and sorting its keys pins its order. Within a process
-        // Set element order is already stable (one hash seed), so the whole
-        // round-trip is byte-identical.
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
+        // ADJSON's single-pass byte writer over the reflection-free
+        // `ADJSONFastEncodable` graph (`@JSONCodable` structs + the
+        // `FactsFastCoding` enums). Default `.rfc8259` options — NO
+        // `keyOrder = .sorted`, which would force ADJSON off the streaming writer
+        // into a second compact -> re-parse-tape -> re-emit pass and cripple
+        // encode. Byte-stability across a decode -> re-encode instead comes from
+        // `Payload.__adjsonEncode` emitting the top-level `entries` map in sorted
+        // key order (O(files·log files) — it is the only hash-ordered container in
+        // the payload). The cache is internal + version-gated, so `2.0`<->`2` and
+        // an unescaped `/` are harmless: only this tool version reads these bytes.
+        let encoder = ADJSON.JSONEncoder()
         return try encoder.encode(payload)
     }
 
     fileprivate static func decodePayload(from data: Data) throws -> Payload {
-        try JSONDecoder().decode(Payload.self, from: data)
+        // Byte-level decode: hand ADJSON a contiguous `[UInt8]` (no Foundation
+        // `Data` bridging in the parser); the `@JSONCodable`-generated
+        // `_FastDecodeCursor` conformances read each field straight off the tape
+        // by statically-known key — no `KeyedDecodingContainer`, no per-key String.
+        let decoder = ADJSON.JSONDecoder()
+        return try decoder.decode(Payload.self, from: [UInt8](data))
     }
 
     public private(set) var entries: [String: Entry]
@@ -115,6 +129,70 @@ public struct FactsCache: Sendable {
             withIntermediateDirectories: true
         )
         try? data.write(to: url, options: .atomic)
+    }
+}
+
+// MARK: - Fast ADJSON coding (payload root)
+
+// `FileFacts` and the whole nested model graph get their fast
+// `ADJSONFast{Encodable,Decodable}` conformance from `@JSONCodable` (the structs)
+// and `FactsFastCoding.swift` (the String-raw enums). `Entry` and `Payload` are
+// hand-written here so the root stays nested and — crucially — so `Payload`
+// emits the top-level `entries` map in sorted key order: that alone makes the
+// persisted cache byte-stable across a decode -> re-encode WITHOUT paying
+// ADJSON's `.sorted` whole-tape re-emit (`entries` is the only hash-ordered
+// container in the payload; every other collection is an array or a Set-as-array).
+
+extension FactsCache.Entry: ADJSONFastEncodable, ADJSONFastDecodable {
+    // ADJSON macro-runtime SPI requires these exact underscored names.
+    // swift-format-ignore: NoLeadingUnderscores
+    public func __adjsonEncode(into w: inout _JSONByteWriter) throws {
+        w.beginObject()
+        w.key("fingerprint")
+        w.string(fingerprint)
+        w.comma()
+        w.key("facts")
+        try facts.__adjsonEncode(into: &w)
+        w.endObject()
+    }
+
+    // swift-format-ignore: NoLeadingUnderscores
+    public static func __adjsonDecode(_ c: _FastDecodeCursor) throws -> Self {
+        Self(
+            fingerprint: try c.string("fingerprint"),
+            facts: try c.decode(FileFacts.self, "facts"))
+    }
+}
+
+extension FactsCache.Payload: ADJSONFastEncodable, ADJSONFastDecodable {
+    // ADJSON macro-runtime SPI requires these exact underscored names.
+    // swift-format-ignore: NoLeadingUnderscores
+    func __adjsonEncode(into w: inout _JSONByteWriter) throws {
+        w.beginObject()
+        w.key("tool")
+        w.string(tool)
+        w.comma()
+        w.key("version")
+        w.string(version)
+        w.comma()
+        w.key("entries")
+        w.beginObject()
+        var first = true
+        for (path, entry) in entries.sorted(by: { $0.key < $1.key }) {
+            if first { first = false } else { w.comma() }
+            w.dynamicKey(path)
+            try entry.__adjsonEncode(into: &w)
+        }
+        w.endObject()
+        w.endObject()
+    }
+
+    // swift-format-ignore: NoLeadingUnderscores
+    static func __adjsonDecode(_ c: _FastDecodeCursor) throws -> Self {
+        Self(
+            tool: try c.string("tool"),
+            version: try c.string("version"),
+            entries: try c.decode([String: FactsCache.Entry].self, "entries"))
     }
 }
 

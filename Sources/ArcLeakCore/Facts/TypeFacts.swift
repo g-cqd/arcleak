@@ -1,5 +1,8 @@
+public import ADJSON
+
 /// Everything the rules need to know about one nominal type, merged across the
 /// type's declaration and its same-file extensions.
+@JSONCodable
 public struct TypeFacts: Sendable, Codable {
     public let name: String
     /// `true` for class/actor declared in this file; `false` for struct/enum;
@@ -40,6 +43,38 @@ public struct TypeFacts: Sendable, Codable {
         self.apiCalls = []
         self.taskSpawns = []
         self.releaseSites = []
+    }
+
+    /// Full memberwise init — the exact shape `@JSONCodable`'s generated decode
+    /// reconstructs. The convenience `init(name:isReferenceType:)` above starts
+    /// every collection empty for the extraction phase (which fills them by
+    /// mutation); this one takes them all so a cache hit can rebuild the type.
+    public init(
+        name: String,
+        isReferenceType: Bool?,
+        memberNames: Set<String>,
+        inheritedTypeNames: Set<String>,
+        methodNames: Set<String>,
+        attributeNames: Set<String>,
+        deadWeakCaptures: [SourcePosition],
+        storedProperties: [StoredPropertyFact],
+        storedClosures: [StoredClosureFact],
+        apiCalls: [APICallFact],
+        taskSpawns: [TaskSpawnFact],
+        releaseSites: [ReleaseSite]
+    ) {
+        self.name = name
+        self.isReferenceType = isReferenceType
+        self.memberNames = memberNames
+        self.inheritedTypeNames = inheritedTypeNames
+        self.methodNames = methodNames
+        self.attributeNames = attributeNames
+        self.deadWeakCaptures = deadWeakCaptures
+        self.storedProperties = storedProperties
+        self.storedClosures = storedClosures
+        self.apiCalls = apiCalls
+        self.taskSpawns = taskSpawns
+        self.releaseSites = releaseSites
     }
 
     /// True when `kind` has a release call reachable outside `deinit`.
