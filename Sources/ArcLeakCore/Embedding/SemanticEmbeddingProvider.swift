@@ -5,16 +5,30 @@
     /// only to *group/order* findings of similar shape in the report (experimental
     /// `--experimental-embedding-rank`) — never to decide which findings fire.
     ///
-    /// Two providers ship, both zero-download and dependency-free (no
-    /// HuggingFace / Core ML / tokenizer bundles):
+    /// Three providers ship. Two are zero-download and dependency-free, and are
+    /// what a plain `arcleak` binary uses:
     /// - ``NLContextualSemanticEmbeddingProvider`` — Apple's `NLContextualEmbedding`
     ///   (macOS 14+), a real semantically-grounded embedding, the default.
     /// - ``DeterministicEmbeddingProvider`` — an FNV n-gram hash fallback used when
     ///   the NL asset is unavailable (offline / sandbox) so ranking still runs.
+    ///
+    /// The third is opt-in and needs a model on disk:
+    /// - ``HFSemanticEmbeddingProvider`` — a Core ML model plus its HuggingFace
+    ///   tokenizer (`--embedding-bundle`, or auto-discovered next to the
+    ///   executable). Worth the setup because the two defaults are *not* trained
+    ///   on code: an English natural-language model over-clusters source lines,
+    ///   while a code-trained model (MiniLM-class) both groups tighter and runs
+    ///   several times faster.
     public protocol SemanticEmbeddingProvider: Sendable {
         /// Dimension of every embedding this provider returns. Callers validate
         /// dimension equality before computing similarity.
         var embeddingDimension: Int { get }
+
+        /// Human-readable identity of the model that actually ran, surfaced in the
+        /// embedding-rank status note. Ranking silently falls back across three
+        /// providers, so without this a user cannot tell whether their bundle was
+        /// picked up or quietly ignored.
+        var providerName: String { get }
 
         /// Embed a code snippet into a dense vector.
         func embed(snippet: String) async throws -> [Float]
@@ -25,6 +39,8 @@
     }
 
     extension SemanticEmbeddingProvider {
+        public var providerName: String { "embedding" }
+
         public func embed(snippets: [String]) async throws -> [[Float]] {
             var results: [[Float]] = []
             results.reserveCapacity(snippets.count)

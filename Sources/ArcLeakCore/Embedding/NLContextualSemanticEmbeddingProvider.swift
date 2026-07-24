@@ -20,6 +20,8 @@
         /// Language the underlying contextual embedding was trained on.
         public let language: NLLanguage
 
+        public var providerName: String { "NLContextualEmbedding (on-device, zero-download)" }
+
         /// Loads the contextual-embedding asset eagerly so a later
         /// `embed(snippet:)` failure surfaces here at construction time.
         public init(language: NLLanguage = .english) throws {
