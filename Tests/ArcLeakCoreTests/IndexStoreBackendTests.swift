@@ -16,6 +16,11 @@
     @Suite struct IndexStoreBackendTests {
         @Test("A prebuilt index unlocks a cross-module cycle the default mode misses")
         func indexUnlocksCrossModuleCycle() async throws {
+            // Local-only: this builds a real index via a nested `swift build`,
+            // and the IndexStoreDB dependency already dominates the macOS CI
+            // compile budget. The fake-index suites cover the resolver logic on
+            // CI; this end-to-end proof runs before every release locally.
+            guard ProcessInfo.processInfo.environment["CI"] == nil else { return }
             guard let swiftc = await Self.matchingSwiftc() else { return }
 
             let dir = FileManager.default.temporaryDirectory

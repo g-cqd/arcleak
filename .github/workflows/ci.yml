@@ -70,7 +70,9 @@ jobs:
     # (children then hold file fds, which cannot wedge pipe-EOF waits) and
     # cat the file afterward. The census step then safely names and kills
     # survivors on the now-unwedgeable log pipe.
-    timeout-minutes: 30
+    # Bound raised for the IndexStoreDB dependency, which compiles from source
+    # on macOS (gated out on Linux) and roughly doubles the cold build time.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
         with:
@@ -79,7 +81,7 @@ jobs:
         timeout-minutes: 10
         uses: ./.github/actions/setup-swift
       - name: Build & test
-        timeout-minutes: 15
+        timeout-minutes: 30
         run: |
           set +e
           { swift build --build-tests && swift test --no-parallel; } > build-test.log 2>&1 < /dev/null
