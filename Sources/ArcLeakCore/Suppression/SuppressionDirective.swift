@@ -1,3 +1,4 @@
+public import ADJSON
 import Foundation
 
 /// One parsed `@al:` / `@arcleak:` directive comment.
@@ -15,6 +16,7 @@ import Foundation
 ///     // @al:enable  [rules|all]               region end
 ///
 /// `@arcleak:` is an exact synonym for `@al:`.
+@JSONCodable
 public struct SuppressionDirective: Sendable, Equatable, Codable {
     public enum Kind: Sendable, Equatable, Codable {
         case acceptThis
