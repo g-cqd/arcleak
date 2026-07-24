@@ -34,6 +34,11 @@ public struct APICallFact: Sendable, Equatable, Codable {
         /// User-KB contract: the call returns a lifetime token that must be
         /// owned (associated value = diagnostic name).
         case userTokenProducer(String)
+        /// User-KB `sinkWrapper` contract: a custom Combine wrapper that
+        /// returns an AnyCancellable-like token AND whose closure is checked
+        /// for a strong-`self` cycle (associated value = diagnostic name). Feeds
+        /// both the premature-release rules and `combine-sink-self-cycle`.
+        case userSinkWrapper(String)
     }
 
     /// Whether a Combine upstream provably completes. `Subscribers.Sink`
@@ -138,8 +143,20 @@ public struct APICallFact: Sendable, Equatable, Codable {
         case .timerScheduledBlock, .timerScheduledTarget, .displayLinkTarget,
             .urlSessionWithDelegate, .dispatchSourceHandler:
             false
-        case .userTokenProducer:
+        case .userTokenProducer, .userSinkWrapper:
             true
+        }
+    }
+
+    /// Sink-shaped call sites whose strong-`self` closure stored on `self`
+    /// closes a `combine-sink-self-cycle`: the built-in `.sink`, plus
+    /// user-declared `sinkWrapper` contracts (`React.to` and friends).
+    public var feedsSinkCycleRule: Bool {
+        switch kind {
+        case .combineSink, .userSinkWrapper:
+            true
+        default:
+            false
         }
     }
 }

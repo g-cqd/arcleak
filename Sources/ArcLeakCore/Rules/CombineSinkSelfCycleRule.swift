@@ -1,5 +1,7 @@
 /// `publisher.sink { self.… }` stored into `self`'s cancellables — closed cycle:
-/// self → cancellable set → AnyCancellable → sink closure → self.
+/// self → cancellable set → AnyCancellable → sink closure → self. Also fires on
+/// user-declared `sinkWrapper` contracts (custom Combine wrappers like
+/// `React.to`) whose returned token is stored on `self`.
 struct CombineSinkSelfCycleRule: Rule {
     static let emits: [RuleID] = [.combineSinkSelfCycle]
 
@@ -10,11 +12,23 @@ struct CombineSinkSelfCycleRule: Rule {
         // test context so deliberate assertion plumbing can be accepted.
         let isTestCase = type.inheritedTypeNames.contains("XCTestCase")
         return type.apiCalls.compactMap { call in
-            guard call.kind == .combineSink,
+            guard call.feedsSinkCycleRule,
                 call.closureSelfCapture?.isStrong == true,
                 call.consumption.storesIntoSelf,
                 call.upstreamFiniteness != .finite
             else { return nil }
+
+            // A user-declared wrapper hides the real sink; name the token by
+            // its contract diagnostic name and say "wrapper closure".
+            let closureNoun: String
+            let tokenNoun: String
+            if case .userSinkWrapper(let name) = call.kind {
+                closureNoun = "wrapper closure"
+                tokenNoun = name
+            } else {
+                closureNoun = "sink closure"
+                tokenNoun = "its AnyCancellable"
+            }
 
             let severity: Severity
             var note: String
@@ -22,19 +36,19 @@ struct CombineSinkSelfCycleRule: Rule {
             case .infinite:
                 severity = configuration.severity(for: .combineSinkSelfCycle)
                 note =
-                    "capture [weak self] in the sink closure; the upstream never completes, so only explicit cancel() can break the cycle — deinit cannot"
+                    "capture [weak self] in the \(closureNoun); the upstream never completes, so only explicit cancel() can break the cycle — deinit cannot"
             case .unknown, .finite:
                 severity = .warning
                 note =
                     "capture [weak self]; upstream completion could not be determined — the cycle persists until the publisher completes or cancel() runs"
             }
             var message =
-                "retain cycle: sink closure captures self strongly and its AnyCancellable is stored on self (self → cancellable → closure → self)"
+                "retain cycle: \(closureNoun) captures self strongly and \(tokenNoun) is stored on self (self → cancellable → closure → self)"
             if call.selfCaptureViaNestedListOnly {
                 // The dev sees only a nested [weak self] and will disbelieve a
                 // bare "captures self strongly" — spell the mechanism out.
                 message =
-                    "retain cycle: the sink closure captures self strongly — its only `self` sits in a nested closure's capture list, and forming that nested [weak self] box forces the sink closure itself to capture self strongly (self → cancellable → closure → self)"
+                    "retain cycle: the \(closureNoun) captures self strongly — its only `self` sits in a nested closure's capture list, and forming that nested [weak self] box forces the \(closureNoun) itself to capture self strongly (self → cancellable → closure → self)"
                 note = "the nested [weak self] does not protect the outer closure; " + note
             }
             if isTestCase {
