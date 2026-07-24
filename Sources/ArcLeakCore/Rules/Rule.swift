@@ -10,9 +10,14 @@ protocol Rule: Sendable {
 
 /// A rule that needs the whole analyzed corpus at once (cross-file analysis,
 /// e.g. the ownership graph). Runs after all per-file extraction completes.
+/// `index`, when present, resolves types declared outside the analyzed corpus.
 protocol CorpusRule: Sendable {
     static var emits: [RuleID] { get }
-    static func check(corpus: [FileFacts], configuration: Configuration) -> [Finding]
+    static func check(
+        corpus: [FileFacts],
+        configuration: Configuration,
+        index: (any IndexReading)?
+    ) -> [Finding]
 }
 
 /// Applies every enabled rule to every type in a file.
@@ -50,12 +55,17 @@ public enum RuleEngine {
     }
 
     /// Cross-file rules over the whole corpus. `corpus` must be pre-sorted by
-    /// path for deterministic output (the Analyzer guarantees this).
-    public static func checkCorpus(corpus: [FileFacts], configuration: Configuration) -> [Finding] {
+    /// path for deterministic output (the Analyzer guarantees this). `index`,
+    /// when present, lets corpus rules resolve externally declared types.
+    public static func checkCorpus(
+        corpus: [FileFacts],
+        configuration: Configuration,
+        index: (any IndexReading)? = nil
+    ) -> [Finding] {
         var findings: [Finding] = []
         for rule in corpusRules where rule.emits.contains(where: configuration.isEnabled) {
             findings.append(
-                contentsOf: rule.check(corpus: corpus, configuration: configuration)
+                contentsOf: rule.check(corpus: corpus, configuration: configuration, index: index)
                     .filter { configuration.isEnabled($0.rule) }
             )
         }

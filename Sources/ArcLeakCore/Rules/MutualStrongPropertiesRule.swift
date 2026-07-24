@@ -12,8 +12,12 @@
 struct MutualStrongPropertiesRule: CorpusRule {
     static let emits: [RuleID] = [.mutualStrongProperties]
 
-    static func check(corpus: [FileFacts], configuration: Configuration) -> [Finding] {
-        let graph = OwnershipGraph.build(from: corpus)
+    static func check(
+        corpus: [FileFacts],
+        configuration: Configuration,
+        index: (any IndexReading)?
+    ) -> [Finding] {
+        let graph = OwnershipGraph.build(from: corpus, index: index)
         guard !graph.nodeNames.isEmpty else { return [] }
 
         let components =

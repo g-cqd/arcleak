@@ -96,7 +96,11 @@ public struct Analyzer: Sendable {
             }
         }
         corpus.sort { $0.path < $1.path }
-        raw.append(contentsOf: RuleEngine.checkCorpus(corpus: corpus, configuration: configuration))
+        raw.append(
+            contentsOf: RuleEngine.checkCorpus(
+                corpus: corpus, configuration: configuration, index: index
+            )
+        )
 
         if let cacheURL {
             freshCache.persist(url: cacheURL)
@@ -128,7 +132,11 @@ public struct Analyzer: Sendable {
             facts = facts.upgraded(with: index)
         }
         var raw = RuleEngine.check(file: facts, configuration: configuration)
-        raw.append(contentsOf: RuleEngine.checkCorpus(corpus: [facts], configuration: configuration))
+        raw.append(
+            contentsOf: RuleEngine.checkCorpus(
+                corpus: [facts], configuration: configuration, index: index
+            )
+        )
         let report = Self.assemble(raw: raw, corpus: [facts])
         return (report.findings, report.suppressed)
     }

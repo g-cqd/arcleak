@@ -13,21 +13,50 @@ public protocol IndexReading: Sendable {
     func externalTypeFacts(name: String) -> ExternalTypeFacts?
 }
 
+/// One strong stored-property reference of an externally declared type: the
+/// raw material of a cross-module ownership-graph edge. Populated only when the
+/// external type's declaring source could be located (via the index) and
+/// parsed — an SDK type with no readable source resolves to class-ness only,
+/// with no edges.
+public struct ExternalStrongReference: Sendable, Codable, Equatable {
+    public var property: String
+    public var referencedTypeNames: [String]
+    public var position: SourcePosition
+
+    public init(property: String, referencedTypeNames: [String], position: SourcePosition) {
+        self.property = property
+        self.referencedTypeNames = referencedTypeNames
+        self.position = position
+    }
+}
+
 /// Index-resolved facts about an externally declared type.
 public struct ExternalTypeFacts: Sendable, Codable, Equatable {
     public var isReferenceType: Bool
     /// Members declared `weak` — powers delegate-rule upgrades.
     public var weakMemberNames: Set<String>
     public var inheritedTypeNames: Set<String>
+    /// The external type's own strong stored-property references. When this type
+    /// is pulled into the ownership graph as an external node, these become its
+    /// outgoing edges — the mechanism that lets a strong property pointing at a
+    /// class in another module *complete* a cross-module cycle.
+    public var strongReferences: [ExternalStrongReference]
+    /// The file that declares this type, if the index located a parseable
+    /// source for it — used as the provenance path of external-node edges.
+    public var declaringPath: String?
 
     public init(
         isReferenceType: Bool,
         weakMemberNames: Set<String> = [],
-        inheritedTypeNames: Set<String> = []
+        inheritedTypeNames: Set<String> = [],
+        strongReferences: [ExternalStrongReference] = [],
+        declaringPath: String? = nil
     ) {
         self.isReferenceType = isReferenceType
         self.weakMemberNames = weakMemberNames
         self.inheritedTypeNames = inheritedTypeNames
+        self.strongReferences = strongReferences
+        self.declaringPath = declaringPath
     }
 }
 
