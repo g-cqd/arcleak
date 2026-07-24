@@ -112,7 +112,19 @@ public struct Analyzer: Sendable {
         )
 
         if let cacheURL {
-            freshCache.persist(url: cacheURL)
+            // Skip the redundant re-persist when the on-disk cache is already
+            // exactly current: every analyzed file was a cache hit (no
+            // re-extraction) AND the loaded snapshot held no other entries
+            // (nothing to prune). Re-writing then changes nothing the next run
+            // reads — entries are validated by source fingerprint, not by the
+            // cache's own bytes — so on an all-hits run it is pure encode + I/O
+            // cost, the dominant warm-run waste. Any miss, or any stale entry to
+            // prune, falls through and rebuilds the cache from this run only.
+            let alreadyCurrent =
+                hits == corpus.count && freshCache.entries.count == snapshot.entries.count
+            if !alreadyCurrent {
+                freshCache.persist(url: cacheURL)
+            }
         }
 
         var report = Self.assemble(raw: raw, corpus: corpus)

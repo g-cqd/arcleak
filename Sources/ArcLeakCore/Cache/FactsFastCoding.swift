@@ -48,3 +48,45 @@ extension ADJSONFastDecodable where Self: RawRepresentable, RawValue == String {
 extension ReferenceStrength: ADJSONFastEncodable, ADJSONFastDecodable {}
 extension ReleaseSite.Kind: ADJSONFastEncodable, ADJSONFastDecodable {}
 extension APICallFact.UpstreamFiniteness: ADJSONFastEncodable, ADJSONFastDecodable {}
+
+// `RuleID` (the elements of `SuppressionDirective.rules`) — same String-raw
+// treatment, plus `Comparable` so the `Set<RuleID>` below can sort. The fast
+// conformance is consulted only on the ADJSON cache path; RuleID's Foundation
+// Codable (config, baselines, SARIF) is untouched.
+extension RuleID: ADJSONFastEncodable, ADJSONFastDecodable {}
+extension RuleID: Comparable {
+    public static func < (lhs: RuleID, rhs: RuleID) -> Bool { lhs.rawValue < rhs.rawValue }
+}
+
+// MARK: - Sets (sorted for byte-stability)
+
+// Swift `Set` has no stable iteration order across constructions (per-process
+// hash seed + table capacity), so a Set-as-array is NOT byte-stable across a
+// load -> re-persist. Encode the payload's Set fields (`TypeFacts`'s name sets,
+// `SuppressionDirective.rules`) as a SORTED array instead: the cache then
+// round-trips byte-identically AND is reproducible across processes — the
+// Foundation coder it replaces sorted only dictionary keys, never Set elements.
+// `@retroactive`: this module owns neither `Set` (stdlib) nor the protocol
+// (ADJSON), and ADJSON deliberately ships no `Set` conformance. The risk the
+// warning guards against — Swift later conforming `Set` itself — does not apply
+// to a private macro-runtime SPI protocol, and the conformance is consulted only
+// on the internal cache path.
+extension Set: @retroactive ADJSONFastEncodable where Element: ADJSONFastEncodable & Comparable {
+    // swift-format-ignore: NoLeadingUnderscores
+    public func __adjsonEncode(into w: inout _JSONByteWriter) throws {
+        w.beginArray()
+        var first = true
+        for element in sorted() {
+            if first { first = false } else { w.comma() }
+            try element.__adjsonEncode(into: &w)
+        }
+        w.endArray()
+    }
+}
+
+extension Set: @retroactive ADJSONFastDecodable where Element: ADJSONFastDecodable {
+    // swift-format-ignore: NoLeadingUnderscores
+    public static func __adjsonDecode(_ c: _FastDecodeCursor) throws -> Set<Element> {
+        Set(try c.fastArray(Element.self))
+    }
+}
