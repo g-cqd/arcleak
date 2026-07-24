@@ -27,3 +27,34 @@ final class TernaryStore {
 
     func fire() {}
 }
+
+// Gap 4: a bound-method reference as a VALUE inside a collection literal passed
+// to a stored-property initializer (`self.router = Router([.k: self.method])`).
+// This is the Stations PlaybackService shape: `self.handle` retains the owner
+// and is buried in a dictionary handed to a constructor whose result is stored
+// on self — a real cycle (owner → router → stored closure → owner). Proving it
+// needs the constructed type's storage semantics (does Router retain the
+// dictionary, and does the sink it feeds outlive the owner?), which is
+// cross-type ownership arcleak does not track — flagging it unconditionally
+// would false-positive on the many constructors that consume closures
+// transiently. Direct bound-method storage (`self.handler = self.method`) and
+// bound methods handed straight to a token API (`sink(receiveValue: handle)`)
+// ARE caught — see Leaks/MethodReferenceCaptures.swift.
+final class ReactionRouter {
+    private var reactions: [Int: (Int) -> Void]
+    init(_ reactions: [Int: (Int) -> Void]) { self.reactions = reactions }
+}
+
+final class RouterOwner {
+    var router: ReactionRouter?
+
+    init() {
+        self.router = ReactionRouter([
+            0: { [weak self] value in self?.handle(value) },
+            1: self.handle,
+            2: { value in _ = value },
+        ])
+    }
+
+    func handle(_ value: Int) {}
+}
