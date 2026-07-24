@@ -5,7 +5,8 @@ import PackageDescription
 // block the main build. Baselines are committed; CI checks against them.
 let package = Package(
     name: "benchmarks",
-    platforms: [.macOS(.v14)],
+    // Tracks the main package's macOS 15 floor (IndexStoreDB in ArcLeakCore).
+    platforms: [.macOS(.v15)],
     dependencies: [
         .package(path: ".."),
         .package(url: "https://github.com/ordo-one/package-benchmark", from: "1.27.0"),
