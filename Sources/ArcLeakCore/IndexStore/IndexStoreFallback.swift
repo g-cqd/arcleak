@@ -137,9 +137,15 @@
                     currentDirectory: projectURL,
                     timeout: .seconds(600)
                 )
+                // The `-index-store-path` override is honored by the classic
+                // build system but ignored by the current Swift Build system
+                // (which writes to `.build/out`), so rediscover the real store
+                // rather than trusting the override target.
                 let store =
                     result.succeeded
-                    ? projectURL.appendingPathComponent(storeRelative).path : nil
+                    ? (IndexStorePathFinder.findIndexStorePath(in: projectRoot)
+                        ?? projectURL.appendingPathComponent(storeRelative).path)
+                    : nil
                 return BuildResult(
                     success: result.succeeded,
                     output: result.stdout + result.stderr,

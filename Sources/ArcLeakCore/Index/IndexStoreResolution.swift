@@ -96,21 +96,24 @@ public enum IndexStoreResolution {
                 )
             }
 
-            // Staleness contract: a store older than an analyzed source could
-            // resolve to wrong facts — downgrade to corpus-only with a notice,
-            // never silently wrong. A store we just built is fresh by
-            // construction.
-            if !freshlyBuilt {
-                let stale = resolver.staleFiles(among: analyzedFiles)
-                if !stale.isEmpty {
-                    return Outcome(
-                        index: nil,
-                        note:
-                            "index store at \(storePath) is stale for \(stale.count) analyzed "
-                            + "file(s); proceeding with corpus-only analysis "
-                            + "(rebuild with --index-store-build)"
-                    )
-                }
+            // Staleness contract AND crash-safety gate. A store older than an
+            // analyzed source could resolve to wrong facts — downgrade to
+            // corpus-only with a notice, never silently wrong. This also runs
+            // unconditionally (even for a just-built store) because it is the
+            // guard that keeps a relative-unit-path store from ever reaching a
+            // symbol query: absolute analyzed paths don't match relative units,
+            // so such a store reports fully stale and is downgraded here, before
+            // any query can abort libIndexStore.
+            let stale = resolver.staleFiles(among: analyzedFiles)
+            if !stale.isEmpty {
+                let reason =
+                    freshlyBuilt
+                    ? "the auto-built index does not cover \(stale.count) analyzed file(s)"
+                    : "index store at \(storePath) is stale for \(stale.count) analyzed file(s)"
+                return Outcome(
+                    index: nil,
+                    note: "\(reason); proceeding with corpus-only analysis"
+                )
             }
 
             return Outcome(index: resolver, note: "index store active: \(storePath)")
