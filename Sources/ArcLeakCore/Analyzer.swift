@@ -37,10 +37,19 @@ public struct Analyzer: Sendable {
         let snapshot = cacheURL.map(FactsCache.load(url:)) ?? FactsCache()
         var freshCache = FactsCache()
         // Facts depend on the `#if` configuration and user contracts — salt
-        // fingerprints so neither can serve stale facts.
+        // fingerprints so neither can serve stale facts. The full contract
+        // identity (callee, base, template, required labels) enters the salt:
+        // flipping a contract's template `tokenProducer` → `sinkWrapper` must
+        // re-extract, not reuse facts keyed only by callee.
+        let contractSalt = (configuration.contracts ?? [])
+            .map {
+                "\($0.callee)~\($0.base ?? "")~\($0.template.rawValue)"
+                    + "~\(($0.requiredLabels ?? []).joined(separator: "+"))"
+            }
+            .sorted()
+            .joined(separator: ",")
         let definesSalt =
-            configuration.activeDefines.sorted().joined(separator: ",") + "|"
-            + (configuration.contracts ?? []).map(\.callee).sorted().joined(separator: ",")
+            configuration.activeDefines.sorted().joined(separator: ",") + "|" + contractSalt
 
         // Bounded fan-out: one blocking read + parse per file would otherwise
         // spawn `included.count` tasks that block the (core-count-sized)
