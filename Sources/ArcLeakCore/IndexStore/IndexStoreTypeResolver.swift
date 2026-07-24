@@ -36,6 +36,26 @@
             return IndexStoreTypeResolver(reader: reader, defines: defines)
         }
 
+        /// Analyzed files the index has never seen, or whose on-disk mtime is
+        /// newer than the index's latest unit for them. A non-empty result means
+        /// the store is stale relative to the corpus — the caller downgrades to
+        /// corpus-only, never resolving against a store that could be wrong.
+        public func staleFiles(among files: [String]) -> [String] {
+            var stale: [String] = []
+            for file in files {
+                guard
+                    let attributes = try? FileManager.default.attributesOfItem(atPath: file),
+                    let sourceDate = attributes[.modificationDate] as? Date
+                else { continue }
+                guard let unitDate = reader.latestUnitDate(forFile: file) else {
+                    stale.append(file)
+                    continue
+                }
+                if sourceDate > unitDate { stale.append(file) }
+            }
+            return stale
+        }
+
         public func externalTypeFacts(name: String) -> ExternalTypeFacts? {
             memoLock.lock()
             if let cached = memo[name] {
