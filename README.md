@@ -172,6 +172,77 @@ The definite-leak upgrade (cleanup only reachable from an unreachable
 `deinit`) reports as `error` regardless of configured severity; use a
 directive if it is truly intentional.
 
+### Custom retention contracts (`contracts`)
+
+arcleak's knowledge base keys on literal API shapes (`.sink`, `.assign`,
+`Timer`, …). Codebases that **wrap** those APIs in a helper hide the shape from
+the matcher — a hand-rolled `React.to`, a `bind(...)`, a `Reactor` type. Declare
+the wrapper and arcleak sees through the indirection. Contracts are **opt-in and
+fail closed**: a malformed contract is a typed error, and without a contract
+arcleak stays silent rather than guess at a wrapper it cannot prove.
+
+```json
+{
+  "rules": {},
+  "exclude": [],
+  "contracts": [
+    {
+      "callee": "to",
+      "base": "React",
+      "template": "sinkWrapper",
+      "tokenName": "the React.to subscription"
+    }
+  ]
+}
+```
+
+Fields: `callee` (required — the method name, `to` in `React.to(…)`), `base`
+(optional receiver, `React` for the static call), `requiredLabels` (optional —
+all must be present to match), `tokenName` (optional diagnostic name), and
+`template`:
+
+- **`tokenProducer`** — the call returns a lifetime token that must be owned.
+  Feeds the premature-release rules: a discarded or scope-local token is flagged
+  exactly like a dropped `AnyCancellable`.
+- **`sinkWrapper`** — a custom Combine wrapper that wraps `.sink`/`.assign`. A
+  superset of `tokenProducer`: the returned token still feeds premature-release,
+  **and** the wrapper's closure is analyzed for strong-`self` capture. When the
+  token is stored on `self` and the closure captures `self` strongly, arcleak
+  reports `combine-sink-self-cycle` — the same cycle it catches for a literal
+  `.sink`. Because the real upstream is hidden inside the wrapper, completion is
+  unknown, so the finding is a `warning` with an explicit "completion could not
+  be determined" note rather than an over-claimed `error`.
+
+With the contract above, `becomeInactiveTask = React.to(.willResignActive) { _ in
+self.disconnect() }` (the `AnyCancellable` stored on `self`, the closure
+capturing `self` strongly) is flagged; the same call with `[weak self]` is not.
+
+## Recommended configuration for real-world use
+
+- **Default (syntax, corpus-only) — best for CI gating.** With no
+  configuration, arcleak is high-precision and produces **zero false positives
+  on clean code** (verified: 0 findings across Luce, Kyklos, LotoBuddy, and
+  Stations). It catches direct `.sink`/`.assign`, `Timer`/`CADisplayLink`,
+  block-based `NotificationCenter`, `URLSession` delegates, non-terminating
+  `Task`s, and stored-closure/bound-method `self`-cycles. Gate CI on this.
+- **Custom Combine wrappers — add a `sinkWrapper` contract.** If your codebase
+  wraps `.sink` in a helper (`React.to`, `bind`, a `Reactor`), declare it as a
+  `sinkWrapper` contract (see the exact config above) so arcleak sees through
+  the indirection and flags strong-`self` cycles hidden by the wrapper. Without
+  the contract arcleak conservatively stays silent rather than invent a cycle it
+  cannot prove — so a wrapper-heavy codebase reads as clean until you teach it
+  the wrapper.
+- **Cross-module types — enable `--index-store` (macOS).** For retain cycles
+  that close through types declared in other modules or the SDK, `--index-store`
+  resolves their class-ness from the build index (see above). It is opt-in and
+  **fails open**: with no index, on Linux, or against a stale store it runs the
+  corpus-only analysis unchanged.
+- **True-negative discipline.** arcleak reports nothing it cannot prove, so
+  **silence means "no provable cycle in what I can see," not "no cycles."** A
+  wrapper it does not know, a cycle that closes through an unresolved module, or
+  storage created by a macro can all hide a real leak. Pair arcleak with
+  Instruments / `leaks` for runtime ground truth on wrapper-heavy code.
+
 ## Rules
 
 | id | default | detects |
@@ -208,8 +279,24 @@ files remains corpus-only.
 `mutual-strong-properties` is type-level: an SCC proves the types *can*
 cycle; verify instance ownership before restructuring. Analysis is of
 written source — macro-generated storage is invisible (SwiftData `@Model` is
-special-cased). Silence is not proof of absence; confirm with
-Instruments/`leaks` for runtime ground truth.
+special-cased).
+
+Two indirection gaps are known and deliberate rather than silently wrong.
+Custom `.sink`/`.assign` **wrappers** hide the API shape from the matcher —
+opt in with a `sinkWrapper` contract (above) so arcleak analyzes the wrapper's
+closure. A bound method buried in a **collection literal handed to a
+constructor** whose result is stored on `self` (`self.router = Router([.k:
+self.method])` — the Stations `PlaybackService`/`Reactor` shape) is not
+tracked: proving the cycle needs the constructed type's storage semantics
+(does it retain the collection, and does the work it feeds outlive the owner?),
+which is cross-type ownership arcleak does not model — flagging it
+unconditionally would false-positive on the many constructors that consume
+closures transiently. Direct bound-method storage (`self.handler =
+self.method`) and bound methods handed straight to a token API
+(`sink(receiveValue: handle)`) are caught.
+
+Silence is not proof of absence; confirm with Instruments/`leaks` for runtime
+ground truth.
 
 ## License
 
