@@ -1,3 +1,5 @@
+public import ADJSON
+
 /// One stored property of a type: the raw material of ownership-graph edges.
 ///
 /// `referencedTypeNames` are the nominal type names appearing in the declared
@@ -5,6 +7,7 @@
 /// inferred from a direct `= TypeName(...)` initializer. Resolution against the
 /// analyzed corpus happens at graph-build time; names that don't resolve to a
 /// known class/actor simply produce no edge.
+@JSONCodable
 public struct StoredPropertyFact: Sendable, Equatable, Codable {
     public let name: String
     public let strength: ReferenceStrength

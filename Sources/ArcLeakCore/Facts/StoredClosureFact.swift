@@ -1,7 +1,10 @@
+public import ADJSON
+
 /// A closure literal that ends up stored on the enclosing instance: assigned to
 /// a member (`self.handler = { … }` / `handler = { … }`), appended to a member
 /// collection, or declared as a (lazy) stored-property initializer without
 /// being immediately applied.
+@JSONCodable
 public struct StoredClosureFact: Sendable, Equatable, Codable {
     public let position: SourcePosition
     public let targetMember: String
