@@ -118,6 +118,16 @@ struct Analyze: AsyncParsableCommand {
     )
     var experimentalEmbeddingRank = false
 
+    @Option(
+        name: .customLong("embedding-bundle"),
+        help: ArgumentHelp(
+            "Directory holding a Core ML model + its HuggingFace tokenizer, used instead of NLContextualEmbedding.",
+            discussion:
+                "Only meaningful with --experimental-embedding-rank. The default provider is an English natural-language model, so it over-clusters source lines; a code-trained sentence model (e.g. all-MiniLM-L6-v2) groups tighter and runs faster. The directory must contain a .mlpackage/.mlmodelc and the tokenizer files (tokenizer.json, config.json). A bundle that fails to load is reported and ignored — ranking falls back to the default and the finding set is untouched. ARCLEAK_EMBEDDING_BUNDLE sets the same path; a model at <exec-dir>/Models/MiniLM is picked up with no flag at all."
+        )
+    )
+    var embeddingBundle: String?
+
     func run() async throws {
         var configuration = try loadConfiguration()
         if !define.isEmpty {
@@ -169,6 +179,12 @@ struct Analyze: AsyncParsableCommand {
             if fix { return }
         }
 
+        if embeddingBundle != nil, !experimentalEmbeddingRank {
+            FileHandle.standardError.write(
+                Data("arcleak: --embedding-bundle has no effect without --experimental-embedding-rank\n".utf8)
+            )
+        }
+
         if experimentalEmbeddingRank {
             report.findings = await rankFindings(report.findings)
         }
@@ -204,18 +220,28 @@ struct Analyze: AsyncParsableCommand {
 
     /// Experimental: reorders findings so shape-similar ones are adjacent.
     /// Ordering only — the finding set, severities, and exit code are untouched.
+    /// The note names the model that actually ran, because provider selection
+    /// silently falls back (bundle → NLContextual → deterministic) and the
+    /// grouping quality differs a lot between them.
     private func rankFindings(_ findings: [Finding]) async -> [Finding] {
         #if canImport(NaturalLanguage)
             guard findings.count > 1 else { return findings }
+            let resolution = await EmbeddingRank.resolveProvider(bundlePath: embeddingBundle)
+            if let note = resolution.note {
+                FileHandle.standardError.write(Data("arcleak: \(note)\n".utf8))
+            }
             let ranked = await EmbeddingRank.reorder(
                 findings: findings,
                 snippets: Self.snippets(for: findings),
-                provider: EmbeddingRank.defaultProvider()
+                provider: resolution.provider
             )
             FileHandle.standardError.write(
                 Data(
-                    "arcleak: experimental embedding-rank grouped \(ranked.count) finding(s) by flagged-site similarity\n"
-                        .utf8
+                    """
+                    arcleak: experimental embedding-rank grouped \(ranked.count) finding(s) \
+                    by flagged-site similarity [provider: \(resolution.provider.providerName)]
+
+                    """.utf8
                 )
             )
             return ranked
