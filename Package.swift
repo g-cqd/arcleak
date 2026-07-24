@@ -48,13 +48,6 @@ let package = Package(
             url: "https://github.com/g-cqd/ADJSON.git",
             revision: "1d7fb25c0175f6ff42676dbdd1f104ad29ed8348"
         ),
-        // Tokenizers (HuggingFace AutoTokenizer) backs the opt-in
-        // `--embedding-bundle` provider: a Core ML sentence-embedding model needs
-        // the exact tokenizer it was trained with, and only the HF tokenizer.json
-        // reproduces it. Linked into ArcLeakCore on macOS only (see the target
-        // dependency); the provider that imports it is `#if canImport(CoreML)`,
-        // so Linux neither compiles nor links against it.
-        .package(url: "https://github.com/huggingface/swift-transformers.git", from: "1.3.2"),
     ],
     targets: [
         .target(
@@ -67,11 +60,6 @@ let package = Package(
                 .product(
                     name: "IndexStoreDB",
                     package: "indexstore-db",
-                    condition: .when(platforms: [.macOS])
-                ),
-                .product(
-                    name: "Tokenizers",
-                    package: "swift-transformers",
                     condition: .when(platforms: [.macOS])
                 ),
             ],
