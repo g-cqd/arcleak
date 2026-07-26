@@ -2,11 +2,10 @@
     import CoreML
     public import Foundation
 
-    /// A ``SemanticEmbeddingProvider`` backed by a Core ML model plus the
-    /// tokenizer it was trained with — WordPiece or byte-level BPE, both built in
-    /// rather than pulled from `swift-transformers` (those files document why;
-    /// `WordPieceParityTests` and `BPEParityTests` pin them token-for-token
-    /// against it). See ``BundleTokenizer`` for selection. Selected by
+    /// A ``SemanticEmbeddingProvider`` backed by a Core ML model plus the BERT
+    /// WordPiece tokenizer it was trained with — ``WordPieceTokenizer``, built in
+    /// rather than pulled from `swift-transformers` (that file documents why, and
+    /// `WordPieceParityTests` pins the two token-for-token). Selected by
     /// `--embedding-bundle <dir>`, or auto-discovered next to the executable
     /// (see ``EmbeddingRank/bundledModelDirectory()``).
     ///
@@ -21,11 +20,10 @@
     ///
     /// `bundleDir` holds both halves of the model: the Core ML bundle
     /// (`.mlpackage`, compiled on first use, or a prebuilt `.mlmodelc`) and its
-    /// tokenizer files (`vocab.txt` / `vocab.json` + `merges.txt` /
-    /// `tokenizer.json`). This covers both families that matter for code:
-    /// WordPiece (all-MiniLM-L6-v2, BGE) and byte-level BPE (CodeBERT,
-    /// GraphCodeBERT). A SentencePiece/Unigram bundle fails to load rather than
-    /// tokenizing wrongly, and the caller falls back to the zero-download provider.
+    /// tokenizer files (`vocab.txt` / `tokenizer.json`). This covers the WordPiece
+    /// (BERT-family) shape — all-MiniLM-L6-v2 and friends. A BPE or SentencePiece
+    /// bundle fails to load rather than tokenizing wrongly, and the caller falls
+    /// back to the zero-download provider.
     public final class HFSemanticEmbeddingProvider: SemanticEmbeddingProvider, @unchecked Sendable {
         public let embeddingDimension: Int
         public let providerName: String
@@ -73,20 +71,18 @@
                 }
             }
 
-            // Deliberately NOT `.all`: these are sequence-length-flexible exports,
-            // and a RoBERTa-family model whose output is
-            // `hidden_states [batch, sequence, hidden]` is data-dependent, which
-            // the Neural Engine runtime refuses. Worse, it refuses at *prediction*
-            // time by writing an opaque Espresso "Invalid blob shape" diagnostic
-            // straight to **stdout** — corrupting `--format json` for the caller,
-            // which no amount of Swift-side error handling can undo (measured:
-            // CodeBERT emitted 19 KB of that garbage ahead of the report). Even
-            // probing `.all` first is unsafe, because the probe's own failure
-            // prints it. The cost is small and bounded — MiniLM ranking over 30
-            // findings measured ~0.95 s on `.all` against ~1.35 s here, mostly
-            // model load rather than per-prediction — and it buys uncorrupted
-            // machine-readable output plus RoBERTa-family bundles working at all.
-            // So start at `.cpuAndGPU` and step down only if that cannot run.
+            // Deliberately NOT `.all`. These exports are sequence-length-flexible,
+            // and a model whose output is `[batch, sequence, hidden]` has a
+            // data-dependent shape, which the Neural Engine runtime refuses — at
+            // *prediction* time, by writing an opaque Espresso "Invalid blob
+            // shape" diagnostic straight to **stdout**. That corrupts
+            // `--format json` for the caller and no Swift-side error handling can
+            // undo it (measured on a RoBERTa export: 19 KB of garbage ahead of the
+            // report). Even probing `.all` first is unsafe, because the probe's
+            // own failure is what prints it. Nothing is lost by skipping it:
+            // measured over 230 snippets, `.cpuAndGPU` ran 5.29 s against 5.49 s
+            // for `.all`. So start on GPU and step down only if that cannot run,
+            // with one tiny probe prediction to confirm before committing.
             var loaded: MLModel?
             for units in [MLComputeUnits.cpuAndGPU, .cpuOnly] {
                 let configuration = MLModelConfiguration()
@@ -108,7 +104,7 @@
             self.model = resolvedModel
 
             do {
-                self.tokenizer = try BundleTokenizer.make(bundleDir: bundleDir)
+                self.tokenizer = try WordPieceTokenizer(bundleDir: bundleDir)
             } catch {
                 throw SemanticEmbeddingError.modelLoadFailed(underlying: error)
             }
@@ -228,7 +224,7 @@
         // MARK: - Private
 
         private let model: MLModel
-        private let tokenizer: any SubwordTokenizing
+        private let tokenizer: WordPieceTokenizer
         private let maxLength: Int
         private let inputIDsName: String
         private let attentionMaskName: String
