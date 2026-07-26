@@ -8,6 +8,6 @@ public enum ToolInfo {
     // The version also gates the on-disk FactsCache: any cache written by an
     // older build is discarded, so a schema/coder change can never deserialize
     // into wrong shapes — the current coder only ever reads caches it wrote.
-    public static let version = "0.5.0"
+    public static let version = "0.6.0"
     public static let informationURI = "https://github.com/g-cqd/arcleak"
 }
