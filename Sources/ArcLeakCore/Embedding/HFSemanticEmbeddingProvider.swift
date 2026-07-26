@@ -2,10 +2,11 @@
     import CoreML
     public import Foundation
 
-    /// A ``SemanticEmbeddingProvider`` backed by a Core ML model plus the BERT
-    /// WordPiece tokenizer it was trained with — ``WordPieceTokenizer``, built in
-    /// rather than pulled from `swift-transformers` (that file documents why, and
-    /// `WordPieceParityTests` pins the two token-for-token). Selected by
+    /// A ``SemanticEmbeddingProvider`` backed by a Core ML model plus the
+    /// tokenizer it was trained with — WordPiece or byte-level BPE, both built in
+    /// rather than pulled from `swift-transformers` (those files document why;
+    /// `WordPieceParityTests` and `BPEParityTests` pin them token-for-token
+    /// against it). See ``BundleTokenizer`` for selection. Selected by
     /// `--embedding-bundle <dir>`, or auto-discovered next to the executable
     /// (see ``EmbeddingRank/bundledModelDirectory()``).
     ///
@@ -19,12 +20,12 @@
     /// finding set and exit code are identical either way.
     ///
     /// `bundleDir` holds both halves of the model: the Core ML bundle
-    /// (`.mlpackage`, compiled on first use, or a prebuilt `.mlmodelc`) and the HF
-    /// tokenizer files (`vocab.txt` / `tokenizer.json`). This covers the
-    /// WordPiece feature-extraction shape — MiniLM, CodeBERT, GraphCodeBERT.
-    /// Bundles whose tokenizer is BPE or SentencePiece (not WordPiece) are out of
-    /// scope: they fail to load rather than tokenizing wrongly, and the caller
-    /// falls back to the zero-download provider.
+    /// (`.mlpackage`, compiled on first use, or a prebuilt `.mlmodelc`) and its
+    /// tokenizer files (`vocab.txt` / `vocab.json` + `merges.txt` /
+    /// `tokenizer.json`). This covers both families that matter for code:
+    /// WordPiece (all-MiniLM-L6-v2, BGE) and byte-level BPE (CodeBERT,
+    /// GraphCodeBERT). A SentencePiece/Unigram bundle fails to load rather than
+    /// tokenizing wrongly, and the caller falls back to the zero-download provider.
     public final class HFSemanticEmbeddingProvider: SemanticEmbeddingProvider, @unchecked Sendable {
         public let embeddingDimension: Int
         public let providerName: String
@@ -72,16 +73,42 @@
                 }
             }
 
-            let configuration = MLModelConfiguration()
-            configuration.computeUnits = .all
-            do {
-                self.model = try MLModel(contentsOf: compiledURL, configuration: configuration)
-            } catch {
-                throw SemanticEmbeddingError.modelLoadFailed(underlying: error)
+            // Deliberately NOT `.all`: these are sequence-length-flexible exports,
+            // and a RoBERTa-family model whose output is
+            // `hidden_states [batch, sequence, hidden]` is data-dependent, which
+            // the Neural Engine runtime refuses. Worse, it refuses at *prediction*
+            // time by writing an opaque Espresso "Invalid blob shape" diagnostic
+            // straight to **stdout** — corrupting `--format json` for the caller,
+            // which no amount of Swift-side error handling can undo (measured:
+            // CodeBERT emitted 19 KB of that garbage ahead of the report). Even
+            // probing `.all` first is unsafe, because the probe's own failure
+            // prints it. The cost is small and bounded — MiniLM ranking over 30
+            // findings measured ~0.95 s on `.all` against ~1.35 s here, mostly
+            // model load rather than per-prediction — and it buys uncorrupted
+            // machine-readable output plus RoBERTa-family bundles working at all.
+            // So start at `.cpuAndGPU` and step down only if that cannot run.
+            var loaded: MLModel?
+            for units in [MLComputeUnits.cpuAndGPU, .cpuOnly] {
+                let configuration = MLModelConfiguration()
+                configuration.computeUnits = units
+                guard let candidate = try? MLModel(contentsOf: compiledURL, configuration: configuration)
+                else { continue }
+                if HFSemanticEmbeddingProvider.probeSucceeds(
+                    candidate, inputIDsName: inputIDsName, attentionMaskName: attentionMaskName,
+                    tokenTypeIDsName: tokenTypeIDsName, positionIDsName: positionIDsName)
+                {
+                    loaded = candidate
+                    break
+                }
             }
+            guard let resolvedModel = loaded else {
+                throw SemanticEmbeddingError.modelLoadFailed(
+                    underlying: HFProviderError.noWorkingComputeUnit(compiledURL.lastPathComponent))
+            }
+            self.model = resolvedModel
 
             do {
-                self.tokenizer = try WordPieceTokenizer(bundleDir: bundleDir)
+                self.tokenizer = try BundleTokenizer.make(bundleDir: bundleDir)
             } catch {
                 throw SemanticEmbeddingError.modelLoadFailed(underlying: error)
             }
@@ -201,7 +228,7 @@
         // MARK: - Private
 
         private let model: MLModel
-        private let tokenizer: WordPieceTokenizer
+        private let tokenizer: any SubwordTokenizing
         private let maxLength: Int
         private let inputIDsName: String
         private let attentionMaskName: String
@@ -273,6 +300,49 @@
 
     /// Core ML input construction, factored out so the four inputs above are not
     /// four near-identical `MLMultiArray`-building blocks.
+    extension HFSemanticEmbeddingProvider {
+        /// Runs one tiny prediction to find out whether `model` can actually
+        /// execute on the compute units it was loaded with.
+        ///
+        /// Necessary because Core ML defers the incompatibility to prediction
+        /// time: a model with a sequence-dependent output loads happily on `.all`
+        /// and only then fails, printing an Espresso diagnostic to **stdout**
+        /// (which would corrupt `--format json`). Four tokens is enough — the
+        /// failure is about shape *kind*, not length.
+        fileprivate static func probeSucceeds(
+            _ model: MLModel,
+            inputIDsName: String,
+            attentionMaskName: String,
+            tokenTypeIDsName: String?,
+            positionIDsName: String?
+        ) -> Bool {
+            let declaredInputs = Set(model.modelDescription.inputDescriptionsByName.keys)
+            guard declaredInputs.contains(inputIDsName) else { return false }
+            let length = 4
+            guard
+                let ids = try? MLInt32Input.make(length: length, { _ in 1 }),
+                let mask = try? MLInt32Input.make(length: length, { _ in 1 })
+            else { return false }
+
+            var features: [String: MLFeatureValue] = [
+                inputIDsName: MLFeatureValue(multiArray: ids)
+            ]
+            if declaredInputs.contains(attentionMaskName) {
+                features[attentionMaskName] = MLFeatureValue(multiArray: mask)
+            }
+            for optional in [tokenTypeIDsName, positionIDsName] {
+                guard let name = optional, declaredInputs.contains(name),
+                    let zeros = try? MLInt32Input.make(length: length, { _ in 0 })
+                else { continue }
+                features[name] = MLFeatureValue(multiArray: zeros)
+            }
+            guard let provider = try? MLDictionaryFeatureProvider(dictionary: features) else {
+                return false
+            }
+            return (try? model.prediction(from: provider)) != nil
+        }
+    }
+
     private enum MLInt32Input {
         /// A `[1, length]` Int32 `MLMultiArray`, each element supplied by `value`.
         static func make(length: Int, _ value: (Int) -> Int32) throws -> MLMultiArray {
@@ -293,10 +363,16 @@
     /// ``SemanticEmbeddingError/modelLoadFailed(underlying:)``.
     private enum HFProviderError: Error, LocalizedError, CustomStringConvertible {
         case noModel(String)
+        case noWorkingComputeUnit(String)
 
         var description: String {
             switch self {
             case .noModel(let path): "No .mlpackage or .mlmodelc found in \(path)"
+            case .noWorkingComputeUnit(let name):
+                """
+                \(name) failed a trial prediction on every compute unit (ANE, GPU, CPU) — \
+                the export is likely incompatible with this Core ML runtime
+                """
             }
         }
 
