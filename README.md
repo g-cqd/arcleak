@@ -116,12 +116,23 @@ So `--embedding-bundle` takes a directory holding a Core ML model plus the
 WordPiece vocabulary it was trained with — a `.mlpackage` (compiled on first
 use) or `.mlmodelc`, alongside `vocab.txt` / `tokenizer.json` / `config.json`.
 
-**WordPiece (BERT-family) bundles only**, e.g. all-MiniLM-L6-v2: arcleak
-tokenizes in-house (`WordPieceTokenizer`, pinned token-for-token against
-`swift-transformers` before that dependency was dropped) rather than linking a
-9-package HuggingFace stack into every binary. A BPE/SentencePiece bundle
-(CodeBERT, GraphCodeBERT, jina-v2-code, CodeT5+) fails to load and falls back to
-the zero-download provider rather than tokenizing wrongly:
+Two tokenizer families are supported, both implemented in-house rather than by
+linking a 9-package HuggingFace stack into every binary (each pinned
+token-for-token against `swift-transformers` before that dependency was
+dropped): **WordPiece** (BERT-family — all-MiniLM-L6-v2, BGE) and **byte-level
+BPE** (RoBERTa/GPT-2 family — CodeBERT, GraphCodeBERT, jina-v2-code). A
+SentencePiece/Unigram bundle fails to load and falls back to the zero-download
+provider rather than tokenizing wrongly.
+
+> **Pick a *sentence-embedding* model, not a masked-LM checkpoint.** "Code-trained"
+> is not the property that matters — cosine-comparability is. Measured on the same
+> 29-finding corpus, anomaly-score spread was: all-MiniLM-L6-v2 **36-77%**
+> (stdev 10.96), Apple NLContextual 2-8% (stdev 1.76), and **CodeBERT 1-3%
+> (stdev 0.68)** — the worst of the three. CodeBERT is a masked-LM checkpoint, so
+> its raw mean-pooled vectors are anisotropic: everything crowds into one narrow
+> cone and every pair looks similar. MiniLM is contrastively fine-tuned for
+> exactly this use. Prefer it; reach for a BPE bundle only when it is itself an
+> embedding model (e.g. jina-embeddings-v2-base-code):
 
 ```sh
 arcleak analyze Sources --experimental-embedding-rank \
