@@ -73,6 +73,15 @@ struct Analyze: AsyncParsableCommand {
                 + "`git diff --name-only ... | arcleak analyze . --only-from -`."))
     var onlyFrom: String?
 
+    @Option(
+        name: .customLong("relative-to"),
+        help: ArgumentHelp(
+            "Report paths relative to this directory. Makes fingerprints (and so baselines) and "
+                + "SARIF uris independent of where the repository is checked out; GitHub code "
+                + "scanning also requires repo-relative uris to link findings. Use "
+                + "`--relative-to .` in CI."))
+    var relativeTo: String?
+
     @Option(name: .long, help: "Facts-cache file (default: ~/Library/Caches/arcleak/facts.json).")
     var cachePath: String?
 
@@ -160,6 +169,13 @@ struct Analyze: AsyncParsableCommand {
                 files: files, cacheURL: cacheURL(), index: index,
                 reportScope: try resolveReportScope()
             )
+
+        // Before anything reads a path: baselines, SARIF and the formatted
+        // output must all agree on one spelling, and the fingerprint is
+        // derived from it.
+        if let relativeTo {
+            report = report.relativized(to: relativeTo)
+        }
 
         if let writeBaseline {
             try Baseline(findings: report.findings).write(path: writeBaseline)
