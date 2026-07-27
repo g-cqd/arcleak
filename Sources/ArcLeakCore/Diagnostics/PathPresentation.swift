@@ -40,7 +40,12 @@ extension AnalysisReport {
                 line: finding.line,
                 column: finding.column,
                 message: stripInText(finding.message),
-                note: finding.note.map(stripInText)
+                note: finding.note.map(stripInText),
+                // Related links carry paths too — a SARIF consumer resolves
+                // every uri against the repository root, not just the anchor's.
+                related: finding.related.map {
+                    RelatedLocation(path: strip($0.path), line: $0.line, column: $0.column)
+                }
             )
         }
 

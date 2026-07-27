@@ -9,13 +9,13 @@
 /// the subset, so the next whole-corpus run starts cold. Analyze everything,
 /// report a slice.
 ///
-/// A `mutual-strong-properties` finding anchors at the alphabetically-first
-/// type in its strongly-connected component and names the rest of the cycle in
-/// its note as free text, so a cross-file cycle is matched only when the file
-/// it happens to anchor at is in scope. Adding structured related locations to
-/// `Finding` — the way dolly carries clone-group members — would let scope
-/// match any participating file; until then this is a known and documented
-/// narrowing, not an accident.
+/// Membership spans the anchor and every related location. A
+/// `mutual-strong-properties` finding anchors at the alphabetically-first type
+/// in its strongly-connected component, which is arbitrary with respect to a
+/// diff, so it also carries the remaining links as structured
+/// `RelatedLocation`s — the way dolly carries clone-group members. A pull
+/// request that closes a cycle therefore sees it whichever file the anchor
+/// landed in.
 public struct ReportScope: Sendable, Equatable {
     /// Canonical absolute paths, matching `Finding.path`.
     public let files: Set<String>
@@ -29,7 +29,11 @@ public struct ReportScope: Sendable, Equatable {
     }
 
     public func contains(_ finding: Finding) -> Bool {
-        files.contains(finding.path)
+        // Across the anchor *and* every related location: a cross-type cycle
+        // anchors at whichever link the graph walk started from, which is
+        // arbitrary with respect to a diff. Matching the anchor alone would
+        // hide a cycle from the very pull request that closed it.
+        files.contains(finding.path) || finding.related.contains { files.contains($0.path) }
     }
 
     /// Splits findings into (inScope, outOfScope), mirroring `Baseline.filter`.
