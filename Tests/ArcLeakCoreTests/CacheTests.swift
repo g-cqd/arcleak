@@ -75,13 +75,21 @@ import Testing
         _ = dir
     }
 
-    @Test func cancelledAnalysisReturnsEarly() async throws {
+    /// A cancelled run must report *nothing*, not a partial answer.
+    ///
+    /// This previously asserted a "possibly partial report" was fine. It is not:
+    /// `mutual-strong-properties` walks an ownership graph built from the whole
+    /// corpus, so a partial run draws conclusions from a corpus that is missing
+    /// files — the same defect that makes feeding a diff as the corpus wrong. A
+    /// cancelled run is a failed run, and the CLI exits 70 for it.
+    @Test func cancelledAnalysisReportsNothing() async throws {
         let (_, cache, files) = try makeWorkspace()
         let task = Task { await Analyzer().analyze(files: files, cacheURL: cache) }
         task.cancel()
         let report = await task.value
-        // No crash, a well-formed (possibly partial) report.
-        #expect(report.analyzedFileCount == files.count)
+        #expect(report.wasCancelled)
+        #expect(report.findings.isEmpty)
+        #expect(report.outOfScope.isEmpty)
     }
 
     @Test func corruptCacheFailsOpen() async throws {
