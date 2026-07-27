@@ -104,6 +104,10 @@ public enum ReportFormatter {
         let level: String
         let message: SarifText
         let locations: [SarifLocation]
+        /// One location per further link in a cross-type cycle, so a SARIF
+        /// consumer can jump to every file the cycle passes through (nil when
+        /// there are none — optionals are omitted from the payload).
+        let relatedLocations: [SarifLocation]?
         let partialFingerprints: [String: String]
     }
 
@@ -144,6 +148,16 @@ public enum ReportFormatter {
                         )
                     )
                 ],
+                relatedLocations: finding.related.isEmpty
+                    ? nil
+                    : finding.related.map { link in
+                        SarifLocation(
+                            physicalLocation: SarifPhysicalLocation(
+                                artifactLocation: SarifArtifactLocation(uri: link.path),
+                                region: SarifRegion(startLine: link.line, startColumn: link.column)
+                            )
+                        )
+                    },
                 partialFingerprints: ["arcleak/v1": finding.fingerprint]
             )
         }

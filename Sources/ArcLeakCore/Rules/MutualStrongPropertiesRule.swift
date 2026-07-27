@@ -64,7 +64,12 @@ struct MutualStrongPropertiesRule: CorpusRule {
                 column: anchor.position.column,
                 message: "potential retain cycle across types: \(pathDescription)\(extra)",
                 note:
-                    "strong links: \(links) — make one direction weak (shorter-lived side) or unowned (same-or-longer lifetime); type-level analysis: verify which side owns the other"
+                    "strong links: \(links) — make one direction weak (shorter-lived side) or unowned (same-or-longer lifetime); type-level analysis: verify which side owns the other",
+                // Every link in the cycle, so `--only` can match a change to any
+                // file the cycle passes through, not just the arbitrary anchor.
+                related: shown.dropFirst().map {
+                    RelatedLocation(path: $0.path, line: $0.position.line, column: $0.position.column)
+                }
             )
         }
     }
