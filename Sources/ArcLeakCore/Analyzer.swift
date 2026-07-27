@@ -136,6 +136,15 @@ public struct Analyzer: Sendable {
             }
         }
 
+        // A cancelled run analysed only part of the corpus, and
+        // `mutual-strong-properties` draws its conclusion from the whole of it.
+        // Report nothing rather than something wrong.
+        if Task.isCancelled {
+            var cancelled = AnalysisReport()
+            cancelled.wasCancelled = true
+            return cancelled
+        }
+
         var report = Self.assemble(raw: raw, corpus: corpus, reportScope: reportScope)
         report.analyzedFileCount = included.count
         report.degradedFiles = degraded.sorted { $0.path < $1.path }
