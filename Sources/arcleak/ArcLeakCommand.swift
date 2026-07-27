@@ -58,6 +58,21 @@ struct Analyze: AsyncParsableCommand {
     )
     var stamp: String?
 
+    @Option(
+        name: .long,
+        help: ArgumentHelp(
+            "Report only findings in this file; repeatable. The whole corpus is still analyzed "
+                + "— the ownership graph spans files, so narrowing the input loses cycles. Also "
+                + "scopes --fix to the listed files."))
+    var only: [String] = []
+
+    @Option(
+        name: .customLong("only-from"),
+        help: ArgumentHelp(
+            "Read --only paths from a file, one per line ('-' reads stdin). For CI: "
+                + "`git diff --name-only ... | arcleak analyze . --only-from -`."))
+    var onlyFrom: String?
+
     @Option(name: .long, help: "Facts-cache file (default: ~/Library/Caches/arcleak/facts.json).")
     var cachePath: String?
 
@@ -141,7 +156,10 @@ struct Analyze: AsyncParsableCommand {
         let index = await resolveIndex(files: files, configuration: configuration)
 
         var report = await Analyzer(configuration: configuration)
-            .analyze(files: files, cacheURL: cacheURL(), index: index)
+            .analyze(
+                files: files, cacheURL: cacheURL(), index: index,
+                reportScope: try resolveReportScope()
+            )
 
         if let writeBaseline {
             try Baseline(findings: report.findings).write(path: writeBaseline)
@@ -196,6 +214,9 @@ struct Analyze: AsyncParsableCommand {
         var summary = ReportFormatter.summary(report)
         if baselinedCount > 0 {
             summary += "; \(baselinedCount) baselined"
+        }
+        if !report.outOfScope.isEmpty {
+            summary += "; \(report.outOfScope.count) out of scope"
         }
         if report.cacheHits + report.cacheMisses > 0, !noCache {
             summary += "; cache: \(report.cacheHits) reused, \(report.cacheMisses) parsed"
@@ -377,6 +398,67 @@ struct Analyze: AsyncParsableCommand {
         FileHandle.standardError.write(
             Data("arcleak: \(fix ? "applied" : "previewed") \(applied) fix(es); \(skipped) not auto-fixable\n".utf8)
         )
+    }
+
+    func validate() throws {
+        // A baseline records the whole corpus's accepted debt. Writing one from
+        // a scoped run would silently accept only the scoped subset and drop
+        // everything else from the baseline, so refuse rather than surprise.
+        if writeBaseline != nil, !only.isEmpty || onlyFrom != nil {
+            throw ValidationError(
+                "--write-baseline records whole-corpus debt and cannot be combined with "
+                    + "--only/--only-from. Write the baseline unscoped, then scope the runs that use it."
+            )
+        }
+        if onlyFrom == "-", paths == ["-"] {
+            throw ValidationError("--only-from - reads stdin, so paths cannot also come from stdin.")
+        }
+    }
+
+    /// A caller-supplied path list is trust-boundary input, so the read is
+    /// bounded: 2600 absolute paths is ~310 KB, and anything past the cap is a
+    /// mistake or an attack rather than a change set.
+    private static let scopeByteCap = 4 * 1024 * 1024
+
+    /// nil means "report everything". An *empty* scope is meaningful and
+    /// distinct: `--only-from` pointed at a change set with no Swift files, so
+    /// nothing should be reported.
+    private func resolveReportScope() throws -> ReportScope? {
+        guard !only.isEmpty || onlyFrom != nil else { return nil }
+        var entries = only
+        if let onlyFrom {
+            entries.append(contentsOf: try readScopeEntries(from: onlyFrom))
+        }
+        return ReportScope(files: entries)
+    }
+
+    private func readScopeEntries(from source: String) throws -> [String] {
+        let text: String
+        if source == "-" {
+            var accumulated = ""
+            while let line = readLine(strippingNewline: true) {
+                accumulated += line + "\n"
+                guard accumulated.utf8.count <= Self.scopeByteCap else {
+                    throw ValidationError("--only-from - exceeds the \(Self.scopeByteCap) byte cap")
+                }
+            }
+            text = accumulated
+        } else {
+            let attributes = try? FileManager.default.attributesOfItem(atPath: source)
+            guard (attributes?[.type] as? FileAttributeType) == .typeRegular else {
+                throw ValidationError("--only-from: not a regular file: \(source)")
+            }
+            if let size = attributes?[.size] as? Int, size > Self.scopeByteCap {
+                throw ValidationError("--only-from: \(source) exceeds the \(Self.scopeByteCap) byte cap")
+            }
+            guard let contents = try? String(contentsOfFile: source, encoding: .utf8) else {
+                throw ValidationError("--only-from: unreadable: \(source)")
+            }
+            text = contents
+        }
+        return text.split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
     }
 
     private func cacheURL() -> URL? {

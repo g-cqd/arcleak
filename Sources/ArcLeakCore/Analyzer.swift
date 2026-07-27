@@ -25,10 +25,14 @@ public struct Analyzer: Sendable {
     /// With `cacheURL`, per-file facts are reused when the file's content
     /// fingerprint matches (parsing dominates runtime; rules always re-run, so
     /// findings can never go stale relative to rules or configuration).
+    /// - Parameter reportScope: narrows the *report* to a set of files; nil
+    ///   reports everything. The corpus is analyzed whole either way — see
+    ///   ``ReportScope``.
     public func analyze(
         files: [String],
         cacheURL: URL? = nil,
-        index: (any IndexReading)? = nil
+        index: (any IndexReading)? = nil,
+        reportScope: ReportScope? = nil
     ) async -> AnalysisReport {
         // Canonicalize before anything reads a path: `Finding.path` feeds the
         // fingerprint, and the corpus must not contain the same file twice
@@ -132,7 +136,7 @@ public struct Analyzer: Sendable {
             }
         }
 
-        var report = Self.assemble(raw: raw, corpus: corpus)
+        var report = Self.assemble(raw: raw, corpus: corpus, reportScope: reportScope)
         report.analyzedFileCount = included.count
         report.degradedFiles = degraded.sorted { $0.path < $1.path }
         report.cacheHits = hits
@@ -167,7 +171,9 @@ public struct Analyzer: Sendable {
         return (report.findings, report.suppressed)
     }
 
-    private static func assemble(raw: [Finding], corpus: [FileFacts]) -> AnalysisReport {
+    private static func assemble(
+        raw: [Finding], corpus: [FileFacts], reportScope: ReportScope? = nil
+    ) -> AnalysisReport {
         let tables = Dictionary(
             corpus.map { ($0.path, SuppressionTable(directives: $0.directives)) },
             uniquingKeysWith: { first, _ in first }
@@ -179,11 +185,18 @@ public struct Analyzer: Sendable {
                 report.suppressed.append(
                     AnalysisReport.SuppressedFinding(finding: finding, reason: reason)
                 )
+            } else if let reportScope, !reportScope.contains(finding) {
+                // Kept, not dropped: the count stays visible in the summary and
+                // `--format json` still carries them. Scope is applied after
+                // suppression so suppression debt keeps counting the whole
+                // corpus.
+                report.outOfScope.append(finding)
             } else {
                 report.findings.append(finding)
             }
         }
         report.findings.sort()
+        report.outOfScope.sort()
         report.suppressed.sort { $0.finding < $1.finding }
         return report
     }
