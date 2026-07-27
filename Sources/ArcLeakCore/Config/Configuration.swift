@@ -31,6 +31,23 @@ public struct Configuration: Sendable, Codable, Equatable {
     /// lands with cross-file release plumbing.
     public var contracts: [UserContract]?
 
+    /// Decodes a partial configuration.
+    ///
+    /// `rules` and `exclude` are non-optional with memberwise defaults, so the
+    /// synthesized `Codable` conformance made both *required* on the wire: a
+    /// config supplying only `exclude` was rejected with
+    /// `keyNotFound: "rules"`. Every key is optional here, matching what the
+    /// memberwise initializer already implies — which is what a CI config
+    /// setting nothing but an exclude list needs.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.rules =
+            try container.decodeIfPresent([String: RuleSettings].self, forKey: .rules) ?? [:]
+        self.exclude = try container.decodeIfPresent([String].self, forKey: .exclude) ?? []
+        self.defines = try container.decodeIfPresent([String].self, forKey: .defines)
+        self.contracts = try container.decodeIfPresent([UserContract].self, forKey: .contracts)
+    }
+
     public init(
         rules: [String: RuleSettings] = [:],
         exclude: [String] = [],
