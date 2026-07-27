@@ -30,7 +30,12 @@ public struct Analyzer: Sendable {
         cacheURL: URL? = nil,
         index: (any IndexReading)? = nil
     ) async -> AnalysisReport {
-        let included = files.filter { !configuration.isExcluded(path: $0) }
+        // Canonicalize before anything reads a path: `Finding.path` feeds the
+        // fingerprint, and the corpus must not contain the same file twice
+        // under two spellings (it would give the ownership graph two nodes for
+        // one type). Exclusion is checked on the canonical form.
+        let included = SourcePath.canonicalized(files)
+            .filter { !configuration.isExcluded(path: $0) }
         // `snapshot` serves cache hits (all historical entries); the persisted
         // cache is rebuilt from ONLY this run's files, so it stays shaped to the
         // project and never grows without bound in a shifting monorepo.
