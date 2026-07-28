@@ -146,6 +146,13 @@ public struct Analyzer: Sendable {
         }
 
         var report = Self.assemble(raw: raw, corpus: corpus, reportScope: reportScope)
+
+        // Anchor fingerprints to the repository, not to this machine's checkout
+        // path or to whether the caller remembered --relative-to. Display is a
+        // separate concern, handled by PathPresentation.
+        if let root = RepositoryRoot.common(of: corpus.map(\.path)) {
+            report = report.fingerprintsAnchored(to: root)
+        }
         report.analyzedFileCount = included.count
         report.degradedFiles = degraded.sorted { $0.path < $1.path }
         report.cacheHits = hits

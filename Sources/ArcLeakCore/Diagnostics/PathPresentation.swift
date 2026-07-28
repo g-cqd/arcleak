@@ -45,7 +45,13 @@ extension AnalysisReport {
                 // every uri against the repository root, not just the anchor's.
                 related: finding.related.map {
                     RelatedLocation(path: strip($0.path), line: $0.line, column: $0.column)
-                }
+                },
+                // An explicit --relative-to is an explicit anchor request, so
+                // it sets the fingerprint spelling too — that is what the flag
+                // is for. Run from the repository root it produces exactly the
+                // same string the automatic anchor does, so passing it or
+                // forgetting it agree.
+                fingerprintPath: strip(finding.path)
             )
         }
 
@@ -58,6 +64,34 @@ extension AnalysisReport {
         copy.degradedFiles = degradedFiles.map {
             DegradedFile(path: strip($0.path), detail: $0.detail)
         }
+        return copy
+    }
+}
+
+extension AnalysisReport {
+    /// Rewrites every finding's `fingerprintPath` to be relative to `root`.
+    ///
+    /// Applied once, in the analyzer, before anything reads a fingerprint —
+    /// baselines, SARIF and the report all then agree, and they agree across
+    /// machines.
+    func fingerprintsAnchored(to root: String) -> AnalysisReport {
+        func anchor(_ finding: Finding) -> Finding {
+            Finding(
+                rule: finding.rule,
+                severity: finding.severity,
+                path: finding.path,
+                line: finding.line,
+                column: finding.column,
+                message: finding.message,
+                note: finding.note,
+                related: finding.related,
+                fingerprintPath: RepositoryRoot.relativize(finding.path, to: root)
+            )
+        }
+        var copy = self
+        copy.findings = findings.map(anchor)
+        copy.outOfScope = outOfScope.map(anchor)
+        copy.suppressed = suppressed.map { SuppressedFinding(finding: anchor($0.finding), reason: $0.reason) }
         return copy
     }
 }
