@@ -70,12 +70,17 @@ public struct Baseline: Sendable, Equatable {
 
 extension Finding {
     /// Stable identity for baselines and SARIF `partialFingerprints`.
+    ///
+    /// Hashes `fingerprintPath` when set — the repository-relative spelling —
+    /// so the same finding fingerprints identically on a developer's machine
+    /// and a CI runner, regardless of checkout location or how paths are
+    /// displayed.
     /// FNV-1a 64-bit over the finding's identifying fields — identity hashing,
     /// not security; collisions merely over-baseline one finding.
     public var fingerprint: String {
         var hash: UInt64 = 0xcbf2_9ce4_8422_2325
         let prime: UInt64 = 0x0000_0100_0000_01b3
-        for byte in "\(rule.rawValue)|\(path)|\(line)|\(column)|\(message)".utf8 {
+        for byte in "\(rule.rawValue)|\(fingerprintPath ?? path)|\(line)|\(column)|\(message)".utf8 {
             hash ^= UInt64(byte)
             hash &*= prime
         }
