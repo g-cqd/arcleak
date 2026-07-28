@@ -54,9 +54,11 @@ import Testing
     func relatedDoesNotAffectFingerprint() async throws {
         let report = await analyze(scope: nil)
         let cycle = try #require(report.findings.first { $0.rule == .mutualStrongProperties })
+        // Same finding, same fingerprint anchor, no related locations.
         let bare = Finding(
             rule: cycle.rule, severity: cycle.severity, path: cycle.path,
-            line: cycle.line, column: cycle.column, message: cycle.message, note: cycle.note
+            line: cycle.line, column: cycle.column, message: cycle.message, note: cycle.note,
+            fingerprintPath: cycle.fingerprintPath
         )
         // A baseline written before related locations existed must keep matching.
         #expect(bare.fingerprint == cycle.fingerprint)

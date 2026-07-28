@@ -28,6 +28,14 @@ public struct Finding: Sendable, Equatable {
     public let message: String
     /// Optional secondary context (retention path, doc citation, fix hint).
     public let note: String?
+    /// The path spelling the fingerprint hashes, when it must differ from the
+    /// one shown.
+    ///
+    /// Set to the repository-relative path so a baseline is portable by
+    /// construction: `--relative-to` then changes only what is *displayed*, and
+    /// forgetting it can no longer silently invalidate a baseline. nil outside a
+    /// repository, where `path` is hashed as before.
+    public let fingerprintPath: String?
     /// Other locations participating in this finding. Deliberately excluded
     /// from `fingerprint`: a baseline written before these existed must keep
     /// matching, and the anchor already identifies the finding.
@@ -41,7 +49,8 @@ public struct Finding: Sendable, Equatable {
         column: Int,
         message: String,
         note: String? = nil,
-        related: [RelatedLocation] = []
+        related: [RelatedLocation] = [],
+        fingerprintPath: String? = nil
     ) {
         self.rule = rule
         self.severity = severity
@@ -51,6 +60,7 @@ public struct Finding: Sendable, Equatable {
         self.message = message
         self.note = note
         self.related = related
+        self.fingerprintPath = fingerprintPath
     }
 }
 
