@@ -51,7 +51,11 @@ extension AnalysisReport {
                 // is for. Run from the repository root it produces exactly the
                 // same string the automatic anchor does, so passing it or
                 // forgetting it agree.
-                fingerprintPath: strip(finding.path)
+                // When strip is a no-op — a root spelled through a symlink, a wrong
+                // directory — keep the repo-anchored fingerprint rather than
+                // reverting to the absolute path the anchoring exists to remove.
+                fingerprintPath: strip(finding.path) != finding.path
+                    ? strip(finding.path) : finding.fingerprintPath
             )
         }
 

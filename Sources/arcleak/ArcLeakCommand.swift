@@ -164,10 +164,22 @@ struct Analyze: AsyncParsableCommand {
 
         let index = await resolveIndex(files: files, configuration: configuration)
 
+        let reportScope = try resolveReportScope()
+        // A non-empty scope that intersects zero corpus files is almost always a
+        // misconfiguration (paths relative to the wrong directory, wrong workdir),
+        // and it silently reports nothing. Warn loudly; an *empty* scope stays
+        // silent — "no Swift changed" is legitimate.
+        if let scope = reportScope, !scope.files.isEmpty, !files.contains(where: scope.files.contains) {
+            FileHandle.standardError.write(
+                Data(
+                    "arcleak: warning: --only scope matches no analyzed file — check that scope paths are relative to the right directory\n"
+                        .utf8))
+        }
+
         var report = await Analyzer(configuration: configuration)
             .analyze(
                 files: files, cacheURL: cacheURL(), index: index,
-                reportScope: try resolveReportScope()
+                reportScope: reportScope
             )
 
         // A cancelled run analysed a partial corpus and therefore reports nothing.
@@ -178,15 +190,8 @@ struct Analyze: AsyncParsableCommand {
             throw ExitCode(ExitStatus.internalFailure)
         }
 
-        // Before anything reads a path: baselines, SARIF and the formatted
-        // output must all agree on one spelling, and the fingerprint is
-        // derived from it.
-        if let relativeTo {
-            report = report.relativized(to: relativeTo)
-        }
-
         if let writeBaseline {
-            try Baseline(findings: report.findings).write(path: writeBaseline)
+            try baselineOrExit { try Baseline(findings: report.findings).write(path: writeBaseline) }
             FileHandle.standardError.write(
                 Data("arcleak: wrote baseline with \(report.findings.count) fingerprint(s) to \(writeBaseline)\n".utf8)
             )
@@ -194,7 +199,7 @@ struct Analyze: AsyncParsableCommand {
 
         var baselinedCount = 0
         if let baseline {
-            let loaded = try Baseline.load(path: baseline)
+            let loaded = try baselineOrExit { try Baseline.load(path: baseline) }
             let (kept, baselined) = loaded.filter(report.findings)
             report.findings = kept
             baselinedCount = baselined.count
@@ -219,6 +224,16 @@ struct Analyze: AsyncParsableCommand {
         if fix || fixDryRun {
             try applyFixes(report: report)
             if fix { return }
+        }
+
+        // AFTER sil-confirm and --fix, which open finding.path for real file
+        // I/O: relativized paths resolve against the CWD, so running from
+        // anywhere but the root made --fix a silent no-op — or, with a
+        // same-named sibling checkout, wrote fix-its into the wrong file.
+        // Baselines are unaffected by the move: they match on fingerprints,
+        // which are repo-anchored independently of display.
+        if let relativeTo {
+            report = report.relativized(to: relativeTo)
         }
 
         if embeddingBundle != nil, !experimentalEmbeddingRank {
@@ -376,6 +391,18 @@ struct Analyze: AsyncParsableCommand {
 
     /// A malformed config is a broken gate, not a finding — exit 78 so CI can
     /// tell the two apart instead of reporting a typo as analysis output.
+
+    /// A missing or corrupt baseline is a broken gate, not a finding — exit 78
+    /// so CI cannot mistake it for "findings found" (exit 1).
+    private func baselineOrExit<T>(_ body: () throws -> T) throws -> T {
+        do {
+            return try body()
+        } catch {
+            FileHandle.standardError.write(Data("arcleak: \(error)\n".utf8))
+            throw ExitCode(ExitStatus.badConfiguration)
+        }
+    }
+
     private func loadConfiguration() throws -> Configuration {
         do {
             return try loadConfigurationUncaught()
@@ -506,7 +533,21 @@ struct Analyze: AsyncParsableCommand {
             text = contents
         }
         return text.split(separator: "\n")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .map { line -> String in
+                // \r too: a CRLF scope file (Windows-authored diff, autocrlf)
+                // would otherwise match nothing — every finding lands out of
+                // scope and the gate silently passes.
+                var entry = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                // git C-quotes paths with special bytes ("So\\303\\251.swift",
+                // quotes included) unless core.quotepath=false; strip the quotes
+                // so at least plain-ASCII quoted paths keep matching.
+                if entry.hasPrefix("\"") && entry.hasSuffix("\"") && entry.count >= 2 {
+                    entry = String(entry.dropFirst().dropLast())
+                        .replacingOccurrences(of: "\\\"", with: "\"")
+                        .replacingOccurrences(of: "\\\\", with: "\\")
+                }
+                return entry
+            }
             .filter { !$0.isEmpty }
     }
 
@@ -531,7 +572,9 @@ struct Analyze: AsyncParsableCommand {
 
         for path in paths {
             guard
-                let isDirectory = try? URL(fileURLWithPath: path)
+                // Resolved first: resource values do not traverse a final symlink,
+                // so a linked Sources/ would classify as a "file" and be skipped.
+                let isDirectory = try? URL(fileURLWithPath: path).resolvingSymlinksInPath()
                     .resourceValues(forKeys: [.isDirectoryKey]).isDirectory
             else {
                 throw ValidationError("no such file or directory: \(path)")
@@ -540,7 +583,8 @@ struct Analyze: AsyncParsableCommand {
                 files.insert(URL(fileURLWithPath: path).path)
                 continue
             }
-            let root = URL(fileURLWithPath: path)
+            // Resolved as well: enumerating a symlinked root yields nothing.
+            let root = URL(fileURLWithPath: path).resolvingSymlinksInPath()
             guard
                 let enumerator = manager.enumerator(
                     at: root,
