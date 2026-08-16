@@ -1,4 +1,8 @@
-internal import Foundation
+#if canImport(FoundationEssentials)
+    internal import FoundationEssentials
+#else
+    internal import Foundation
+#endif
 
 /// Canonical spelling of a source path.
 ///

@@ -32,6 +32,10 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "603.0.2"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.8.2"),
+        // swift-system: a safe, Sendable stdio surface (stderr writes; the LSP
+        // server's stdin/stdout framing). Foundation's FileHandle is
+        // corelibs-only and would re-link ~47 MiB of ICU on Linux.
+        .package(url: "https://github.com/apple/swift-system.git", from: "1.7.1"),
         // indexstore-db has no semver tags — revision-pinned per DESIGN.md.
         // Linked into ArcLeakCore on macOS only (see the target dependency).
         .package(
@@ -44,10 +48,7 @@ let package = Package(
         // CoW fix the fast encode path needs). Report/SARIF/baseline stay on
         // Foundation: they hash encoded bytes across runs and ADJSON differs on
         // number/slash formatting, which is harmless only inside the cache.
-        .package(
-            url: "https://github.com/g-cqd/ADJSON.git",
-            revision: "1d7fb25c0175f6ff42676dbdd1f104ad29ed8348"
-        ),
+        .package(url: "https://github.com/g-cqd/ADJSON.git", from: "0.1.1"),
     ],
     targets: [
         .target(
@@ -70,6 +71,7 @@ let package = Package(
             dependencies: [
                 "ArcLeakCore",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                .product(name: "SystemPackage", package: "swift-system"),
             ],
             swiftSettings: strictSwiftSettings
         ),

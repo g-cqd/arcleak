@@ -1,4 +1,8 @@
-import Foundation
+#if canImport(FoundationEssentials)
+    import FoundationEssentials
+#else
+    import Foundation
+#endif
 
 /// Experimental L5: confirm capture strength from SILGen, where captures are
 /// explicit — a strong `self` capture partial-applies the object directly,
@@ -30,7 +34,14 @@ public enum SILConfirmation {
         line: Int,
         timeout: Duration = defaultTimeout
     ) async -> Outcome {
-        await SILConfirmationSession(timeout: timeout).confirmSelfCapture(file: file, line: line)
+        #if os(macOS)
+            return await SILConfirmationSession(timeout: timeout)
+                .confirmSelfCapture(file: file, line: line)
+        #else
+            // No xcrun off macOS; `.unavailable` keeps the finding (only
+            // `.refutedWeak` demotes).
+            return .unavailable("SILGen confirmation requires xcrun (macOS only)")
+        #endif
     }
 
     /// Demotion seam (testable without the CLI): keep everything except
@@ -66,7 +77,7 @@ public enum SILConfirmation {
                 let signatureLine = function.split(separator: "\n").first(where: {
                     $0.hasPrefix("sil ") && $0.contains(" : $@convention")
                 }),
-                let symbolRange = signatureLine.range(of: " : $@convention"),
+                let symbolRange = signatureLine.firstRange(of: " : $@convention"),
                 signatureLine[..<symbolRange.lowerBound].contains("fU")
             else { continue }
 

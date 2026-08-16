@@ -1,13 +1,13 @@
 {
-  "originHash" : "50e0450f92ec58fbbb536d8a990cbed0e7a31cfcbbe046a952a52dcff5ecd9b5",
+  "originHash" : "0821881a052221cfde840cf12f9caaaf5b574fe875e791b69c95e4efe7c55aa9",
   "pins" : [
     {
       "identity" : "adfoundation",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/g-cqd/ADFoundation.git",
       "state" : {
-        "branch" : "main",
-        "revision" : "062d93ced7c742ab9a05dbc841d508770291edbc"
+        "revision" : "1c18a999192d59127ca5df7f32251c5a165dcf8c",
+        "version" : "0.1.1"
       }
     },
     {
@@ -15,7 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/g-cqd/ADJSON.git",
       "state" : {
-        "revision" : "1d7fb25c0175f6ff42676dbdd1f104ad29ed8348"
+        "revision" : "644b638147759451f90d558b7d8aefcc5426f749",
+        "version" : "0.1.1"
       }
     },
     {

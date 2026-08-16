@@ -1,4 +1,8 @@
-public import Foundation
+#if canImport(FoundationEssentials)
+    public import FoundationEssentials
+#else
+    public import Foundation
+#endif
 
 /// Discovers an index store on disk and enforces the staleness contract:
 /// a store older than the newest analyzed source must downgrade the analysis
@@ -29,14 +33,12 @@ public enum IndexStoreLocator {
 
         for candidate in candidates {
             guard
-                let values = try? candidate.resourceValues(
-                    forKeys: [.isDirectoryKey, .contentModificationDateKey]
-                ),
-                values.isDirectory == true
+                let attributes = try? FileManager.default.attributesOfItem(atPath: candidate.path),
+                (attributes[.type] as? FileAttributeType) == .typeDirectory
             else { continue }
             return DiscoveredStore(
                 url: candidate,
-                modificationDate: values.contentModificationDate ?? .distantPast
+                modificationDate: (attributes[.modificationDate] as? Date) ?? .distantPast
             )
         }
         return nil
