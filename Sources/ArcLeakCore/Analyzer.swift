@@ -120,6 +120,15 @@ public struct Analyzer: Sendable {
             )
         )
 
+        // A cancelled run analysed only part of the corpus, and
+        // `mutual-strong-properties` draws its conclusion from the whole of it.
+        // Report nothing rather than something wrong.
+        if Task.isCancelled {
+            var cancelled = AnalysisReport()
+            cancelled.wasCancelled = true
+            return cancelled
+        }
+
         if let cacheURL {
             // Skip the redundant re-persist when the on-disk cache is already
             // exactly current: every analyzed file was a cache hit (no
@@ -134,15 +143,6 @@ public struct Analyzer: Sendable {
             if !alreadyCurrent {
                 freshCache.persist(url: cacheURL)
             }
-        }
-
-        // A cancelled run analysed only part of the corpus, and
-        // `mutual-strong-properties` draws its conclusion from the whole of it.
-        // Report nothing rather than something wrong.
-        if Task.isCancelled {
-            var cancelled = AnalysisReport()
-            cancelled.wasCancelled = true
-            return cancelled
         }
 
         var report = Self.assemble(raw: raw, corpus: corpus, reportScope: reportScope)
