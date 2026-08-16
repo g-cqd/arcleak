@@ -97,6 +97,7 @@
                 case out(Data)
                 case err(Data)
                 case timedOut
+                case exited
             }
 
             var stdoutData = Data()
@@ -115,12 +116,26 @@
                     let deadline = clock.now.advanced(by: timeout)
                     while process.isRunning {
                         if clock.now >= deadline {
+                            // Escalate: SIGTERM, a grace period, then SIGKILL.
+                            // `swift build` spawns compiler grandchildren that
+                            // ignore nothing but SIGKILL of their own; killing
+                            // only the direct child leaves them holding the pipe
+                            // write ends, so the drains (and this call) block
+                            // until the whole tree exits. SIGKILL bounds the
+                            // direct child hard; a truly wedged grandchild can
+                            // still hold its dup'd pipe end — Foundation.Process
+                            // offers no process-group handle to kill the tree —
+                            // but every real hang observed was the child itself.
                             process.terminate()
+                            try? await Task.sleep(for: .seconds(2))
+                            if process.isRunning {
+                                kill(process.processIdentifier, SIGKILL)
+                            }
                             return .timedOut
                         }
                         try? await Task.sleep(for: .milliseconds(10))
                     }
-                    return .timedOut  // sentinel; ignored once both drains complete
+                    return .exited
                 }
 
                 var drainsDone = 0
@@ -133,7 +148,13 @@
                         stderrData = data
                         drainsDone += 1
                     case .timedOut:
-                        if process.isRunning { timedOut = true }
+                        // Deterministic: the watchdog only returns this when the
+                        // deadline fired. The old `isRunning` re-check raced the
+                        // SIGTERM-ed child's exit, misreporting a genuine timeout
+                        // as an ordinary compile failure.
+                        timedOut = true
+                    case .exited:
+                        break
                     }
                     if drainsDone == 2 {
                         group.cancelAll()
