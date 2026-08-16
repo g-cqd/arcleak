@@ -1,4 +1,16 @@
-import Foundation
+#if canImport(FoundationEssentials)
+    import FoundationEssentials
+#else
+    import Foundation
+#endif
+
+// `exit` comes from the platform module; FoundationEssentials, unlike
+// Foundation, does not re-export libc.
+#if canImport(Darwin)
+    import Darwin
+#else
+    import Glibc
+#endif
 
 #if !os(macOS)
     @main

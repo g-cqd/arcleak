@@ -4,7 +4,12 @@
 // slash formatting, which is harmless only here). `public import` because the
 // hand-written `Entry` fast conformance below is public API of the public type.
 public import ADJSON
-public import Foundation
+
+#if canImport(FoundationEssentials)
+    public import FoundationEssentials
+#else
+    public import Foundation
+#endif
 
 /// Per-file facts cache. Parsing + extraction dominate runtime; rules are
 /// cheap and always re-run, so only `FileFacts` are cached — findings never
