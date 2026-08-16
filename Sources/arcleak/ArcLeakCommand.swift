@@ -1,6 +1,23 @@
 import ArcLeakCore
 public import ArgumentParser
-import Foundation
+import SystemPackage
+
+#if canImport(FoundationEssentials)
+    import FoundationEssentials
+#else
+    import Foundation
+#endif
+
+/// Stand-in for `FileHandle.standardError`, which lives in corelibs Foundation:
+/// linking it would re-link ~47 MiB of ICU into every Linux binary. Keeps the
+/// `.write(Data(...))` shape of the call sites so nothing else changes.
+private struct StandardErrorHandle {
+    func write(_ bytes: Data) {
+        _ = try? FileDescriptor.standardError.writeAll(bytes)
+    }
+}
+
+private let standardError = StandardErrorHandle()
 
 @main
 struct ArcLeakCommand: AsyncParsableCommand {
@@ -170,7 +187,7 @@ struct Analyze: AsyncParsableCommand {
         // and it silently reports nothing. Warn loudly; an *empty* scope stays
         // silent — "no Swift changed" is legitimate.
         if let scope = reportScope, !scope.files.isEmpty, !files.contains(where: scope.files.contains) {
-            FileHandle.standardError.write(
+            standardError.write(
                 Data(
                     "arcleak: warning: --only scope matches no analyzed file — check that scope paths are relative to the right directory\n"
                         .utf8))
@@ -184,15 +201,27 @@ struct Analyze: AsyncParsableCommand {
 
         // A cancelled run analysed a partial corpus and therefore reports nothing.
         // That must never read as a clean gate — exit as an internal failure.
+        // A corpus where EVERY file degraded analyzed nothing; exiting 0 would be
+        // a green gate over unscanned code. Partial degradation stays a warning —
+        // single unreadable files are reported per-file — but total failure is a
+        // broken gate.
+        if report.analyzedFileCount > 0, report.degradedFiles.count >= report.analyzedFileCount {
+            standardError.write(
+                Data(
+                    "arcleak: every file in the corpus was skipped (unreadable, non-UTF8, or over the size cap); nothing was analyzed\n"
+                        .utf8))
+            throw ExitCode(ExitStatus.internalFailure)
+        }
+
         if report.wasCancelled {
-            FileHandle.standardError.write(
+            standardError.write(
                 Data("arcleak: run cancelled before the corpus was complete; no findings reported\n".utf8))
             throw ExitCode(ExitStatus.internalFailure)
         }
 
         if let writeBaseline {
             try baselineOrExit { try Baseline(findings: report.findings).write(path: writeBaseline) }
-            FileHandle.standardError.write(
+            standardError.write(
                 Data("arcleak: wrote baseline with \(report.findings.count) fingerprint(s) to \(writeBaseline)\n".utf8)
             )
         }
@@ -205,21 +234,31 @@ struct Analyze: AsyncParsableCommand {
             baselinedCount = baselined.count
         }
 
-        if experimentalSilConfirm {
-            let candidates = report.findings.filter { $0.rule == .storedClosureStrongSelf }
-            let others = report.findings.filter { $0.rule != .storedClosureStrongSelf }
-            // One session memoizes SILGen per file across all candidates.
-            let session = SILConfirmationSession()
-            let (kept, demoted) = await SILConfirmation.filter(findings: candidates) {
-                await session.confirmSelfCapture(file: $0.path, line: $0.line)
+        // SILGen confirmation shells out to xcrun, so it is macOS-only; the
+        // session type does not exist elsewhere.
+        #if os(macOS)
+            if experimentalSilConfirm {
+                let candidates = report.findings.filter { $0.rule == .storedClosureStrongSelf }
+                let others = report.findings.filter { $0.rule != .storedClosureStrongSelf }
+                // One session memoizes SILGen per file across all candidates.
+                let session = SILConfirmationSession()
+                let (kept, demoted) = await SILConfirmation.filter(findings: candidates) {
+                    await session.confirmSelfCapture(file: $0.path, line: $0.line)
+                }
+                for finding in demoted {
+                    standardError.write(
+                        Data(
+                            "sil-confirm: demoted \(finding.path):\(finding.line) (SILGen shows a weak capture)\n".utf8)
+                    )
+                }
+                report.findings = (others + kept).sorted()
             }
-            for finding in demoted {
-                FileHandle.standardError.write(
-                    Data("sil-confirm: demoted \(finding.path):\(finding.line) (SILGen shows a weak capture)\n".utf8)
-                )
+        #else
+            if experimentalSilConfirm {
+                standardError.write(
+                    Data("arcleak: --experimental-sil-confirm requires xcrun (macOS only)\n".utf8))
             }
-            report.findings = (others + kept).sorted()
-        }
+        #endif
 
         if fix || fixDryRun {
             try applyFixes(report: report)
@@ -237,7 +276,7 @@ struct Analyze: AsyncParsableCommand {
         }
 
         if embeddingBundle != nil, !experimentalEmbeddingRank {
-            FileHandle.standardError.write(
+            standardError.write(
                 Data("arcleak: --embedding-bundle has no effect without --experimental-embedding-rank\n".utf8)
             )
         }
@@ -260,7 +299,7 @@ struct Analyze: AsyncParsableCommand {
         if report.cacheHits + report.cacheMisses > 0, !noCache {
             summary += "; cache: \(report.cacheHits) reused, \(report.cacheMisses) parsed"
         }
-        FileHandle.standardError.write(Data((summary + "\n").utf8))
+        standardError.write(Data((summary + "\n").utf8))
 
         if writeBaseline != nil {
             return
@@ -288,14 +327,14 @@ struct Analyze: AsyncParsableCommand {
             guard findings.count > 1 else { return findings }
             let resolution = await EmbeddingRank.resolveProvider(bundlePath: embeddingBundle)
             if let note = resolution.note {
-                FileHandle.standardError.write(Data("arcleak: \(note)\n".utf8))
+                standardError.write(Data("arcleak: \(note)\n".utf8))
             }
             let ranked = await EmbeddingRank.reorder(
                 findings: findings,
                 snippets: Self.snippets(for: findings),
                 provider: resolution.provider
             )
-            FileHandle.standardError.write(
+            standardError.write(
                 Data(
                     """
                     arcleak: experimental embedding-rank grouped \(ranked.count) finding(s) \
@@ -306,7 +345,7 @@ struct Analyze: AsyncParsableCommand {
             )
             return ranked
         #else
-            FileHandle.standardError.write(
+            standardError.write(
                 Data(
                     "arcleak: experimental embedding-rank is unavailable on this platform; order unchanged\n"
                         .utf8
@@ -332,7 +371,9 @@ struct Analyze: AsyncParsableCommand {
             }
             let index = finding.line - 1
             if index >= 0, index < lines.count {
-                let text = lines[index].trimmingCharacters(in: .whitespacesAndNewlines)
+                let text = String(
+                    lines[index].drop(while: \.isWhitespace)
+                        .reversed().drop(while: \.isWhitespace).reversed())
                 if !text.isEmpty { return text }
             }
             return finding.rule.rawValue
@@ -354,7 +395,7 @@ struct Analyze: AsyncParsableCommand {
             defines: configuration.activeDefines
         )
         if let note = outcome.note {
-            FileHandle.standardError.write(Data("arcleak: \(note)\n".utf8))
+            standardError.write(Data("arcleak: \(note)\n".utf8))
         }
         return outcome.index
     }
@@ -398,7 +439,7 @@ struct Analyze: AsyncParsableCommand {
         do {
             return try body()
         } catch {
-            FileHandle.standardError.write(Data("arcleak: \(error)\n".utf8))
+            standardError.write(Data("arcleak: \(error)\n".utf8))
             throw ExitCode(ExitStatus.badConfiguration)
         }
     }
@@ -409,7 +450,7 @@ struct Analyze: AsyncParsableCommand {
         } catch let error as ExitCode {
             throw error
         } catch {
-            FileHandle.standardError.write(Data("arcleak: \(error)\n".utf8))
+            standardError.write(Data("arcleak: \(error)\n".utf8))
             throw ExitCode(ExitStatus.badConfiguration)
         }
     }
@@ -442,7 +483,7 @@ struct Analyze: AsyncParsableCommand {
             applied += result.appliedCount
             skipped += result.skipped.count
             for finding in group where result.skipped.contains(finding) == false {
-                FileHandle.standardError.write(
+                standardError.write(
                     Data("\(fix ? "fixed" : "would fix"): \(path):\(finding.line) [\(finding.rule.rawValue)]\n".utf8)
                 )
             }
@@ -457,7 +498,7 @@ struct Analyze: AsyncParsableCommand {
                     try write.source.write(toFile: write.path, atomically: true, encoding: .utf8)
                     written.append(write.path)
                 } catch {
-                    FileHandle.standardError.write(
+                    standardError.write(
                         Data(
                             """
                             arcleak: write failed for \(write.path): \(error)
@@ -471,7 +512,7 @@ struct Analyze: AsyncParsableCommand {
                 }
             }
         }
-        FileHandle.standardError.write(
+        standardError.write(
             Data("arcleak: \(fix ? "applied" : "previewed") \(applied) fix(es); \(skipped) not auto-fixable\n".utf8)
         )
     }
@@ -537,14 +578,15 @@ struct Analyze: AsyncParsableCommand {
                 // \r too: a CRLF scope file (Windows-authored diff, autocrlf)
                 // would otherwise match nothing — every finding lands out of
                 // scope and the gate silently passes.
-                var entry = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                let trimmable: (Character) -> Bool = { $0 == " " || $0 == "\t" || $0 == "\r" }
+                var entry = String(
+                    line.drop(while: trimmable).reversed().drop(while: trimmable).reversed())
                 // git C-quotes paths with special bytes ("So\\303\\251.swift",
                 // quotes included) unless core.quotepath=false; strip the quotes
                 // so at least plain-ASCII quoted paths keep matching.
                 if entry.hasPrefix("\"") && entry.hasSuffix("\"") && entry.count >= 2 {
                     entry = String(entry.dropFirst().dropLast())
-                        .replacingOccurrences(of: "\\\"", with: "\"")
-                        .replacingOccurrences(of: "\\\\", with: "\\")
+                        .replacing("\\\"", with: "\"").replacing("\\\\", with: "\\")
                 }
                 return entry
             }
@@ -556,7 +598,10 @@ struct Analyze: AsyncParsableCommand {
         if let cachePath { return URL(fileURLWithPath: cachePath) }
         guard let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
         else { return nil }
-        return caches.appending(path: "arcleak/facts.json")
+        // Namespaced per workspace: one global file meant analyzing repo B
+        // evicted repo A's entries, so alternating projects never hit.
+        let key = RepositoryRoot.workspaceKey(from: FileManager.default.currentDirectoryPath)
+        return caches.appending(path: "arcleak/\(key)/facts.json")
     }
 
     /// Deterministic discovery: directories are walked recursively, skipping
@@ -572,35 +617,41 @@ struct Analyze: AsyncParsableCommand {
 
         for path in paths {
             guard
-                // Resolved first: resource values do not traverse a final symlink,
-                // so a linked Sources/ would classify as a "file" and be skipped.
-                let isDirectory = try? URL(fileURLWithPath: path).resolvingSymlinksInPath()
-                    .resourceValues(forKeys: [.isDirectoryKey]).isDirectory
+                // Resolved first — attributesOfItem does not traverse a final
+                // symlink — and attributes rather than URL resource values,
+                // which are corelibs-only.
+                let attributes = try? manager.attributesOfItem(
+                    atPath: URL(fileURLWithPath: path).resolvingSymlinksInPath().path),
+                let type = attributes[.type] as? FileAttributeType
             else {
                 throw ValidationError("no such file or directory: \(path)")
             }
-            if !isDirectory {
+            if type != .typeDirectory {
                 files.insert(URL(fileURLWithPath: path).path)
                 continue
             }
-            // Resolved as well: enumerating a symlinked root yields nothing.
-            let root = URL(fileURLWithPath: path).resolvingSymlinksInPath()
-            guard
-                let enumerator = manager.enumerator(
-                    at: root,
-                    includingPropertiesForKeys: [.isRegularFileKey],
-                    options: [.skipsHiddenFiles]
-                )
-            else { continue }
-            for case let url as URL in enumerator {
-                if skippedComponents.contains(url.lastPathComponent) {
-                    enumerator.skipDescendants()
+            // Explicit worklist rather than FileManager.enumerator, which is
+            // corelibs-only. Preserves the old behaviours — skipsHiddenFiles and
+            // skipDescendants pruning — resolves symlinks, and seeds absolute,
+            // because finding paths are part of the output contract.
+            var stack = [URL(fileURLWithPath: path).resolvingSymlinksInPath().path]
+            while let directory = stack.popLast() {
+                guard let entries = try? manager.contentsOfDirectory(atPath: directory) else {
                     continue
                 }
-                guard url.pathExtension == "swift" else { continue }
-                let filePath = url.path
-                if !configuration.isExcluded(path: filePath) {
-                    files.insert(filePath)
+                for entry in entries {
+                    if entry.hasPrefix(".") { continue }
+                    if skippedComponents.contains(entry) { continue }
+                    let full = directory + "/" + entry
+                    let entryType =
+                        (try? manager.attributesOfItem(
+                            atPath: URL(fileURLWithPath: full).resolvingSymlinksInPath().path))?[
+                            .type] as? FileAttributeType
+                    if entryType == .typeDirectory {
+                        stack.append(full)
+                    } else if full.hasSuffix(".swift"), !configuration.isExcluded(path: full) {
+                        files.insert(full)
+                    }
                 }
             }
         }
