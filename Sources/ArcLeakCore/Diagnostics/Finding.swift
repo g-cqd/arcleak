@@ -76,7 +76,7 @@ extension Finding: Comparable {
 
 extension Finding: Codable {
     private enum CodingKeys: String, CodingKey {
-        case rule, severity, path, line, column, message, note, related, fingerprint
+        case rule, severity, path, line, column, message, note, related, fingerprintPath, fingerprint
     }
 
     public init(from decoder: any Decoder) throws {
@@ -89,7 +89,8 @@ extension Finding: Codable {
             column: try container.decode(Int.self, forKey: .column),
             message: try container.decode(String.self, forKey: .message),
             note: try container.decodeIfPresent(String.self, forKey: .note),
-            related: try container.decodeIfPresent([RelatedLocation].self, forKey: .related) ?? []
+            related: try container.decodeIfPresent([RelatedLocation].self, forKey: .related) ?? [],
+            fingerprintPath: try container.decodeIfPresent(String.self, forKey: .fingerprintPath)
         )
         // fingerprint is derived — ignored on decode, recomputed on access.
     }
@@ -104,6 +105,10 @@ extension Finding: Codable {
         try container.encode(message, forKey: .message)
         try container.encodeIfPresent(note, forKey: .note)
         if !related.isEmpty { try container.encode(related, forKey: .related) }
+        // The anchor, not just the derived hash: a report round-tripped through
+        // JSON and rebuilt into a Baseline would otherwise recompute fingerprints
+        // from the absolute path and match nothing.
+        try container.encodeIfPresent(fingerprintPath, forKey: .fingerprintPath)
         try container.encode(fingerprint, forKey: .fingerprint)
     }
 }
