@@ -1,4 +1,4 @@
-public import ADJSON
+public import AemiJSON
 
 /// A call that releases a framework retention edge (`invalidate()`, `cancel()`,
 /// `removeObserver(_:)`, session invalidation), and whether it sits in `deinit`.

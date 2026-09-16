@@ -1,9 +1,9 @@
-// ADJSON backs ONLY this internal, version-gated cache coder — its
+// AemiJSON backs ONLY this internal, version-gated cache coder — its
 // reflection-free `@JSONCodable` fast path. Report/SARIF/baseline stay on
-// Foundation (they hash encoded bytes across runs; ADJSON differs on number and
+// Foundation (they hash encoded bytes across runs; AemiJSON differs on number and
 // slash formatting, which is harmless only here). `public import` because the
 // hand-written `Entry` fast conformance below is public API of the public type.
-public import ADJSON
+public import AemiJSON
 
 #if canImport(FoundationEssentials)
     public import FoundationEssentials
@@ -45,26 +45,26 @@ public struct FactsCache: Sendable {
     // hooks all route through these two functions, so swapping the JSON coder
     // touches exactly one place and every path is measured/exercised identically.
     fileprivate static func encodePayload(_ payload: Payload) throws -> Data {
-        // ADJSON's single-pass byte writer over the reflection-free
-        // `ADJSONFastEncodable` graph (`@JSONCodable` structs + the
+        // AemiJSON's single-pass byte writer over the reflection-free
+        // `AemiJSONFastEncodable` graph (`@JSONCodable` structs + the
         // `FactsFastCoding` enums). Default `.rfc8259` options — NO
-        // `keyOrder = .sorted`, which would force ADJSON off the streaming writer
+        // `keyOrder = .sorted`, which would force AemiJSON off the streaming writer
         // into a second compact -> re-parse-tape -> re-emit pass and cripple
         // encode. Byte-stability across a decode -> re-encode instead comes from
         // `Payload.__adjsonEncode` emitting the top-level `entries` map in sorted
         // key order (O(files·log files) — it is the only hash-ordered container in
         // the payload). The cache is internal + version-gated, so `2.0`<->`2` and
         // an unescaped `/` are harmless: only this tool version reads these bytes.
-        let encoder = ADJSON.JSONEncoder()
+        let encoder = AemiJSON.JSONEncoder()
         return try encoder.encode(payload)
     }
 
     fileprivate static func decodePayload(from data: Data) throws -> Payload {
-        // Byte-level decode: hand ADJSON a contiguous `[UInt8]` (no Foundation
+        // Byte-level decode: hand AemiJSON a contiguous `[UInt8]` (no Foundation
         // `Data` bridging in the parser); the `@JSONCodable`-generated
         // `_FastDecodeCursor` conformances read each field straight off the tape
         // by statically-known key — no `KeyedDecodingContainer`, no per-key String.
-        let decoder = ADJSON.JSONDecoder()
+        let decoder = AemiJSON.JSONDecoder()
         return try decoder.decode(Payload.self, from: [UInt8](data))
     }
 
@@ -137,7 +137,7 @@ public struct FactsCache: Sendable {
     }
 }
 
-// MARK: - Fast ADJSON coding (payload root)
+// MARK: - Fast AemiJSON coding (payload root)
 
 // `FileFacts` and the whole nested model graph get their fast
 // `ADJSONFast{Encodable,Decodable}` conformance from `@JSONCodable` (the structs)
@@ -145,11 +145,11 @@ public struct FactsCache: Sendable {
 // hand-written here so the root stays nested and — crucially — so `Payload`
 // emits the top-level `entries` map in sorted key order: that alone makes the
 // persisted cache byte-stable across a decode -> re-encode WITHOUT paying
-// ADJSON's `.sorted` whole-tape re-emit (`entries` is the only hash-ordered
+// AemiJSON's `.sorted` whole-tape re-emit (`entries` is the only hash-ordered
 // container in the payload; every other collection is an array or a Set-as-array).
 
-extension FactsCache.Entry: ADJSONFastEncodable, ADJSONFastDecodable {
-    // ADJSON macro-runtime SPI requires these exact underscored names.
+extension FactsCache.Entry: AemiJSONFastEncodable, AemiJSONFastDecodable {
+    // AemiJSON macro-runtime SPI requires these exact underscored names.
     // swift-format-ignore: NoLeadingUnderscores
     public func __adjsonEncode(into w: inout _JSONByteWriter) throws {
         w.beginObject()
@@ -169,8 +169,8 @@ extension FactsCache.Entry: ADJSONFastEncodable, ADJSONFastDecodable {
     }
 }
 
-extension FactsCache.Payload: ADJSONFastEncodable, ADJSONFastDecodable {
-    // ADJSON macro-runtime SPI requires these exact underscored names.
+extension FactsCache.Payload: AemiJSONFastEncodable, AemiJSONFastDecodable {
+    // AemiJSON macro-runtime SPI requires these exact underscored names.
     // swift-format-ignore: NoLeadingUnderscores
     func __adjsonEncode(into w: inout _JSONByteWriter) throws {
         w.beginObject()

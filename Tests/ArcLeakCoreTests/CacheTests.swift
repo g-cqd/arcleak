@@ -127,7 +127,7 @@ import Testing
         #expect(reloaded.entries.isEmpty)
     }
 
-    /// A `FileFacts` exercising every fact type and enum shape the ADJSON coder
+    /// A `FileFacts` exercising every fact type and enum shape the AemiJSON coder
     /// touches — including the associated-value enums that ride the generic
     /// Codable bridge (`APICallFact.Kind`, `SelfCaptureKind`, `ResultConsumption`)
     /// and the ones a live corpus rarely produces (`APICallFact`).
@@ -214,7 +214,7 @@ import Testing
         let second = try Data(contentsOf: url)
         #expect(first == second)
 
-        // Spot-check the associated-value enums that ride ADJSON's generic Codable
+        // Spot-check the associated-value enums that ride AemiJSON's generic Codable
         // bridge (a live corpus rarely produces APICallFact) — they must survive
         // verbatim through the round-trip.
         let type = try #require(loaded.entries["/x/Sample.swift"]?.facts.types.first)
