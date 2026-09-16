@@ -70,12 +70,12 @@ let benchmarks: @Sendable () -> Void = {
         }
     }
 
-    // MARK: - ADJSON adoption evaluation — FactsCache coder + warm/cold
+    // MARK: - AemiJSON adoption evaluation — FactsCache coder + warm/cold
 
     // Isolated coder timing on a real facts payload. `ARCLEAK_FACTS_JSON` points
     // at a facts.json produced by `arcleak analyze <corpus> --cache-path`, so the
     // decode always parses bytes its own encoder produced (self-consistent per
-    // coder — no Foundation-vs-ADJSON byte skew polluting the number).
+    // coder — no Foundation-vs-AemiJSON byte skew polluting the number).
     let env = ProcessInfo.processInfo.environment
     if let factsPath = env["ARCLEAK_FACTS_JSON"],
         let data = try? Data(contentsOf: URL(fileURLWithPath: factsPath))
