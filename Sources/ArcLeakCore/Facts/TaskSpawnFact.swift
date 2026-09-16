@@ -1,4 +1,4 @@
-public import ADJSON
+public import AemiJSON
 
 /// A `Task { … }` / `Task.detached { … }` spawn site.
 @JSONCodable

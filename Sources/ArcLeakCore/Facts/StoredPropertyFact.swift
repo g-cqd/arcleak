@@ -1,4 +1,4 @@
-public import ADJSON
+public import AemiJSON
 
 /// One stored property of a type: the raw material of ownership-graph edges.
 ///
