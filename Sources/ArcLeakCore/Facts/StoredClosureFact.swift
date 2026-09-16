@@ -1,4 +1,4 @@
-public import ADJSON
+public import AemiJSON
 
 /// A closure literal that ends up stored on the enclosing instance: assigned to
 /// a member (`self.handler = { … }` / `handler = { … }`), appended to a member
