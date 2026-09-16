@@ -8,7 +8,7 @@ let package = Package(
     // Tracks the main package's macOS 15 floor (IndexStoreDB in ArcLeakCore).
     platforms: [.macOS(.v15)],
     dependencies: [
-        .package(path: ".."),
+        .package(url: "https://github.com/g-cqd/arcleak.git", branch: "main"),
         .package(url: "https://github.com/ordo-one/package-benchmark", from: "1.27.0"),
     ],
     targets: [
