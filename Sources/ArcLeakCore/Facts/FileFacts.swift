@@ -1,4 +1,4 @@
-public import ADJSON
+public import AemiJSON
 
 /// The complete, `Sendable` extraction result for one source file. The syntax
 /// tree is dropped as soon as this is built — memory stays bounded by facts.
