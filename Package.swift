@@ -45,7 +45,7 @@ let package = Package(
         // The published JSON package uses Aemi's kernel and runtime products.
         // The repository identity remains ADJSON; select its AemiJSON product.
         // Only the internal facts cache uses this codec; report byte formats stay stable.
-        .package(url: "https://github.com/g-cqd/ADJSON.git", branch: "main"),
+        .package(url: "https://github.com/g-cqd/AemiJSON.git", branch: "main"),
     ],
     targets: [
         .target(
@@ -54,7 +54,7 @@ let package = Package(
                 .product(name: "SwiftSyntax", package: "swift-syntax"),
                 .product(name: "SwiftParser", package: "swift-syntax"),
                 .product(name: "SwiftIfConfig", package: "swift-syntax"),
-                .product(name: "AemiJSON", package: "ADJSON"),
+                .product(name: "AemiJSON", package: "AemiJSON"),
                 .product(
                     name: "IndexStoreDB",
                     package: "indexstore-db",
