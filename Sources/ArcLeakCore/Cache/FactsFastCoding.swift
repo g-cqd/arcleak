@@ -1,6 +1,6 @@
-//  ADJSON fast-path coding for the facts payload's non-struct leaves.
+//  AemiJSON fast-path coding for the facts payload's non-struct leaves.
 //
-//  The `@JSONCodable` macro emits ADJSON's reflection-free
+//  The `@JSONCodable` macro emits AemiJSON's reflection-free
 //  `ADJSONFast{Decodable,Encodable}` conformance for a struct (see the model
 //  types + `FactsCache.swift`). It only handles structs, so the String-raw-value
 //  enums that appear as frequent struct fields get a small hand-written fast
@@ -11,12 +11,12 @@
 //  The associated-value / non-raw enums the cache also encodes —
 //  `SelfCaptureKind`, `ResultConsumption`, `APICallFact.Kind`, and
 //  `SuppressionDirective.Kind` — plus the `Set<…>` fields are intentionally LEFT
-//  on ADJSON's generic Codable bridge rather than hand-specialised. With the
+//  on AemiJSON's generic Codable bridge rather than hand-specialised. With the
 //  upstream `JSONWriter.init(adopting:)` COW fix that bridge is O(n), those
 //  shapes are rare in a real corpus, and the cache is internal + version-gated,
 //  so the wire only has to be self-consistent — key order and number spelling
 //  are irrelevant.
-public import ADJSON
+public import AemiJSON
 
 // MARK: - String-raw-value enums
 
@@ -25,14 +25,14 @@ public import ADJSON
 // synthesized `Codable` produces, but straight off the tape with no container.
 // `public` so these satisfy the fast-protocol requirements for the public enums
 // below (their conformances are public API of ArcLeakCore).
-extension ADJSONFastEncodable where Self: RawRepresentable, RawValue == String {
-    // ADJSON macro-runtime SPI requires these exact underscored names.
+extension AemiJSONFastEncodable where Self: RawRepresentable, RawValue == String {
+    // AemiJSON macro-runtime SPI requires these exact underscored names.
     // swift-format-ignore: NoLeadingUnderscores
     public func __adjsonEncode(into w: inout _JSONByteWriter) { w.string(rawValue) }
 }
 
-extension ADJSONFastDecodable where Self: RawRepresentable, RawValue == String {
-    // ADJSON macro-runtime SPI requires these exact underscored names.
+extension AemiJSONFastDecodable where Self: RawRepresentable, RawValue == String {
+    // AemiJSON macro-runtime SPI requires these exact underscored names.
     // swift-format-ignore: NoLeadingUnderscores
     public static func __adjsonDecode(_ c: _FastDecodeCursor) throws -> Self {
         let raw = try c.currentString()
@@ -45,15 +45,15 @@ extension ADJSONFastDecodable where Self: RawRepresentable, RawValue == String {
 }
 
 // The String-raw enums that appear as direct struct fields in the cached graph.
-extension ReferenceStrength: ADJSONFastEncodable, ADJSONFastDecodable {}
-extension ReleaseSite.Kind: ADJSONFastEncodable, ADJSONFastDecodable {}
-extension APICallFact.UpstreamFiniteness: ADJSONFastEncodable, ADJSONFastDecodable {}
+extension ReferenceStrength: AemiJSONFastEncodable, AemiJSONFastDecodable {}
+extension ReleaseSite.Kind: AemiJSONFastEncodable, AemiJSONFastDecodable {}
+extension APICallFact.UpstreamFiniteness: AemiJSONFastEncodable, AemiJSONFastDecodable {}
 
 // `RuleID` (the elements of `SuppressionDirective.rules`) — same String-raw
 // treatment, plus `Comparable` so the `Set<RuleID>` below can sort. The fast
-// conformance is consulted only on the ADJSON cache path; RuleID's Foundation
+// conformance is consulted only on the AemiJSON cache path; RuleID's Foundation
 // Codable (config, baselines, SARIF) is untouched.
-extension RuleID: ADJSONFastEncodable, ADJSONFastDecodable {}
+extension RuleID: AemiJSONFastEncodable, AemiJSONFastDecodable {}
 extension RuleID: Comparable {
     public static func < (lhs: RuleID, rhs: RuleID) -> Bool { lhs.rawValue < rhs.rawValue }
 }
@@ -67,11 +67,11 @@ extension RuleID: Comparable {
 // round-trips byte-identically AND is reproducible across processes — the
 // Foundation coder it replaces sorted only dictionary keys, never Set elements.
 // `@retroactive`: this module owns neither `Set` (stdlib) nor the protocol
-// (ADJSON), and ADJSON deliberately ships no `Set` conformance. The risk the
+// (AemiJSON), and AemiJSON deliberately ships no `Set` conformance. The risk the
 // warning guards against — Swift later conforming `Set` itself — does not apply
 // to a private macro-runtime SPI protocol, and the conformance is consulted only
 // on the internal cache path.
-extension Set: @retroactive ADJSONFastEncodable where Element: ADJSONFastEncodable & Comparable {
+extension Set: @retroactive AemiJSONFastEncodable where Element: AemiJSONFastEncodable & Comparable {
     // swift-format-ignore: NoLeadingUnderscores
     public func __adjsonEncode(into w: inout _JSONByteWriter) throws {
         w.beginArray()
@@ -84,7 +84,7 @@ extension Set: @retroactive ADJSONFastEncodable where Element: ADJSONFastEncodab
     }
 }
 
-extension Set: @retroactive ADJSONFastDecodable where Element: ADJSONFastDecodable {
+extension Set: @retroactive AemiJSONFastDecodable where Element: AemiJSONFastDecodable {
     // swift-format-ignore: NoLeadingUnderscores
     public static func __adjsonDecode(_ c: _FastDecodeCursor) throws -> Set<Element> {
         Set(try c.fastArray(Element.self))

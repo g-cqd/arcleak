@@ -1,4 +1,4 @@
-public import ADJSON
+public import AemiJSON
 
 /// Everything the rules need to know about one nominal type, merged across the
 /// type's declaration and its same-file extensions.

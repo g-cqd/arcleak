@@ -1,4 +1,4 @@
-public import ADJSON
+public import AemiJSON
 
 /// A call site matching one of the knowledge-base API shapes, with the facts a
 /// rule needs: how the attached closure captures `self`, whether the call's

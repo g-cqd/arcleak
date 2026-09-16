@@ -1,4 +1,4 @@
-public import ADJSON
+public import AemiJSON
 
 /// 1-based line/column pair.
 @JSONCodable
