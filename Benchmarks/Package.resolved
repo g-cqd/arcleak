@@ -2,21 +2,21 @@
   "originHash" : "e316ba07bba7e48279c1f23ad6f83d0de7d716cb57ac444fbdf79a10a2fef7d2",
   "pins" : [
     {
-      "identity" : "adfoundation",
+      "identity" : "aemi",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/g-cqd/ADFoundation.git",
+      "location" : "https://github.com/Aemi-Studio/aemi.git",
       "state" : {
-        "revision" : "1c18a999192d59127ca5df7f32251c5a165dcf8c",
-        "version" : "0.1.1"
+        "branch" : "main",
+        "revision" : "dd53b25d1c0b0c3eab917aeb45e60c06ca25b0bb"
       }
     },
     {
-      "identity" : "adjson",
+      "identity" : "aemijson",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/g-cqd/ADJSON.git",
+      "location" : "https://github.com/g-cqd/AemiJSON.git",
       "state" : {
-        "revision" : "644b638147759451f90d558b7d8aefcc5426f749",
-        "version" : "0.1.1"
+        "branch" : "main",
+        "revision" : "1ed27bb15fa9419fc1b61ade90a9970c11d1847d"
       }
     },
     {
@@ -25,7 +25,7 @@
       "location" : "https://github.com/g-cqd/arcleak.git",
       "state" : {
         "branch" : "main",
-        "revision" : "fefe2e10c91bb363426246dfe385b90c86740ecc"
+        "revision" : "f530160d499a2fb120c16c9e53afd9037ae7f053"
       }
     },
     {
@@ -50,8 +50,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/ordo-one/malloc-interposer.git",
       "state" : {
-        "revision" : "8ce418ba70e494577fdc046be8c8ddb5216f16e5",
-        "version" : "1.3.1"
+        "revision" : "9221411ac2e845a93ce65b9ca2ab84f8c1084b0d",
+        "version" : "1.4.0"
       }
     },
     {
@@ -59,8 +59,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/ordo-one/package-benchmark",
       "state" : {
-        "revision" : "4281e1b3061f1e72de284715977cf50dda001c89",
-        "version" : "1.36.0"
+        "revision" : "2f192a6502392735b33466e3c5ae07e95a8065da",
+        "version" : "1.36.2"
       }
     },
     {
@@ -96,7 +96,7 @@
       "location" : "https://github.com/swiftlang/swift-lmdb.git",
       "state" : {
         "branch" : "main",
-        "revision" : "a4bc87807721c1fd114bf35464457e2db0d0e6c0"
+        "revision" : "866bc2563f360a7d84f0e87feb27df23c8958537"
       }
     },
     {
@@ -122,8 +122,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-system.git",
       "state" : {
-        "revision" : "50688cacbd41d547e9eb9f7a213542340b7c442b",
-        "version" : "1.7.5"
+        "revision" : "869129b7bf4ecc57b97d0193ad29690ca2134750",
+        "version" : "1.8.1"
       }
     },
     {
