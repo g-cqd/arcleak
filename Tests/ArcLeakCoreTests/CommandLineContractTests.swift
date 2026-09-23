@@ -110,6 +110,32 @@ import Testing
             }
         }
     }
+
+    // MARK: - SARIF columns
+
+    /// Text before each finding that UTF-8, UTF-16 and code points all count
+    /// differently: 😀 is 4 bytes, 2 UTF-16 units and 1 code point.
+    @Test("SARIF columns count UTF-16 code units, as columnKind declares")
+    func columnsCountUTF16CodeUnits() throws {
+        let boxLine = #"    func arm() { let _ = "😀é"; handler = { self.fire() } }"#
+        let aLine = "    /* é */ var b: B?"
+        let bLine = "    /* 😀 */ var a: A?"
+        let root = try Workspace.make([
+            "Box.swift": "final class Box {\n    var handler: (() -> Void)?\n\(boxLine)\n    func fire() {}\n}\n",
+            // A cross-file cycle: the anchor in A.swift, a related location in B.swift.
+            "A.swift": "final class A {\n\(aLine)\n}\n",
+            "B.swift": "final class B {\n\(bLine)\n}\n",
+        ])
+        let run = try BuiltTool.run(
+            ["analyze", root.path, "--format", "sarif", "--relative-to", root.path, "--no-cache"], in: root)
+        let log = try SarifLog(run.standardOutput)
+
+        #expect(log.columnKind == "utf16CodeUnits")
+        let columns = Dictionary(grouping: log.artifactLocations, by: \.uri).mapValues { $0.compactMap(\.startColumn) }
+        #expect(columns["Box.swift"] == [try Workspace.utf16Column(of: "{ self", in: boxLine)])
+        #expect(columns["A.swift"] == [try Workspace.utf16Column(of: "b: B", in: aLine)])
+        #expect(columns["B.swift"] == [try Workspace.utf16Column(of: "a: A", in: bLine)])
+    }
 }
 
 // MARK: - Harness
@@ -191,6 +217,12 @@ enum Workspace {
         URL(fileURLWithPath: url.path).standardized.resolvingSymlinksInPath().path
     }
 
+    /// The 1-based column, in UTF-16 code units, where `needle` starts in `line`.
+    static func utf16Column(of needle: String, in line: String) throws -> Int {
+        let range = try #require(line.range(of: needle), "\(needle) is not in \(line)")
+        return line.utf16.distance(from: line.startIndex, to: range.lowerBound) + 1
+    }
+
     /// Whether `uri` is made only of what RFC 3986 allows in a URI reference
     /// with no query or fragment: unreserved and reserved characters (less
     /// `?`, `#`, `[` and `]`) and well-formed percent escapes.
@@ -232,6 +264,8 @@ struct SarifLog {
     }
 
     var results: [[String: Any]] { run["results"] as? [[String: Any]] ?? [] }
+
+    var columnKind: String? { run["columnKind"] as? String }
 
     /// Every location a result points at: its own, then its related ones.
     var artifactLocations: [ArtifactLocation] {
