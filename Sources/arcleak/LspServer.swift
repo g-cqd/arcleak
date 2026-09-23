@@ -96,6 +96,44 @@ struct LspServer {
         let start: OutPosition
         let end: OutPosition
     }
+
+    /// Maps swift-syntax's 1-based UTF-8 byte columns to LSP's 0-based
+    /// UTF-16 characters in the document text sent by the client.
+    private struct TextPositions {
+        let bytes: [UInt8]
+        let lineStarts: [Int]
+
+        init(_ source: String) {
+            bytes = Array(source.utf8)
+            var starts = [0]
+            var index = 0
+            while index < bytes.count {
+                if bytes[index] == UInt8(ascii: "\r"), index + 1 < bytes.count,
+                    bytes[index + 1] == UInt8(ascii: "\n")
+                {
+                    index += 1
+                }
+                if bytes[index] == UInt8(ascii: "\n") || bytes[index] == UInt8(ascii: "\r") {
+                    starts.append(index + 1)
+                }
+                index += 1
+            }
+            lineStarts = starts
+        }
+
+        /// Returns nil when a finding does not point into this document.
+        func position(line: Int, byteColumn: Int) -> OutPosition? {
+            guard line >= 1, line <= lineStarts.count, byteColumn >= 1 else { return nil }
+            let start = lineStarts[line - 1]
+            let end = line < lineStarts.count ? lineStarts[line] : bytes.count
+            guard byteColumn - 1 <= end - start else { return nil }
+            let prefixEnd = start + byteColumn - 1
+            return OutPosition(
+                line: line - 1,
+                character: String(decoding: bytes[start..<prefixEnd], as: UTF8.self).utf16.count
+            )
+        }
+    }
     struct Diagnostic: Encodable {
         let range: OutRange
         let severity: Int
@@ -289,10 +327,14 @@ struct LspServer {
         let path = uri.hasPrefix("file://") ? String(uri.dropFirst(7)) : uri
         let findings = analyzer.analyze(source: source, path: path).findings
         lastFindings[uri] = findings
+        let positions = TextPositions(source)
 
-        let diagnostics = findings.map { finding in
-            Diagnostic(
-                range: Self.range(line: finding.line, column: finding.column),
+        let diagnostics = findings.compactMap { finding -> Diagnostic? in
+            guard let position = positions.position(line: finding.line, byteColumn: finding.column) else {
+                return nil
+            }
+            return Diagnostic(
+                range: OutRange(start: position, end: position),
                 severity: finding.severity == .error ? 1 : 2,
                 code: finding.rule.rawValue,
                 source: ToolInfo.name,
@@ -305,14 +347,26 @@ struct LspServer {
     private func codeActions(params: Incoming.Params?) -> [CodeAction] {
         guard
             let uri = params?.textDocument?.uri,
-            let line = params?.range?.start.line
+            let selection = params?.range,
+            let source = openDocuments[uri],
+            Self.isValid(selection)
         else { return [] }
+        let positions = TextPositions(source)
 
         return (lastFindings[uri] ?? [])
-            .filter { $0.line - 1 == line }
+            .filter { finding in
+                guard let position = positions.position(line: finding.line, byteColumn: finding.column) else {
+                    return false
+                }
+                return Self.contains(selection, position: position)
+            }
             .map { finding in
+                let insertionPosition = OutPosition(
+                    line: finding.line - 1,
+                    character: finding.line == 1 && source.hasPrefix("\u{FEFF}") ? 1 : 0
+                )
                 let insertion = CodeAction.TextEdit(
-                    range: Self.range(line: finding.line, column: 1),
+                    range: OutRange(start: insertionPosition, end: insertionPosition),
                     newText: "// @al:accept -- reviewed: \(finding.rule.rawValue)\n"
                 )
                 return CodeAction(
@@ -322,9 +376,25 @@ struct LspServer {
             }
     }
 
-    /// LSP positions are 0-based; findings are 1-based.
-    private static func range(line: Int, column: Int) -> OutRange {
-        let position = OutPosition(line: max(0, line - 1), character: max(0, column - 1))
-        return OutRange(start: position, end: position)
+    private static func isValid(_ range: Incoming.Range) -> Bool {
+        let start = range.start
+        let end = range.end
+        return start.line >= 0 && start.character >= 0 && end.line >= 0 && end.character >= 0
+            && (start.line < end.line || (start.line == end.line && start.character <= end.character))
+    }
+
+    private static func contains(_ range: Incoming.Range, position: OutPosition) -> Bool {
+        let startsBefore =
+            range.start.line < position.line
+            || (range.start.line == position.line && range.start.character <= position.character)
+        let endsAfter =
+            range.end.line > position.line
+            || (range.end.line == position.line && range.end.character > position.character)
+        let cursorMatches =
+            range.start.line == range.end.line
+            && range.start.character == range.end.character
+            && range.start.line == position.line
+            && range.start.character == position.character
+        return startsBefore && (endsAfter || cursorMatches)
     }
 }
