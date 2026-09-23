@@ -15,6 +15,7 @@ import Testing
     func identityFollowsTheFile() throws {
         let path = FileManager.default.temporaryDirectory
             .appending(path: "arcleak-build-\(UUID().uuidString)").path
+        defer { try? FileManager.default.removeItem(atPath: path) }
         #expect(BuildIdentity.identity(ofExecutableAt: path) == nil)
 
         try Data("first build".utf8).write(to: URL(fileURLWithPath: path))

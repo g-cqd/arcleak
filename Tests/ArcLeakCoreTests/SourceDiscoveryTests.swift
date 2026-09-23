@@ -10,6 +10,8 @@ import Testing
     /// into `Sources/Leaf`, unless `linked` is false.
     private func makeTree(linked: Bool = true) throws -> URL {
         let root = FileManager.default.temporaryDirectory.appending(path: "arcleak-walk-\(UUID().uuidString)")
+        var completed = false
+        defer { if !completed { try? FileManager.default.removeItem(at: root) } }
         let sources = root.appending(path: "Sources")
         for directory in ["Sub", "Leaf"] {
             try FileManager.default.createDirectory(
@@ -19,17 +21,22 @@ import Testing
             try "final class \(name) {}\n".write(
                 to: sources.appending(path: path), atomically: true, encoding: .utf8)
         }
-        guard linked else { return root }
+        guard linked else {
+            completed = true
+            return root
+        }
         try FileManager.default.createSymbolicLink(
             atPath: sources.appending(path: "Sub/Loop").path, withDestinationPath: "../..")
         try FileManager.default.createSymbolicLink(
             atPath: root.appending(path: "Alias").path, withDestinationPath: "Sources/Leaf")
+        completed = true
         return root
     }
 
     @Test("Each directory is walked once, however many links reach it")
     func linkedDirectoriesAreWalkedOnce() throws {
         let root = try makeTree()
+        defer { try? FileManager.default.removeItem(at: root) }
         let files = SourceDiscovery.swiftFiles(under: root.path) { _ in false }
 
         // One spelling per file: a link back up the tree used to re-walk it
@@ -49,10 +56,12 @@ import Testing
     @Test("An excluded link does not hide the directory it points to")
     func excludedLinkDoesNotHideItsTarget() throws {
         let root = try makeTree(linked: false)
+        defer { try? FileManager.default.removeItem(at: root) }
         try FileManager.default.createSymbolicLink(
             atPath: root.appending(path: "Vendor").path, withDestinationPath: "Sources/Sub")
         let outside = FileManager.default.temporaryDirectory.appending(path: "arcleak-outside-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: outside) }
         try "final class D {}\n".write(to: outside.appending(path: "D.swift"), atomically: true, encoding: .utf8)
         try FileManager.default.createSymbolicLink(
             atPath: root.appending(path: "External").path, withDestinationPath: outside.path)
@@ -66,6 +75,7 @@ import Testing
     @Test("Hidden entries, build products and excluded files are skipped")
     func skipsWhatItShould() throws {
         let root = try makeTree(linked: false)
+        defer { try? FileManager.default.removeItem(at: root) }
         for hidden in [".hidden/H.swift", ".build/debug/D.swift", "DerivedData/E.swift"] {
             let url = root.appending(path: hidden)
             try FileManager.default.createDirectory(

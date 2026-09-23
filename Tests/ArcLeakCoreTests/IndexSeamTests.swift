@@ -65,6 +65,7 @@ import Testing
             .appending(path: "arcleak-index-\(UUID().uuidString)")
         let store = root.appending(path: ".build/index-build")
         try FileManager.default.createDirectory(at: store, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
 
         let discovered = try #require(IndexStoreLocator.discover(projectRoot: root))
         #expect(discovered.url.path.hasSuffix(".build/index-build"))
