@@ -24,6 +24,7 @@ import Testing
             "Sources/A.swift": "final class A {\n    var b: B?\n}\n",
             "Sources/B.swift": "final class B {\n    var a: A?\n}\n",
         ])
+        defer { try? FileManager.default.removeItem(at: root) }
         let run = try BuiltTool.run(
             ["analyze", root.path, "--format", "sarif", "--relative-to", root.path, "--no-cache"], in: root)
         let log = try SarifLog(run.standardOutput)
@@ -47,6 +48,7 @@ import Testing
             special: Self.leakyBox,
             "Sources/Plain.swift": Self.leakyBox.replacing("Box", with: "Plain"),
         ])
+        defer { try? FileManager.default.removeItem(at: root) }
         let run = try BuiltTool.run(
             ["analyze", root.path, "--format", "sarif", "--relative-to", root.path, "--no-cache"], in: root)
         let locations = try SarifLog(run.standardOutput).artifactLocations
@@ -67,6 +69,7 @@ import Testing
             "My Sources/A.swift": "final class A {\n    var b: B?\n}\n",
             "My Sources/B.swift": "final class B {\n    var a: A?\n}\n",
         ])
+        defer { try? FileManager.default.removeItem(at: root) }
         let run = try BuiltTool.run(["analyze", root.path, "--format", "sarif", "--no-cache"], in: root)
         let log = try SarifLog(run.standardOutput)
 
@@ -90,8 +93,10 @@ import Testing
             "Sources/A.swift": "final class A {\n    var b: B?\n}\n",
             "Sources/B.swift": "final class B {\n    var a: A?\n}\n",
         ])
+        defer { try? FileManager.default.removeItem(at: root) }
         let link = root.deletingLastPathComponent().appending(path: root.lastPathComponent + "-link")
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: root)
+        defer { try? FileManager.default.removeItem(at: link) }
         var spellings = [root.path, link.path]
         let physical = "/private" + Workspace.canonical(root)
         if FileManager.default.fileExists(atPath: physical) { spellings.append(physical) }
@@ -126,6 +131,7 @@ import Testing
             "A.swift": "final class A {\n\(aLine)\n}\n",
             "B.swift": "final class B {\n\(bLine)\n}\n",
         ])
+        defer { try? FileManager.default.removeItem(at: root) }
         let run = try BuiltTool.run(
             ["analyze", root.path, "--format", "sarif", "--relative-to", root.path, "--no-cache"], in: root)
         let log = try SarifLog(run.standardOutput)
@@ -139,9 +145,21 @@ import Testing
 
     // MARK: - Facts cache
 
+    @Test("Cache-path help names the workspace-scoped default")
+    func cachePathHelpMatchesDefault() throws {
+        let root = try Workspace.make([:])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let run = try BuiltTool.run(["analyze", "--help"], in: root)
+        #expect(run.status == 0)
+        #expect(
+            String(decoding: run.standardOutput, as: UTF8.self).contains(
+                "~/Library/Caches/arcleak/<workspace>/facts.json"))
+    }
+
     @Test("A facts cache that cannot be used is a miss, reported at most once")
     func unusableCacheIsAMiss() throws {
         let root = try Workspace.make(["Box.swift": Self.leakyBox])
+        defer { try? FileManager.default.removeItem(at: root) }
         let cache = root.appending(path: "facts.json")
         let arguments = ["analyze", root.path, "--cache-path", cache.path]
 
@@ -160,6 +178,16 @@ import Testing
         let broken = try BuiltTool.run(arguments, in: root)
         #expect(broken.status == 1)
         #expect(broken.standardError.contains("arcleak: note: ignored the facts cache"))
+
+        // The header is genuine, but an entry has a valid JSON value of the
+        // wrong shape. The decoder must report a miss instead of trapping.
+        let repaired = try Data(contentsOf: cache)
+        let repairedHeaderEnd = try #require(repaired.firstIndex(of: UInt8(ascii: "\n")))
+        try (repaired[...repairedHeaderEnd] + Data(#"{"entries":{"A":false}}"#.utf8)).write(to: cache)
+        let wrongShape = try BuiltTool.run(arguments, in: root)
+        #expect(wrongShape.status == 1)
+        #expect(wrongShape.standardError.contains("arcleak: note: ignored the facts cache"))
+
         let next = try BuiltTool.run(arguments, in: root)
         #expect(!next.standardError.contains("facts cache"))
         #expect(next.standardError.contains("cache: 1 reused"))
@@ -173,7 +201,7 @@ import Testing
     @Test("A run that skipped every file prints its report, then exits 70")
     func everyFileSkippedPrintsTheReport() throws {
         let root = try Workspace.make([:])
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
         try Data([0xFF, 0xFE, 0x7B]).write(to: root.appending(path: "Bad.swift"))
 
         let sarif = try BuiltTool.run(
@@ -205,6 +233,7 @@ import Testing
     @Test("A stamp that cannot be written exits 74")
     func unwritableStampIsAnIOFailure() throws {
         let root = try Workspace.make(["Fine.swift": "final class Fine {}\n", "blocker": ""])
+        defer { try? FileManager.default.removeItem(at: root) }
         let stamp = root.appending(path: "blocker/stamp").path  // under a regular file
         let run = try BuiltTool.run(["analyze", root.path, "--no-cache", "--stamp", stamp], in: root)
         #expect(run.status == 74)
@@ -214,6 +243,7 @@ import Testing
     @Test("A run that skipped some files records them and succeeds")
     func someFilesSkippedStillSucceeds() throws {
         let root = try Workspace.make(["Fine.swift": "final class Fine {}\n"])
+        defer { try? FileManager.default.removeItem(at: root) }
         try Data([0xFF, 0xFE, 0x7B]).write(to: root.appending(path: "Bad.swift"))
 
         let run = try BuiltTool.run(
@@ -287,15 +317,21 @@ enum Workspace {
     /// Writes each `relative path: contents` pair under a fresh directory.
     static func make(_ files: [String: String]) throws -> URL {
         let root = FileManager.default.temporaryDirectory.appending(path: "arcleak-cli-\(UUID().uuidString)")
-        for (path, contents) in files {
-            // fileURLWithPath, not appending(path:): the names under test carry
-            // `#` and spaces, which must stay part of the file name.
-            let url = URL(fileURLWithPath: root.path + "/" + path)
-            try FileManager.default.createDirectory(
-                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try contents.write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        do {
+            for (path, contents) in files {
+                // fileURLWithPath, not appending(path:): the names under test carry
+                // `#` and spaces, which must stay part of the file name.
+                let url = URL(fileURLWithPath: root.path + "/" + path)
+                try FileManager.default.createDirectory(
+                    at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try contents.write(to: url, atomically: true, encoding: .utf8)
+            }
+            return root
+        } catch {
+            try? FileManager.default.removeItem(at: root)
+            throw error
         }
-        return root
     }
 
     /// The spelling arcleak reports a path under: absolute, symlinks resolved,
