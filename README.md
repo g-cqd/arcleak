@@ -411,8 +411,12 @@ canonical — absolute, symlinks resolved, and on macOS without `/private`
 analyzed paths the command line used: through a symlink, or with `/private`.
 
 A relative uri is never percent-encoded, so a reader that takes it as a plain
-path still finds the file. A path that would need escapes is written as an
-absolute `file://` URI instead, which every reader decodes.
+path still finds the file. A path that would need escapes — a space, a `#`,
+any non-ASCII letter — is written as an absolute `file://` URI instead, which
+every reader decodes. Those uris name the checkout, so they are the one part
+of a `--relative-to` report that depends on where the repository lives;
+GitHub code scanning converts absolute uris under the checkout directory to
+relative ones.
 
 SARIF columns count UTF-16 code units, and the run says so
 (`"columnKind": "utf16CodeUnits"`, SARIF's default and the unit editors index
