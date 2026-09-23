@@ -402,6 +402,12 @@ A relative uri is never percent-encoded, so a reader that takes it as a plain
 path still finds the file. A path that would need escapes is written as an
 absolute `file://` URI instead, which every reader decodes.
 
+SARIF columns count UTF-16 code units, and the run says so
+(`"columnKind": "utf16CodeUnits"`, SARIF's default and the unit editors index
+lines in); a byte-order mark does not count. The `xcode` and `json` formats
+keep swift-syntax's 1-based UTF-8 byte columns, the unit compilers print and
+the one fingerprints hash.
+
 ### Scope-file hygiene
 
 Scope lines tolerate CRLF endings and strip git's simple C-quoting, but paths
