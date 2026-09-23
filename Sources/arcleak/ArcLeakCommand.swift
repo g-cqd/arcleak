@@ -623,22 +623,19 @@ struct Analyze: AsyncParsableCommand {
     }
 
     /// Deterministic discovery: directories are walked recursively, skipping
-    /// build products and VCS internals. Every path — explicit file argument or
-    /// walked entry — is normalized to absolute, because `Finding.path` feeds
-    /// the fingerprint, and a fingerprint that depends on how the corpus was
-    /// spelled on the command line makes baselines unusable across invocation
-    /// styles.
+    /// build products and VCS internals (see `SourceDiscovery`). Every path —
+    /// explicit file argument or walked entry — is normalized to absolute,
+    /// because `Finding.path` feeds the fingerprint, and a fingerprint that
+    /// depends on how the corpus was spelled on the command line makes
+    /// baselines unusable across invocation styles.
     private func discoverSwiftFiles(configuration: Configuration) throws -> [String] {
-        let skippedComponents: Set<String> = [".build", ".git", "DerivedData", ".swiftpm", "checkouts"]
         var files: Set<String> = []
-        let manager = FileManager.default
-
         for path in paths {
             guard
                 // Resolved first — attributesOfItem does not traverse a final
                 // symlink — and attributes rather than URL resource values,
                 // which are corelibs-only.
-                let attributes = try? manager.attributesOfItem(
+                let attributes = try? FileManager.default.attributesOfItem(
                     atPath: URL(fileURLWithPath: path).resolvingSymlinksInPath().path),
                 let type = attributes[.type] as? FileAttributeType
             else {
@@ -648,30 +645,7 @@ struct Analyze: AsyncParsableCommand {
                 files.insert(URL(fileURLWithPath: path).path)
                 continue
             }
-            // Explicit worklist rather than FileManager.enumerator, which is
-            // corelibs-only. Preserves the old behaviours — skipsHiddenFiles and
-            // skipDescendants pruning — resolves symlinks, and seeds absolute,
-            // because finding paths are part of the output contract.
-            var stack = [URL(fileURLWithPath: path).resolvingSymlinksInPath().path]
-            while let directory = stack.popLast() {
-                guard let entries = try? manager.contentsOfDirectory(atPath: directory) else {
-                    continue
-                }
-                for entry in entries {
-                    if entry.hasPrefix(".") { continue }
-                    if skippedComponents.contains(entry) { continue }
-                    let full = directory + "/" + entry
-                    let entryType =
-                        (try? manager.attributesOfItem(
-                            atPath: URL(fileURLWithPath: full).resolvingSymlinksInPath().path))?[
-                            .type] as? FileAttributeType
-                    if entryType == .typeDirectory {
-                        stack.append(full)
-                    } else if full.hasSuffix(".swift"), !configuration.isExcluded(path: full) {
-                        files.insert(full)
-                    }
-                }
-            }
+            files.formUnion(SourceDiscovery.swiftFiles(under: path, isExcluded: configuration.isExcluded(path:)))
         }
         return files.sorted()
     }
