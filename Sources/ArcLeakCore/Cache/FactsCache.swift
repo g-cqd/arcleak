@@ -24,6 +24,11 @@ public import AemiJSON
 /// written by another build (see ``BuildIdentity``) is discarded whole, even
 /// one of the same version: its extraction code may differ, and a
 /// facts-schema change can never deserialize into wrong shapes.
+///
+/// What follows this build's header is trusted to have this build's shape.
+/// A truncated or corrupt payload fails to parse and is a reported miss, but
+/// well-formed JSON of another shape still reaches AemiJSON's typed decoder,
+/// which can read past its tape on it (Aemi #7) until that is fixed.
 public struct FactsCache: Sendable {
     public struct Entry: Sendable, Codable {
         public let fingerprint: String
