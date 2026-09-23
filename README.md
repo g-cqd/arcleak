@@ -438,7 +438,7 @@ reporting nothing.
 | `1` | the gate failed on findings: an error-severity finding, or with `--strict` any finding — and nothing else |
 | `64` | usage error: a bad argument, a path that does not exist, an unreadable `--only-from` file |
 | `70` | nothing was analyzed: every file was skipped, and the report on stdout says which and why; or the run failed or was cancelled, and stdout is empty |
-| `74` | `--fix` could not write a fixed file; files written before it keep their fixes |
+| `74` | a file could not be written: a `--fix` result (files written before it keep their fixes), or the `--stamp` of a run that passed |
 | `78` | invalid configuration, or a missing or malformed baseline |
 
 `1` means findings *only*, so a step that posts a review comment on `1` will
