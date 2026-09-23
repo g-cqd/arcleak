@@ -69,11 +69,15 @@ Baseline fingerprints include positions, so large refactors shift findings
 out of the baseline — regenerate deliberately rather than let fuzzy matching
 swallow new bugs.
 
-**Cache** — on by default (`~/Library/Caches/arcleak/facts.json`; override
-with `--cache-path`, disable with `--no-cache`). Only parsed facts are
-cached, keyed by content fingerprint and tool version; rules always re-run,
-so findings never go stale relative to rules or configuration. The cache
-fails open: corrupt or mismatched caches behave as empty.
+**Cache** — on by default, one per workspace
+(`~/Library/Caches/arcleak/<workspace>/facts.json`; override with
+`--cache-path`, disable with `--no-cache`). Only parsed facts are cached. Each
+file's entry is keyed by its content and by the configuration facts depend on
+(`defines`, `contracts`); the whole cache is keyed by the arcleak build that
+wrote it — its executable, not just its version — so a rebuilt or reinstalled
+arcleak starts cold rather than trust facts another build extracted. Rules
+always re-run, so findings never go stale relative to rules or configuration.
+The cache fails open: corrupt or mismatched caches behave as empty.
 
 ## Cross-module resolution (`--index-store`, macOS-only)
 
