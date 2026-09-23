@@ -15,11 +15,15 @@ public enum OutputFormat: String, CaseIterable, Sendable {
 }
 
 public enum ReportFormatter {
-    public static func format(_ report: AnalysisReport, as format: OutputFormat) -> String {
+    /// - Parameter root: the directory `report` was relativized to, if any.
+    ///   SARIF declares it as the base its relative uris resolve against.
+    public static func format(
+        _ report: AnalysisReport, as format: OutputFormat, relativeTo root: String? = nil
+    ) -> String {
         switch format {
         case .xcode: xcode(report)
         case .json: json(report)
-        case .sarif: sarif(report)
+        case .sarif: sarif(report, root: root.map(SourcePath.canonical))
         }
     }
 
@@ -79,6 +83,9 @@ public enum ReportFormatter {
 
     private struct SarifRun: Encodable {
         let tool: SarifTool
+        /// The absolute URI of ``ArtifactURI/baseID``, which relative uris
+        /// resolve against (nil without a root — optionals are omitted).
+        let originalUriBaseIds: [String: SarifArtifactLocation]?
         let results: [SarifResult]
     }
 
@@ -126,6 +133,17 @@ public enum ReportFormatter {
 
     private struct SarifArtifactLocation: Encodable {
         let uri: String
+        let uriBaseId: String?
+
+        /// `path` as ``ArtifactURI`` writes it; see there for the two forms.
+        init(path: String, root: String?) {
+            (uri, uriBaseId) = ArtifactURI.location(of: path, root: root)
+        }
+
+        init(uri: String) {
+            self.uri = uri
+            uriBaseId = nil
+        }
     }
 
     private struct SarifRegion: Encodable {
@@ -133,7 +151,9 @@ public enum ReportFormatter {
         let startColumn: Int
     }
 
-    private static func sarif(_ report: AnalysisReport) -> String {
+    /// - Parameter root: the canonical directory the report's relative paths
+    ///   hang from, or nil when every path is absolute.
+    private static func sarif(_ report: AnalysisReport, root: String?) -> String {
         let results = report.findings.map { finding in
             SarifResult(
                 ruleId: finding.rule.rawValue,
@@ -144,7 +164,7 @@ public enum ReportFormatter {
                 locations: [
                     SarifLocation(
                         physicalLocation: SarifPhysicalLocation(
-                            artifactLocation: SarifArtifactLocation(uri: finding.path),
+                            artifactLocation: SarifArtifactLocation(path: finding.path, root: root),
                             region: SarifRegion(
                                 startLine: finding.line,
                                 startColumn: finding.column
@@ -157,7 +177,7 @@ public enum ReportFormatter {
                     : finding.related.map { link in
                         SarifLocation(
                             physicalLocation: SarifPhysicalLocation(
-                                artifactLocation: SarifArtifactLocation(uri: link.path),
+                                artifactLocation: SarifArtifactLocation(path: link.path, root: root),
                                 region: SarifRegion(startLine: link.line, startColumn: link.column)
                             )
                         )
@@ -177,7 +197,7 @@ public enum ReportFormatter {
                 locations: [
                     SarifLocation(
                         physicalLocation: SarifPhysicalLocation(
-                            artifactLocation: SarifArtifactLocation(uri: file.path),
+                            artifactLocation: SarifArtifactLocation(path: file.path, root: root),
                             region: SarifRegion(startLine: 1, startColumn: 1)
                         )
                     )
@@ -201,6 +221,9 @@ public enum ReportFormatter {
                             )
                         }
                     )),
+                originalUriBaseIds: root.map {
+                    [ArtifactURI.baseID: SarifArtifactLocation(uri: ArtifactURI.baseURI(of: $0))]
+                },
                 results: results + degradedResults
             )
         ])
