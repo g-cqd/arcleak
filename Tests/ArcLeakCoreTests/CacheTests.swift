@@ -61,18 +61,28 @@ import Testing
         #expect(rerun.findings.count == 2)
     }
 
-    @Test func prunesEntriesForFilesAbsentThisRun() async throws {
-        let (dir, cache, files) = try makeWorkspace()
+    /// The cache is shared by every run in a workspace, and a run over part of
+    /// the corpus — a pull request's files, one file from an editor — must not
+    /// evict the rest: the next whole-corpus run would start cold.
+    @Test func subsetRunKeepsEntriesOfFilesItDidNotAnalyze() async throws {
+        let (_, cache, files) = try makeWorkspace()
         _ = await Analyzer().analyze(files: files, cacheURL: cache)
 
-        // Re-run on only the first file — the cache must no longer carry the
-        // second file's entry (per-run rebuild, not append-forever).
-        let subset = [files[0]]
-        _ = await Analyzer().analyze(files: subset, cacheURL: cache)
-        let reloaded = FactsCache.load(url: cache)
-        #expect(reloaded.entries.count == 1)
-        #expect(reloaded.entries.keys.contains(files[0]))
-        _ = dir
+        _ = await Analyzer().analyze(files: [files[0]], cacheURL: cache)
+        #expect(Set(FactsCache.load(url: cache).entries.keys) == Set(files))
+
+        let whole = await Analyzer().analyze(files: files, cacheURL: cache)
+        #expect(whole.cacheHits == 2)
+    }
+
+    @Test func prunesEntriesForDeletedFiles() async throws {
+        let (_, cache, files) = try makeWorkspace()
+        _ = await Analyzer().analyze(files: files, cacheURL: cache)
+
+        // Per-run rebuild, not append-forever: a file that is gone loses its entry.
+        try FileManager.default.removeItem(atPath: files[1])
+        _ = await Analyzer().analyze(files: [files[0]], cacheURL: cache)
+        #expect(Set(FactsCache.load(url: cache).entries.keys) == [files[0]])
     }
 
     /// A cancelled run must report *nothing*, not a partial answer.
