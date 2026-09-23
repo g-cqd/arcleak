@@ -86,6 +86,8 @@ public enum ReportFormatter {
         /// The absolute URI of ``ArtifactURI/baseID``, which relative uris
         /// resolve against (nil without a root — optionals are omitted).
         let originalUriBaseIds: [String: SarifArtifactLocation]?
+        /// The unit every region's columns count in; see ``UTF16Columns``.
+        let columnKind = "utf16CodeUnits"
         let results: [SarifResult]
     }
 
@@ -154,6 +156,7 @@ public enum ReportFormatter {
     /// - Parameter root: the canonical directory the report's relative paths
     ///   hang from, or nil when every path is absolute.
     private static func sarif(_ report: AnalysisReport, root: String?) -> String {
+        var columns = UTF16Columns(root: root)
         let results = report.findings.map { finding in
             SarifResult(
                 ruleId: finding.rule.rawValue,
@@ -167,7 +170,7 @@ public enum ReportFormatter {
                             artifactLocation: SarifArtifactLocation(path: finding.path, root: root),
                             region: SarifRegion(
                                 startLine: finding.line,
-                                startColumn: finding.column
+                                startColumn: columns.column(finding.column, line: finding.line, path: finding.path)
                             )
                         )
                     )
@@ -178,7 +181,10 @@ public enum ReportFormatter {
                         SarifLocation(
                             physicalLocation: SarifPhysicalLocation(
                                 artifactLocation: SarifArtifactLocation(path: link.path, root: root),
-                                region: SarifRegion(startLine: link.line, startColumn: link.column)
+                                region: SarifRegion(
+                                    startLine: link.line,
+                                    startColumn: columns.column(link.column, line: link.line, path: link.path)
+                                )
                             )
                         )
                     },
