@@ -16,6 +16,7 @@ import Testing
     func lineEndingsAndByteOrderMark() async throws {
         let dir = FileManager.default.temporaryDirectory.appending(path: "arcleak-columns-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
         let body = ["    var handler: (() -> Void)?", Self.armLine, "    func fire() {}", "}", ""]
         let sources = [
             "Crlf.swift": (["final class Crlf {"] + body).joined(separator: "\r\n"),

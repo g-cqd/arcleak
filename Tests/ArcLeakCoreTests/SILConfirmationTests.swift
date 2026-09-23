@@ -28,6 +28,7 @@
                 }
                 """
             let path = try write(source)
+            defer { try? FileManager.default.removeItem(atPath: path) }
             let findings = Analyzer().analyze(source: source, path: path).findings
             let line = try #require(findings.first?.line)
 
@@ -49,6 +50,7 @@
                 }
                 """
             let path = try write(source)
+            defer { try? FileManager.default.removeItem(atPath: path) }
             // The analyzer correctly stays silent; craft the over-approximated
             // finding a coarser tier might produce, and let SIL flip it.
             let crafted = Finding(
@@ -73,6 +75,7 @@
         @Test("Uncompilable files fail open as unavailable")
         func unavailableFailsOpen() async throws {
             let path = try write("import NotARealModuleAnywhere\n")
+            defer { try? FileManager.default.removeItem(atPath: path) }
             let outcome = await SILConfirmation.confirmSelfCapture(file: path, line: 1)
             guard case .unavailable = outcome else {
                 Issue.record("expected unavailable, got \(outcome)")
