@@ -3,10 +3,10 @@
 /// Findings carry swift-syntax's columns: 1-based UTF-8 byte offsets into the
 /// line. They stay that way everywhere else — the fingerprint hashes them,
 /// fix-its apply at them, and compilers print byte columns too — but a SARIF
-/// run declares its `columnKind`, and the one consumers assume is
-/// `utf16CodeUnits` (SARIF 2.1.0 §3.14.27), the unit editors index lines in.
-/// On a line with non-ASCII text before a finding, a byte column lands to the
-/// right of it: after `"😀é"` it is three columns off.
+/// run with results must declare the unit its columns count in (SARIF 2.1.0
+/// §3.14.27), and `utf16CodeUnits` is the one consumers assume and editors
+/// index lines in. On a line with non-ASCII text before a finding, a byte
+/// column lands to the right of it: after `"😀é"` it is three columns off.
 ///
 /// Each file is read once, capped like the analyzer's own reads. A file that
 /// can no longer be read keeps its byte column, which is exact whenever the
@@ -59,7 +59,8 @@ struct UTF16Columns {
 
     /// Where each line starts, breaking lines where swift-syntax does: at
     /// `\n`, `\r\n` and a lone `\r`. The first line starts after a byte-order
-    /// mark, which swift-syntax does not count and SARIF says must not count.
+    /// mark: the analyzer's UTF-8 decode drops it before swift-syntax sees the
+    /// text, so no column counts it — and SARIF says none may (§3.30.2).
     private static func lineStarts(of bytes: [UInt8]) -> [Int] {
         let first = bytes.starts(with: [0xEF, 0xBB, 0xBF]) ? 3 : 0
         var starts = [first]
