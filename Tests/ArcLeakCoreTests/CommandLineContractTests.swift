@@ -137,6 +137,34 @@ import Testing
         #expect(columns["B.swift"] == [try Workspace.utf16Column(of: "a: A", in: bLine)])
     }
 
+    // MARK: - Facts cache
+
+    @Test("A facts cache that cannot be used is a miss, reported at most once")
+    func unusableCacheIsAMiss() throws {
+        let root = try Workspace.make(["Box.swift": Self.leakyBox])
+        let cache = root.appending(path: "facts.json")
+        let arguments = ["analyze", root.path, "--cache-path", cache.path]
+
+        // Valid JSON that is no cache. The released decoder read past its
+        // tape on it and the process died; it is now never decoded, and a
+        // file another build could have written is not worth a word.
+        try Data(#""x""#.utf8).write(to: cache)
+        let foreign = try BuiltTool.run(arguments, in: root)
+        #expect(foreign.status == 1, "the leaky box is an error-severity finding")
+        #expect(!foreign.standardError.contains("facts cache"))
+
+        // This build's cache, cut short after its header: reported, once.
+        let written = try Data(contentsOf: cache)
+        let headerEnd = try #require(written.firstIndex(of: UInt8(ascii: "\n")))
+        try (written[...headerEnd] + Data(#"{"entries":{"#.utf8)).write(to: cache)
+        let broken = try BuiltTool.run(arguments, in: root)
+        #expect(broken.status == 1)
+        #expect(broken.standardError.contains("arcleak: note: ignored the facts cache"))
+        let next = try BuiltTool.run(arguments, in: root)
+        #expect(!next.standardError.contains("facts cache"))
+        #expect(next.standardError.contains("cache: 1 reused"))
+    }
+
     // MARK: - Exit codes
 
     /// Exit 70 has two causes a host must tell apart: every file was skipped,

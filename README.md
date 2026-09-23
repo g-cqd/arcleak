@@ -77,7 +77,11 @@ file's entry is keyed by its content and by the configuration facts depend on
 wrote it — its executable, not just its version — so a rebuilt or reinstalled
 arcleak starts cold rather than trust facts another build extracted. Rules
 always re-run, so findings never go stale relative to rules or configuration.
-The cache fails open: corrupt or mismatched caches behave as empty.
+The cache fails open. Its first line names the build that wrote it and is
+checked before anything is decoded, so another build's cache, or a file that
+is no cache at all, is ignored without a word; this build's cache that still
+cannot be read or decoded is reported once on stderr and rewritten. Either
+way the run parses every file afresh.
 
 ## Cross-module resolution (`--index-store`, macOS-only)
 
