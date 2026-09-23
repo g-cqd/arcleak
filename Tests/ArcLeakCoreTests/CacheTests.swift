@@ -7,29 +7,35 @@ import Testing
         let dir = FileManager.default.temporaryDirectory
             .appending(path: "arcleak-cache-test-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let leaky = """
-            final class Box {
-                var handler: (() -> Void)?
-                func arm() { handler = { self.fire() } }
-                func fire() {}
-            }
-            """
-        let clean = """
-            final class Fine {
-                var value = 0
-                func bump() { value += 1 }
-            }
-            """
-        let first = dir.appending(path: "Leaky.swift")
-        let second = dir.appending(path: "Fine.swift")
-        try leaky.write(to: first, atomically: true, encoding: .utf8)
-        try clean.write(to: second, atomically: true, encoding: .utf8)
-        let cache = dir.appending(path: "facts-cache.json")
-        return (dir, cache, [first.path, second.path])
+        do {
+            let leaky = """
+                final class Box {
+                    var handler: (() -> Void)?
+                    func arm() { handler = { self.fire() } }
+                    func fire() {}
+                }
+                """
+            let clean = """
+                final class Fine {
+                    var value = 0
+                    func bump() { value += 1 }
+                }
+                """
+            let first = dir.appending(path: "Leaky.swift")
+            let second = dir.appending(path: "Fine.swift")
+            try leaky.write(to: first, atomically: true, encoding: .utf8)
+            try clean.write(to: second, atomically: true, encoding: .utf8)
+            let cache = dir.appending(path: "facts-cache.json")
+            return (dir, cache, [first.path, second.path])
+        } catch {
+            try? FileManager.default.removeItem(at: dir)
+            throw error
+        }
     }
 
     @Test func warmRunReusesFactsAndFindingsMatch() async throws {
-        let (_, cache, files) = try makeWorkspace()
+        let (dir, cache, files) = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: dir) }
 
         let cold = await Analyzer().analyze(files: files, cacheURL: cache)
         #expect(cold.cacheHits == 0)
@@ -44,6 +50,7 @@ import Testing
 
     @Test func editedFileInvalidatesOnlyItsEntry() async throws {
         let (dir, cache, files) = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: dir) }
         _ = await Analyzer().analyze(files: files, cacheURL: cache)
 
         let edited = dir.appending(path: "Fine.swift")
@@ -65,7 +72,8 @@ import Testing
     /// the corpus — a pull request's files, one file from an editor — must not
     /// evict the rest: the next whole-corpus run would start cold.
     @Test func subsetRunKeepsEntriesOfFilesItDidNotAnalyze() async throws {
-        let (_, cache, files) = try makeWorkspace()
+        let (dir, cache, files) = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: dir) }
         _ = await Analyzer().analyze(files: files, cacheURL: cache)
 
         _ = await Analyzer().analyze(files: [files[0]], cacheURL: cache)
@@ -76,7 +84,8 @@ import Testing
     }
 
     @Test func prunesEntriesForDeletedFiles() async throws {
-        let (_, cache, files) = try makeWorkspace()
+        let (dir, cache, files) = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: dir) }
         _ = await Analyzer().analyze(files: files, cacheURL: cache)
 
         // Per-run rebuild, not append-forever: a file that is gone loses its entry.
@@ -93,7 +102,8 @@ import Testing
     /// files — the same defect that makes feeding a diff as the corpus wrong. A
     /// cancelled run is a failed run, and the CLI exits 70 for it.
     @Test func cancelledAnalysisReportsNothing() async throws {
-        let (_, cache, files) = try makeWorkspace()
+        let (dir, cache, files) = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: dir) }
         let task = Task { await Analyzer().analyze(files: files, cacheURL: cache) }
         task.cancel()
         let report = await task.value
@@ -103,7 +113,8 @@ import Testing
     }
 
     @Test func corruptCacheFailsOpen() async throws {
-        let (_, cache, files) = try makeWorkspace()
+        let (dir, cache, files) = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: dir) }
         try "not json at all {{{".write(to: cache, atomically: true, encoding: .utf8)
 
         let report = await Analyzer().analyze(files: files, cacheURL: cache)
@@ -116,24 +127,42 @@ import Testing
         #expect(warm.cacheHits == 2)
     }
 
-    /// A cache is read by a JSON decoder that trusts its input's shape: given
-    /// JSON that is not a cache, AemiJSON's typed decoder reads past its tape
-    /// (Aemi #7) and the process traps, or dies of SIGBUS in release builds.
     /// A file that does not start with this build's header is never decoded.
+    /// This includes valid JSON that is not a cache.
     @Test func malformedCacheIsAMissNotACrash() async {
         await #expect(processExitsWith: .success) {
             let url = FileManager.default.temporaryDirectory
                 .appending(path: "arcleak-malformed-\(UUID().uuidString).json")
+            defer { try? FileManager.default.removeItem(at: url) }
             // Three bytes of valid JSON that is not a cache.
             try Data(#""x""#.utf8).write(to: url)
             #expect(FactsCache.load(url: url).entries.isEmpty)
         }
     }
 
+    @Test("This build's cache with a wrong JSON shape is a reported miss")
+    func wrongShapeCacheIsAMiss() async {
+        await #expect(processExitsWith: .success) {
+            let url = FileManager.default.temporaryDirectory
+                .appending(path: "arcleak-wrong-shape-\(UUID().uuidString).json")
+            defer { try? FileManager.default.removeItem(at: url) }
+            var cache = FactsCache()
+            cache.update(path: "/x/A.swift", fingerprint: "fp", facts: FileFacts(path: "/x/A.swift"))
+            cache.persist(url: url, build: "shape-test")
+            let written = try Data(contentsOf: url)
+            let headerEnd = try #require(written.firstIndex(of: UInt8(ascii: "\n")))
+            try (written[...headerEnd] + Data(#"{"entries":{"A":false}}"#.utf8)).write(to: url)
+            let loaded = FactsCache.load(url: url, build: "shape-test")
+            #expect(loaded.entries.isEmpty)
+            #expect(loaded.loadFailure?.contains("could not be decoded") == true)
+        }
+    }
+
     /// Any decode failure is a miss, reported once: the run rewrites the cache
     /// it could not use, so the next run reads it without a word.
     @Test func undecodableCacheIsAMissReportedOnce() async throws {
-        let (_, cache, files) = try makeWorkspace()
+        let (dir, cache, files) = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: dir) }
         _ = await Analyzer().analyze(files: files, cacheURL: cache)
         try truncateAfterHeader(cache)
 
@@ -151,6 +180,7 @@ import Testing
     /// be replaced, or every later run reports it again.
     @Test func undecodableCacheIsReplacedEvenWhenNothingParses() async throws {
         let (dir, cache, files) = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: dir) }
         _ = await Analyzer().analyze(files: files, cacheURL: cache)
         try truncateAfterHeader(cache)
         let unreadable = dir.appending(path: "Bad.swift")
@@ -199,6 +229,7 @@ import Testing
         )
         let url = FileManager.default.temporaryDirectory
             .appending(path: "arcleak-version-test-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
         cache.persist(url: url)
 
         var onDisk = try #require(
@@ -332,6 +363,7 @@ import Testing
 
     @Test func allHitsWarmRunSkipsRepersist() async throws {
         let (dir, cache, files) = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: dir) }
 
         // Cold run writes the cache.
         let cold = await Analyzer().analyze(files: files, cacheURL: cache)
