@@ -75,8 +75,10 @@ swallow new bugs.
 file's entry is keyed by its content and by the configuration facts depend on
 (`defines`, `contracts`); the whole cache is keyed by the arcleak build that
 wrote it — its executable, not just its version — so a rebuilt or reinstalled
-arcleak starts cold rather than trust facts another build extracted. Rules
-always re-run, so findings never go stale relative to rules or configuration.
+arcleak starts cold rather than trust facts another build extracted. A run
+over part of the workspace keeps the other files' entries; only entries of
+deleted files are dropped. Rules always re-run, so findings never go stale
+relative to rules or configuration.
 The cache fails open. Its first line names the build that wrote it and is
 checked before anything is decoded, so another build's cache, or a file that
 is no cache at all, is ignored without a word; this build's cache that still
@@ -362,7 +364,7 @@ ground truth.
 
 The corpus is always **everything**; only the *report* is scoped. Passing a
 pull request's changed files as the input produces a different and wrong
-answer, because these are whole-program analyses — `mutual-strong-properties` walks an ownership graph built from every type in the corpus, and a subset run also prunes the shared facts cache down to the subset.
+answer, because these are whole-program analyses — `mutual-strong-properties` walks an ownership graph built from every type in the corpus.
 
 ```sh
 git diff --name-only origin/main... -- '*.swift' > changed.txt
