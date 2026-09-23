@@ -39,6 +39,16 @@ public struct AnalysisReport: Sendable, Codable {
 
     public var maxSeverity: Severity? { findings.map(\.severity).max() }
 
+    /// Set when every file the run was given was skipped — unreadable, not
+    /// UTF-8, or over the size cap — so it analyzed nothing.
+    ///
+    /// Such a report has no findings, and must not pass for a clean one: the
+    /// CLI prints it, so the skipped files and their reasons still reach the
+    /// reader, and then exits 70.
+    public var everyFileSkipped: Bool {
+        analyzedFileCount > 0 && degradedFiles.count >= analyzedFileCount
+    }
+
     public struct SuppressedFinding: Sendable, Codable {
         public let finding: Finding
         /// The reason text from `-- reason`, if the author gave one.
