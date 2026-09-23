@@ -16,11 +16,13 @@ public import AemiJSON
 /// go stale relative to rule or config changes.
 ///
 /// The cache is an optimization, so unlike configuration it FAILS OPEN: an
-/// unreadable, corrupt, or version-mismatched cache behaves as empty and is
+/// unreadable, corrupt, or mismatched cache behaves as empty and is
 /// overwritten on persist. Entries are keyed by absolute path and validated
 /// by a content fingerprint (FNV-1a 64 over bytes + length — identity, not
 /// security; a collision merely serves stale facts for one file until its
-/// next real change). A tool-version mismatch discards the whole cache, so a
+/// next real change), salted with the configuration facts depend on. A cache
+/// written by another build (see ``BuildIdentity``) is discarded whole, even
+/// one of the same version: its extraction code may differ, and a
 /// facts-schema change can never deserialize into wrong shapes.
 public struct FactsCache: Sendable {
     public struct Entry: Sendable, Codable {
@@ -36,6 +38,8 @@ public struct FactsCache: Sendable {
     fileprivate struct Payload: Codable {
         var tool: String
         var version: String
+        /// The ``BuildIdentity`` of the build that extracted `entries`.
+        var build: String
         var entries: [String: Entry]
     }
 
@@ -112,12 +116,16 @@ public struct FactsCache: Sendable {
     /// empty cache (the cache is an optimization, never a trust boundary).
     public static let maxCacheBytes = 64 * 1024 * 1024
 
-    public static func load(url: URL) -> FactsCache {
+    /// - Parameter build: the identity of the build reading; a cache another
+    ///   build wrote is empty to it. With no identity, no cache is trusted.
+    public static func load(url: URL, build: String? = BuildIdentity.current) -> FactsCache {
         guard
+            let build,
             let data = try? BoundedFileReader.read(path: url.path, cap: maxCacheBytes),
             let payload = try? decodePayload(from: data),
             payload.tool == ToolInfo.name,
-            payload.version == ToolInfo.version
+            payload.version == ToolInfo.version,
+            payload.build == build
         else {
             return FactsCache()
         }
@@ -126,8 +134,11 @@ public struct FactsCache: Sendable {
 
     /// Best-effort persist: creates the directory, writes atomically, and
     /// swallows failures — a read-only cache location must never fail a run.
-    public func persist(url: URL) {
-        let payload = Payload(tool: ToolInfo.name, version: ToolInfo.version, entries: entries)
+    /// - Parameter build: the identity of the build writing; with none,
+    ///   nothing is written, since no build could trust it.
+    public func persist(url: URL, build: String? = BuildIdentity.current) {
+        guard let build else { return }
+        let payload = Payload(tool: ToolInfo.name, version: ToolInfo.version, build: build, entries: entries)
         guard let data = try? Self.encodePayload(payload) else { return }
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
@@ -180,6 +191,9 @@ extension FactsCache.Payload: AemiJSONFastEncodable, AemiJSONFastDecodable {
         w.key("version")
         w.string(version)
         w.comma()
+        w.key("build")
+        w.string(build)
+        w.comma()
         w.key("entries")
         w.beginObject()
         var first = true
@@ -197,6 +211,7 @@ extension FactsCache.Payload: AemiJSONFastEncodable, AemiJSONFastDecodable {
         Self(
             tool: try c.string("tool"),
             version: try c.string("version"),
+            build: try c.string("build"),
             entries: try c.decode([String: FactsCache.Entry].self, "entries"))
     }
 }

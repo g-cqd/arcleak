@@ -127,6 +127,25 @@ import Testing
         #expect(reloaded.entries.isEmpty)
     }
 
+    /// Facts are a function of the extraction code, and the version string is
+    /// bumped only when a release is cut: two builds of one version can
+    /// extract different facts from the same file, so neither may serve the
+    /// other's.
+    @Test func cacheFromAnotherBuildOfTheSameVersionIsDiscarded() throws {
+        // What another build of this version wrote: its tool name, this
+        // version, and facts it extracted — but nothing naming this build.
+        let written = #"""
+            {"tool":"arcleak","version":"\#(ToolInfo.version)","entries":{"/x/Stale.swift":\#
+            {"fingerprint":"fp","facts":{"path":"/x/Stale.swift","types":[],"directives":[]}}}}
+            """#
+        let url = FileManager.default.temporaryDirectory
+            .appending(path: "arcleak-build-test-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try written.write(to: url, atomically: true, encoding: .utf8)
+
+        #expect(FactsCache.load(url: url).entries.isEmpty)
+    }
+
     /// A `FileFacts` exercising every fact type and enum shape the AemiJSON coder
     /// touches — including the associated-value enums that ride the generic
     /// Codable bridge (`APICallFact.Kind`, `SelfCaptureKind`, `ResultConsumption`)
