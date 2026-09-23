@@ -41,6 +41,28 @@ import Testing
         #expect(resolved == Set(["A", "Sub/B", "Leaf/C"].map { canonicalRoot + "/Sources/\($0).swift" }))
     }
 
+    /// Exclusion matches the spelling a file is reached by. A link named like
+    /// an exclude pattern — `Vendor`, pointing at `Sources/Sub` — must not
+    /// claim the directory behind it, or that directory's files vanish with
+    /// the link's. A directory from outside the tree, linked in and excluded
+    /// by its name in the tree, stays out.
+    @Test("An excluded link does not hide the directory it points to")
+    func excludedLinkDoesNotHideItsTarget() throws {
+        let root = try makeTree(linked: false)
+        try FileManager.default.createSymbolicLink(
+            atPath: root.appending(path: "Vendor").path, withDestinationPath: "Sources/Sub")
+        let outside = FileManager.default.temporaryDirectory.appending(path: "arcleak-outside-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        try "final class D {}\n".write(to: outside.appending(path: "D.swift"), atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(
+            atPath: root.appending(path: "External").path, withDestinationPath: outside.path)
+
+        let files = SourceDiscovery.swiftFiles(under: root.path) {
+            $0.contains("/Vendor/") || $0.contains("/External/")
+        }
+        #expect(files.map { URL(fileURLWithPath: $0).lastPathComponent }.sorted() == ["A.swift", "B.swift", "C.swift"])
+    }
+
     @Test("Hidden entries, build products and excluded files are skipped")
     func skipsWhatItShould() throws {
         let root = try makeTree(linked: false)
