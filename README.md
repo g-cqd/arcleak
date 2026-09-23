@@ -419,7 +419,8 @@ GitHub code scanning converts absolute uris under the checkout directory to
 relative ones.
 
 SARIF columns count UTF-16 code units, and the run says so
-(`"columnKind": "utf16CodeUnits"`, SARIF's default and the unit editors index
+(`"columnKind": "utf16CodeUnits"`: SARIF requires a run with results to
+declare its unit, and this is the one consumers assume and editors index
 lines in); a byte-order mark does not count. The `xcode` and `json` formats
 keep swift-syntax's 1-based UTF-8 byte columns, the unit compilers print and
 the one fingerprints hash.
