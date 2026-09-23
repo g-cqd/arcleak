@@ -325,7 +325,14 @@ struct Analyze: AsyncParsableCommand {
                 at: URL(fileURLWithPath: stamp).deletingLastPathComponent(),
                 withIntermediateDirectories: true
             )
-            try Data().write(to: URL(fileURLWithPath: stamp))
+            // Not a bare `try`: ArgumentParser exits 1 on an uncaught error,
+            // and 1 means findings — this gate passed.
+            do {
+                try Data().write(to: URL(fileURLWithPath: stamp))
+            } catch {
+                standardError.write(Data("arcleak: could not write the stamp \(stamp): \(error)\n".utf8))
+                throw ExitCode(ExitStatus.ioFailure)
+            }
         }
         if failed {
             throw ExitCode(1)
@@ -438,13 +445,14 @@ struct Analyze: AsyncParsableCommand {
     /// `1` means findings and nothing else: a script that posts a review comment
     /// on `1` must not also fire on a typo in the config file. `sysexits.h`
     /// supplies the rest — `64` usage (already used for bad paths), `70` an
-    /// internal failure, `74` a `--fix` write that failed, `78` a bad
+    /// internal failure, `74` a `--fix` or `--stamp` write that failed, `78` a bad
     /// configuration or baseline. `70` prints the report when every file was
     /// skipped, and nothing when the run was cancelled, so a caller tells the
     /// two apart by whether stdout is empty.
     enum ExitStatus {
         static let findings: Int32 = 1
         static let internalFailure: Int32 = 70
+        static let ioFailure: Int32 = 74
         static let badConfiguration: Int32 = 78
     }
 
@@ -526,7 +534,7 @@ struct Analyze: AsyncParsableCommand {
                             """.utf8
                         )
                     )
-                    throw ExitCode(74)
+                    throw ExitCode(ExitStatus.ioFailure)
                 }
             }
         }
