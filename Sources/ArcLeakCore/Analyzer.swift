@@ -26,9 +26,10 @@ public struct Analyzer: Sendable {
 
     /// Analyzes explicit file paths. Input order does not affect output.
     ///
-    /// With `cacheURL`, per-file facts are reused when the file's content
-    /// fingerprint matches (parsing dominates runtime; rules always re-run, so
-    /// findings can never go stale relative to rules or configuration).
+    /// With `cacheURL`, per-file facts are reused when this build wrote them
+    /// and the file's content fingerprint matches (parsing dominates runtime;
+    /// rules always re-run, so findings can never go stale relative to rules or
+    /// configuration).
     /// - Parameter reportScope: narrows the *report* to a set of files; nil
     ///   reports everything. The corpus is analyzed whole either way — see
     ///   ``ReportScope``.
@@ -47,7 +48,7 @@ public struct Analyzer: Sendable {
         // `snapshot` serves cache hits (all historical entries); the persisted
         // cache is rebuilt from ONLY this run's files, so it stays shaped to the
         // project and never grows without bound in a shifting monorepo.
-        let snapshot = cacheURL.map(FactsCache.load(url:)) ?? FactsCache()
+        let snapshot = cacheURL.map { FactsCache.load(url: $0) } ?? FactsCache()
         var freshCache = FactsCache()
         // Facts depend on the `#if` configuration and user contracts — salt
         // fingerprints so neither can serve stale facts. The full contract
