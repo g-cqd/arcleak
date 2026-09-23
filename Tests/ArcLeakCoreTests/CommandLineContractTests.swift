@@ -200,6 +200,17 @@ import Testing
         #expect(String(decoding: xcode.standardOutput, as: UTF8.self).contains("file skipped: not valid UTF-8"))
     }
 
+    /// 1 means findings and nothing else, so a gate that passed but could
+    /// not leave its stamp must not exit 1.
+    @Test("A stamp that cannot be written exits 74")
+    func unwritableStampIsAnIOFailure() throws {
+        let root = try Workspace.make(["Fine.swift": "final class Fine {}\n", "blocker": ""])
+        let stamp = root.appending(path: "blocker/stamp").path  // under a regular file
+        let run = try BuiltTool.run(["analyze", root.path, "--no-cache", "--stamp", stamp], in: root)
+        #expect(run.status == 74)
+        #expect(run.standardError.contains("stamp"))
+    }
+
     @Test("A run that skipped some files records them and succeeds")
     func someFilesSkippedStillSucceeds() throws {
         let root = try Workspace.make(["Fine.swift": "final class Fine {}\n"])
