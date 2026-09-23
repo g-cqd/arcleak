@@ -46,8 +46,8 @@ public struct Analyzer: Sendable {
         let included = SourcePath.canonicalized(files)
             .filter { !configuration.isExcluded(path: $0) }
         // `snapshot` serves cache hits (all historical entries); the persisted
-        // cache is rebuilt from ONLY this run's files, so it stays shaped to the
-        // project and never grows without bound in a shifting monorepo.
+        // cache is this run's entries plus the snapshot's for files this run
+        // did not analyze and that still exist — see the persist step below.
         let snapshot = cacheURL.map { FactsCache.load(url: $0) } ?? FactsCache()
         var freshCache = FactsCache()
         // Facts depend on the `#if` configuration and user contracts — salt
@@ -135,21 +135,32 @@ public struct Analyzer: Sendable {
         }
 
         if let cacheURL {
+            // One cache serves every run in the workspace, and a run over part
+            // of the corpus — a pull request's files, one file from an editor —
+            // must not evict the rest, or the next whole-corpus run starts cold.
+            // So entries of files this run did not analyze are carried over,
+            // and only those whose file is gone are pruned: the cache stays
+            // shaped to the project and never grows without bound in a shifting
+            // monorepo.
+            var persisted = freshCache
+            for (path, entry) in snapshot.entries
+            where persisted.entries[path] == nil && FileManager.default.fileExists(atPath: path) {
+                persisted.update(path: path, fingerprint: entry.fingerprint, facts: entry.facts)
+            }
             // Skip the redundant re-persist when the on-disk cache is already
             // exactly current: every analyzed file was a cache hit (no
-            // re-extraction) AND the loaded snapshot held no other entries
-            // (nothing to prune). Re-writing then changes nothing the next run
-            // reads — entries are validated by source fingerprint, not by the
-            // cache's own bytes — so on an all-hits run it is pure encode + I/O
-            // cost, the dominant warm-run waste. Any miss, or any stale entry to
-            // prune, falls through and rebuilds the cache from this run only; so
-            // does a cache that failed to load, which must be replaced even when
-            // this run parsed nothing, or every later run would report it again.
+            // re-extraction) AND nothing was pruned. Re-writing then changes
+            // nothing the next run reads — entries are validated by source
+            // fingerprint, not by the cache's own bytes — so on an all-hits run
+            // it is pure encode + I/O cost, the dominant warm-run waste. Any miss
+            // or any pruned entry falls through and rewrites the cache; so does
+            // a cache that failed to load, which must be replaced even when this
+            // run parsed nothing, or every later run would report it again.
             let alreadyCurrent =
                 snapshot.loadFailure == nil && hits == corpus.count
-                && freshCache.entries.count == snapshot.entries.count
+                && persisted.entries.count == snapshot.entries.count
             if !alreadyCurrent {
-                freshCache.persist(url: cacheURL)
+                persisted.persist(url: cacheURL)
             }
         }
 
