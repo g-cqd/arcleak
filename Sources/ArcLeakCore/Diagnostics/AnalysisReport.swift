@@ -15,6 +15,10 @@ public struct AnalysisReport: Sendable, Codable {
     /// cache was configured).
     public var cacheHits = 0
     public var cacheMisses = 0
+    /// Why the facts cache on disk was ignored, when it could not be read or
+    /// decoded (see ``FactsCache/loadFailure``). The run treats it as a miss
+    /// and rewrites it, so the next run does not report it again.
+    public var cacheLoadFailure: String?
 
     /// Set when the run was cancelled before the corpus was complete.
     ///
