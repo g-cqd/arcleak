@@ -5,9 +5,7 @@
 /// rules are per-file and would survive a shrunken corpus, but
 /// `mutual-strong-properties` walks an ownership graph built from every type
 /// in the corpus: drop the files a cycle passes through and the cycle stops
-/// existing. Shrinking the input also prunes the shared facts cache down to
-/// the subset, so the next whole-corpus run starts cold. Analyze everything,
-/// report a slice.
+/// existing. Analyze everything, report a slice.
 ///
 /// Membership spans the anchor and every related location. A
 /// `mutual-strong-properties` finding anchors at the alphabetically-first type
