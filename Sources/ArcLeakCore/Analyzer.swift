@@ -142,9 +142,12 @@ public struct Analyzer: Sendable {
             // reads — entries are validated by source fingerprint, not by the
             // cache's own bytes — so on an all-hits run it is pure encode + I/O
             // cost, the dominant warm-run waste. Any miss, or any stale entry to
-            // prune, falls through and rebuilds the cache from this run only.
+            // prune, falls through and rebuilds the cache from this run only; so
+            // does a cache that failed to load, which must be replaced even when
+            // this run parsed nothing, or every later run would report it again.
             let alreadyCurrent =
-                hits == corpus.count && freshCache.entries.count == snapshot.entries.count
+                snapshot.loadFailure == nil && hits == corpus.count
+                && freshCache.entries.count == snapshot.entries.count
             if !alreadyCurrent {
                 freshCache.persist(url: cacheURL)
             }
@@ -162,6 +165,7 @@ public struct Analyzer: Sendable {
         report.degradedFiles = degraded.sorted { $0.path < $1.path }
         report.cacheHits = hits
         report.cacheMisses = corpus.count - hits
+        report.cacheLoadFailure = snapshot.loadFailure
         return report
     }
 

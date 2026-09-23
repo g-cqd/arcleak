@@ -106,6 +106,60 @@ import Testing
         #expect(warm.cacheHits == 2)
     }
 
+    /// A cache is read by a JSON decoder that trusts its input's shape: given
+    /// JSON that is not a cache, AemiJSON's typed decoder reads past its tape
+    /// (Aemi #7) and the process traps, or dies of SIGBUS in release builds.
+    /// A file that does not start with this build's header is never decoded.
+    @Test func malformedCacheIsAMissNotACrash() async {
+        await #expect(processExitsWith: .success) {
+            let url = FileManager.default.temporaryDirectory
+                .appending(path: "arcleak-malformed-\(UUID().uuidString).json")
+            // Three bytes of valid JSON that is not a cache.
+            try Data(#""x""#.utf8).write(to: url)
+            #expect(FactsCache.load(url: url).entries.isEmpty)
+        }
+    }
+
+    /// Any decode failure is a miss, reported once: the run rewrites the cache
+    /// it could not use, so the next run reads it without a word.
+    @Test func undecodableCacheIsAMissReportedOnce() async throws {
+        let (_, cache, files) = try makeWorkspace()
+        _ = await Analyzer().analyze(files: files, cacheURL: cache)
+        try truncateAfterHeader(cache)
+
+        let broken = await Analyzer().analyze(files: files, cacheURL: cache)
+        #expect(broken.cacheHits == 0)
+        #expect(broken.findings.count == 1)
+        #expect(broken.cacheLoadFailure?.contains("could not be decoded") == true)
+
+        let next = await Analyzer().analyze(files: files, cacheURL: cache)
+        #expect(next.cacheHits == 2)
+        #expect(next.cacheLoadFailure == nil)
+    }
+
+    /// Nothing parsed, so nothing new to save — the unusable cache must still
+    /// be replaced, or every later run reports it again.
+    @Test func undecodableCacheIsReplacedEvenWhenNothingParses() async throws {
+        let (dir, cache, files) = try makeWorkspace()
+        _ = await Analyzer().analyze(files: files, cacheURL: cache)
+        try truncateAfterHeader(cache)
+        let unreadable = dir.appending(path: "Bad.swift")
+        try Data([0xFF, 0xFE, 0x7B]).write(to: unreadable)
+
+        let broken = await Analyzer().analyze(files: [unreadable.path], cacheURL: cache)
+        #expect(broken.cacheLoadFailure != nil)
+        let next = await Analyzer().analyze(files: [unreadable.path], cacheURL: cache)
+        #expect(next.cacheLoadFailure == nil)
+    }
+
+    /// Keeps a cache file's header line — this build's — and cuts the JSON
+    /// after it short.
+    private func truncateAfterHeader(_ cache: URL) throws {
+        let written = try Data(contentsOf: cache)
+        let headerEnd = try #require(written.firstIndex(of: UInt8(ascii: "\n")))
+        try (written[...headerEnd] + Data(#"{"entries":{"#.utf8)).write(to: cache)
+    }
+
     @Test func toolVersionMismatchDiscardsCache() throws {
         var cache = FactsCache()
         cache.update(

@@ -35,11 +35,8 @@ public struct FactsCache: Sendable {
         }
     }
 
+    /// What follows the header line (see ``header(build:)``).
     fileprivate struct Payload: Codable {
-        var tool: String
-        var version: String
-        /// The ``BuildIdentity`` of the build that extracted `entries`.
-        var build: String
         var entries: [String: Entry]
     }
 
@@ -74,8 +71,29 @@ public struct FactsCache: Sendable {
 
     public private(set) var entries: [String: Entry]
 
+    /// Why the file ``load(url:build:)`` found was not used, when that is
+    /// worth telling the user: it could not be read, or it was this build's
+    /// cache and still did not decode. nil for a hit, and for the ordinary
+    /// misses — no file yet, or one another build wrote.
+    public private(set) var loadFailure: String?
+
     public init(entries: [String: Entry] = [:]) {
         self.entries = entries
+    }
+
+    private init(loadFailure: String) {
+        entries = [:]
+        self.loadFailure = loadFailure
+    }
+
+    /// The line every cache file starts with: the tool, its version and the
+    /// build that wrote it (see ``BuildIdentity``). It is plain text, checked
+    /// by comparing bytes before any decoder reads the file, so a cache from
+    /// another build — or a file that is no cache at all — is never decoded.
+    /// No JSON value starts with it either, so an older build, which decodes
+    /// the file whole, stops at the first byte with a parse error.
+    static func header(build: String) -> String {
+        "\(ToolInfo.name) facts \(ToolInfo.version) \(build)"
     }
 
     public static func fingerprint(of data: Data, salt: String = "") -> String {
@@ -119,17 +137,35 @@ public struct FactsCache: Sendable {
     /// - Parameter build: the identity of the build reading; a cache another
     ///   build wrote is empty to it. With no identity, no cache is trusted.
     public static func load(url: URL, build: String? = BuildIdentity.current) -> FactsCache {
-        guard
-            let build,
-            let data = try? BoundedFileReader.read(path: url.path, cap: maxCacheBytes),
-            let payload = try? decodePayload(from: data),
-            payload.tool == ToolInfo.name,
-            payload.version == ToolInfo.version,
-            payload.build == build
-        else {
+        guard let build, FileManager.default.fileExists(atPath: url.path) else {
             return FactsCache()
         }
-        return FactsCache(entries: payload.entries)
+        let data: Data
+        do {
+            data = try BoundedFileReader.read(path: url.path, cap: maxCacheBytes)
+        } catch {
+            return FactsCache(loadFailure: "ignored the facts cache at \(url.path): \(reason(error))")
+        }
+        let header = Data((header(build: build) + "\n").utf8)
+        guard data.starts(with: header) else {
+            return FactsCache()
+        }
+        do {
+            return FactsCache(entries: try decodePayload(from: data.dropFirst(header.count)).entries)
+        } catch {
+            return FactsCache(
+                loadFailure: "ignored the facts cache at \(url.path), which could not be decoded: \(error)")
+        }
+    }
+
+    /// Why `error` stopped a read, without the configuration wording the
+    /// shared reader's errors carry.
+    private static func reason(_ error: ArcLeakError) -> String {
+        switch error {
+        case .configurationUnreadable(_, let underlying): underlying
+        case .configurationInvalid(_, let detail): detail
+        default: error.description
+        }
     }
 
     /// Best-effort persist: creates the directory, writes atomically, and
@@ -137,9 +173,8 @@ public struct FactsCache: Sendable {
     /// - Parameter build: the identity of the build writing; with none,
     ///   nothing is written, since no build could trust it.
     public func persist(url: URL, build: String? = BuildIdentity.current) {
-        guard let build else { return }
-        let payload = Payload(tool: ToolInfo.name, version: ToolInfo.version, build: build, entries: entries)
-        guard let data = try? Self.encodePayload(payload) else { return }
+        guard let build, let body = try? Self.encodePayload(Payload(entries: entries)) else { return }
+        let data = Data((Self.header(build: build) + "\n").utf8) + body
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
@@ -185,15 +220,6 @@ extension FactsCache.Payload: AemiJSONFastEncodable, AemiJSONFastDecodable {
     // swift-format-ignore: NoLeadingUnderscores
     func __adjsonEncode(into w: inout _JSONByteWriter) throws {
         w.beginObject()
-        w.key("tool")
-        w.string(tool)
-        w.comma()
-        w.key("version")
-        w.string(version)
-        w.comma()
-        w.key("build")
-        w.string(build)
-        w.comma()
         w.key("entries")
         w.beginObject()
         var first = true
@@ -208,11 +234,7 @@ extension FactsCache.Payload: AemiJSONFastEncodable, AemiJSONFastDecodable {
 
     // swift-format-ignore: NoLeadingUnderscores
     static func __adjsonDecode(_ c: _FastDecodeCursor) throws -> Self {
-        Self(
-            tool: try c.string("tool"),
-            version: try c.string("version"),
-            build: try c.string("build"),
-            entries: try c.decode([String: FactsCache.Entry].self, "entries"))
+        Self(entries: try c.decode([String: FactsCache.Entry].self, "entries"))
     }
 }
 
@@ -233,12 +255,15 @@ public enum FactsCacheBenchmark {
     }
 
     /// Decode facts.json bytes into an opaque payload using the cache's
-    /// current decoder.
+    /// current decoder. A persisted file's header line is skipped, so the
+    /// coder alone is timed.
     public static func decode(_ data: Data) throws -> Payload {
-        Payload(inner: try FactsCache.decodePayload(from: data))
+        let body = data.first == UInt8(ascii: "{") ? data : data.drop { $0 != UInt8(ascii: "\n") }.dropFirst()
+        return Payload(inner: try FactsCache.decodePayload(from: body))
     }
 
-    /// Encode a payload back to bytes using the cache's current encoder.
+    /// Encode a payload back to bytes using the cache's current encoder,
+    /// without the header line a persisted file starts with.
     public static func encode(_ payload: Payload) throws -> Data {
         try FactsCache.encodePayload(payload.inner)
     }
