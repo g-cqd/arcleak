@@ -95,4 +95,28 @@ import Testing
         #expect((physical["artifactLocation"] as? [String: Any])?["uri"] as? String == "Sources/App/Box.swift")
         #expect((result["partialFingerprints"] as? [String: String])?["arcleak/v1"]?.isEmpty == false)
     }
+
+    /// A consumer must not take a run that analyzed nothing for a clean one
+    /// (SARIF 2.1.0 §3.20.21: an error notification means the run failed).
+    @Test func sarifRecordsWhetherTheRunSucceeded() throws {
+        let unreadable = AnalysisReport.DegradedFile(path: "/x/Bad.swift", detail: "not valid UTF-8")
+        func invocation(_ report: AnalysisReport) throws -> [String: Any]? {
+            try SarifLog(Data(ReportFormatter.format(report, as: .sarif).utf8)).invocation
+        }
+
+        let skipped = try invocation(AnalysisReport(degradedFiles: [unreadable], analyzedFileCount: 1))
+        #expect(skipped?["executionSuccessful"] as? Bool == false)
+        let notes = skipped?["toolExecutionNotifications"] as? [[String: Any]] ?? []
+        #expect(notes.map { $0["level"] as? String } == ["error"])
+
+        var cancelledReport = AnalysisReport()
+        cancelledReport.wasCancelled = true
+        let cancelled = try invocation(cancelledReport)
+        #expect(cancelled?["executionSuccessful"] as? Bool == false)
+        #expect((cancelled?["toolExecutionNotifications"] as? [Any])?.count == 1)
+
+        let partial = try invocation(AnalysisReport(degradedFiles: [unreadable], analyzedFileCount: 2))
+        #expect(partial?["executionSuccessful"] as? Bool == true)
+        #expect(partial?["toolExecutionNotifications"] == nil)
+    }
 }

@@ -136,6 +136,54 @@ import Testing
         #expect(columns["A.swift"] == [try Workspace.utf16Column(of: "b: B", in: aLine)])
         #expect(columns["B.swift"] == [try Workspace.utf16Column(of: "a: A", in: bLine)])
     }
+
+    // MARK: - Exit codes
+
+    /// Exit 70 has two causes a host must tell apart: every file was skipped,
+    /// and the report on standard output says which and why; or the run failed
+    /// or was cancelled, and standard output is empty.
+    @Test("A run that skipped every file prints its report, then exits 70")
+    func everyFileSkippedPrintsTheReport() throws {
+        let root = try Workspace.make([:])
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data([0xFF, 0xFE, 0x7B]).write(to: root.appending(path: "Bad.swift"))
+
+        let sarif = try BuiltTool.run(
+            ["analyze", root.path, "--format", "sarif", "--relative-to", root.path, "--no-cache"], in: root)
+        #expect(sarif.status == 70)
+        #expect(sarif.standardError.contains("every file in the corpus was skipped"))
+        let log = try SarifLog(sarif.standardOutput)
+        #expect(log.invocation?["executionSuccessful"] as? Bool == false)
+        let notifications = log.invocation?["toolExecutionNotifications"] as? [[String: Any]] ?? []
+        #expect(notifications.map { $0["level"] as? String } == ["error"])
+        let skipped = try #require(log.results.first)
+        #expect(log.results.count == 1)
+        #expect(skipped["ruleId"] as? String == "arcleak/degraded-file")
+        #expect((skipped["message"] as? [String: Any])?["text"] as? String == "file skipped: not valid UTF-8")
+        #expect(log.artifactLocations.map(\.uri) == ["Bad.swift"])
+
+        let json = try BuiltTool.run(["analyze", root.path, "--format", "json", "--no-cache"], in: root)
+        #expect(json.status == 70)
+        let report = try #require(try JSONSerialization.jsonObject(with: json.standardOutput) as? [String: Any])
+        #expect((report["degradedFiles"] as? [Any])?.count == 1)
+
+        let xcode = try BuiltTool.run(["analyze", root.path, "--no-cache"], in: root)
+        #expect(xcode.status == 70)
+        #expect(String(decoding: xcode.standardOutput, as: UTF8.self).contains("file skipped: not valid UTF-8"))
+    }
+
+    @Test("A run that skipped some files records them and succeeds")
+    func someFilesSkippedStillSucceeds() throws {
+        let root = try Workspace.make(["Fine.swift": "final class Fine {}\n"])
+        try Data([0xFF, 0xFE, 0x7B]).write(to: root.appending(path: "Bad.swift"))
+
+        let run = try BuiltTool.run(
+            ["analyze", root.path, "--format", "sarif", "--relative-to", root.path, "--no-cache"], in: root)
+        #expect(run.status == 0)
+        let log = try SarifLog(run.standardOutput)
+        #expect(log.invocation?["executionSuccessful"] as? Bool == true)
+        #expect(log.results.map { $0["ruleId"] as? String } == ["arcleak/degraded-file"])
+    }
 }
 
 // MARK: - Harness
@@ -266,6 +314,9 @@ struct SarifLog {
     var results: [[String: Any]] { run["results"] as? [[String: Any]] ?? [] }
 
     var columnKind: String? { run["columnKind"] as? String }
+
+    /// The run's one invocation: whether it succeeded, and what it noted.
+    var invocation: [String: Any]? { (run["invocations"] as? [[String: Any]])?.first }
 
     /// Every location a result points at: its own, then its related ones.
     var artifactLocations: [ArtifactLocation] {
