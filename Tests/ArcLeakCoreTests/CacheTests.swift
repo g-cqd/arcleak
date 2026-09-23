@@ -170,6 +170,26 @@ import Testing
         try (written[...headerEnd] + Data(#"{"entries":{"#.utf8)).write(to: cache)
     }
 
+    /// load refuses a cache over its size cap, so persist must not write one:
+    /// past the cap, every run would write a file no run can read.
+    @Test func persistNeverWritesACacheLoadWouldRefuse() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appending(path: "arcleak-cap-test-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        var small = FactsCache()
+        small.update(path: "/x/Small.swift", fingerprint: "fp", facts: FileFacts(path: "/x/Small.swift"))
+        small.persist(url: url)
+        #expect(FactsCache.load(url: url).entries.count == 1)
+
+        var oversized = FactsCache()
+        let path = String(repeating: "x", count: FactsCache.maxCacheBytes)
+        oversized.update(path: "/x/Big.swift", fingerprint: "fp", facts: FileFacts(path: path))
+        oversized.persist(url: url)
+        // Neither the oversized cache nor the one it would have replaced.
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+        #expect(FactsCache.load(url: url).loadFailure == nil)
+    }
+
     @Test func toolVersionMismatchDiscardsCache() throws {
         var cache = FactsCache()
         cache.update(
