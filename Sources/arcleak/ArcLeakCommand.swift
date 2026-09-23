@@ -95,8 +95,8 @@ struct Analyze: AsyncParsableCommand {
         help: ArgumentHelp(
             "Report paths relative to this directory. Makes fingerprints (and so baselines) and "
                 + "SARIF uris independent of where the repository is checked out; GitHub code "
-                + "scanning also requires repo-relative uris to link findings. Use "
-                + "`--relative-to .` in CI."))
+                + "scanning also requires repo-relative uris to link findings. SARIF declares the "
+                + "directory as the uriBaseId SRCROOT. Use `--relative-to .` in CI."))
     var relativeTo: String?
 
     @Option(name: .long, help: "Facts-cache file (default: ~/Library/Caches/arcleak/facts.json).")
@@ -285,7 +285,7 @@ struct Analyze: AsyncParsableCommand {
             report.findings = await rankFindings(report.findings)
         }
 
-        let output = ReportFormatter.format(report, as: format)
+        let output = ReportFormatter.format(report, as: format, relativeTo: relativeTo)
         if !output.isEmpty {
             print(output)
         }
