@@ -77,8 +77,9 @@ file's entry is keyed by its content and by the configuration facts depend on
 wrote it — its executable, not just its version — so a rebuilt or reinstalled
 arcleak starts cold rather than trust facts another build extracted. A run
 over part of the workspace keeps the other files' entries; only entries of
-deleted files are dropped. Rules always re-run, so findings never go stale
-relative to rules or configuration.
+deleted files are dropped. A cache larger than 64 MiB is neither read nor
+written. Rules always re-run, so findings never go stale relative to rules or
+configuration.
 The cache fails open. Its first line names the build that wrote it and is
 checked before anything is decoded, so another build's cache, or a file that
 is no cache at all, is ignored without a word; this build's cache that still

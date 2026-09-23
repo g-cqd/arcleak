@@ -132,6 +132,7 @@ public struct FactsCache: Sendable {
 
     /// Fail-open load: any failure — including an over-cap file — returns an
     /// empty cache (the cache is an optimization, never a trust boundary).
+    /// persist holds to the same cap, so it never writes a file load refuses.
     public static let maxCacheBytes = 64 * 1024 * 1024
 
     /// - Parameter build: the identity of the build reading; a cache another
@@ -175,6 +176,14 @@ public struct FactsCache: Sendable {
     public func persist(url: URL, build: String? = BuildIdentity.current) {
         guard let build, let body = try? Self.encodePayload(Payload(entries: entries)) else { return }
         let data = Data((Self.header(build: build) + "\n").utf8) + body
+        // load refuses a file over the cap, so writing one only spends I/O on
+        // bytes no run will read — on every run, once the corpus outgrows the
+        // cap. The cache it would have replaced goes too: an over-cap file can
+        // never load, and an older one no longer describes this corpus.
+        guard data.count <= Self.maxCacheBytes else {
+            try? FileManager.default.removeItem(at: url)
+            return
+        }
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
