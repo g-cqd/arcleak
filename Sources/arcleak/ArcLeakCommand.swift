@@ -198,6 +198,10 @@ struct Analyze: AsyncParsableCommand {
                 files: files, cacheURL: cacheURL(), index: index,
                 reportScope: reportScope
             )
+        // Once: the run rewrites the cache it could not use.
+        if let failure = report.cacheLoadFailure {
+            standardError.write(Data("arcleak: note: \(failure)\n".utf8))
+        }
 
         // A cancelled run analysed a partial corpus and therefore reports nothing.
         // That must never read as a clean gate — exit as an internal failure,
