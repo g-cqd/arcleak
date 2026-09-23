@@ -19,6 +19,8 @@ import Testing
         let root = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("arcleak-fp-\(name)-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        var completed = false
+        defer { if !completed { try? FileManager.default.removeItem(at: root) } }
         // A `.git` entry is what marks the anchor; its contents are irrelevant.
         try Data().write(to: root.appendingPathComponent(".git"))
         let source = """
@@ -32,13 +34,22 @@ import Testing
             """
         let file = root.appendingPathComponent("Holder.swift")
         try source.write(to: file, atomically: true, encoding: .utf8)
+        completed = true
         return [file.path]
     }
 
     @Test("The same code in two checkouts fingerprints identically")
     func portableAcrossCheckouts() async throws {
-        let here = await Analyzer().analyze(files: try makeCheckout(named: "here"))
-        let there = await Analyzer().analyze(files: try makeCheckout(named: "there"))
+        let hereFiles = try makeCheckout(named: "here")
+        defer {
+            try? FileManager.default.removeItem(at: URL(fileURLWithPath: hereFiles[0]).deletingLastPathComponent())
+        }
+        let thereFiles = try makeCheckout(named: "there")
+        defer {
+            try? FileManager.default.removeItem(at: URL(fileURLWithPath: thereFiles[0]).deletingLastPathComponent())
+        }
+        let here = await Analyzer().analyze(files: hereFiles)
+        let there = await Analyzer().analyze(files: thereFiles)
         #expect(!here.findings.isEmpty)
         #expect(here.findings.map(\.fingerprint) == there.findings.map(\.fingerprint))
         // ...even though the displayed paths differ.
@@ -48,6 +59,7 @@ import Testing
     @Test("Fingerprints hash the repository-relative path")
     func anchoredToRepositoryRoot() async throws {
         let files = try makeCheckout(named: "anchor")
+        defer { try? FileManager.default.removeItem(at: URL(fileURLWithPath: files[0]).deletingLastPathComponent()) }
         let report = await Analyzer().analyze(files: files)
         let finding = try #require(report.findings.first)
         #expect(finding.fingerprintPath == "Holder.swift")
@@ -58,6 +70,7 @@ import Testing
         let root = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("arcleak-norepo-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
         let file = root.appendingPathComponent("Holder.swift")
         try "final class C { var h: (() -> Void)?; func s() { h = { self.f() } }; func f() {} }"
             .write(to: file, atomically: true, encoding: .utf8)

@@ -12,6 +12,7 @@ import Testing
         let dir = FileManager.default.temporaryDirectory
             .appending(path: "arcleak-big-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
         let big = dir.appending(path: "Big.swift")
         // Sparse file: 64 MB logical, ~0 bytes on disk — the stat-first guard
         // must reject it before Data(contentsOf:) allocates 64 MB.
@@ -33,6 +34,7 @@ import Testing
         let dir = FileManager.default.temporaryDirectory
             .appending(path: "arcleak-dir-\(UUID().uuidString).swift")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
 
         let report = await Analyzer().analyze(files: [dir.path])
         #expect(report.degradedFiles.count == 1)
@@ -45,6 +47,7 @@ import Testing
     func oversizedConfigFailsClosed() throws {
         let path = FileManager.default.temporaryDirectory
             .appending(path: "arcleak-cfg-\(UUID().uuidString).json").path
+        defer { try? FileManager.default.removeItem(atPath: path) }
         // 2 MB of padded JSON — over the 1 MB config cap.
         let padding = String(repeating: "a", count: 2 * 1024 * 1024)
         try #"{"rules":{},"exclude":["\#(padding)"]}"#.write(

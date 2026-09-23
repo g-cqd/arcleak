@@ -12,6 +12,7 @@ import Testing
 
     @Test func unknownRuleIdFailsClosed() throws {
         let path = try write(#"{"rules": {"definitely-not-a-rule": {"enabled": false}}, "exclude": []}"#)
+        defer { try? FileManager.default.removeItem(atPath: path) }
         #expect(throws: ArcLeakError.self) {
             try Configuration.load(path: path)
         }
@@ -21,6 +22,7 @@ import Testing
         let path = try write(
             #"{"rules": {"stored-closure-strong-self": {"severity": "warning"}, "timer-retains-self": {"enabled": false}}, "exclude": []}"#
         )
+        defer { try? FileManager.default.removeItem(atPath: path) }
         let config = try Configuration.load(path: path)
         #expect(config.severity(for: .storedClosureStrongSelf) == .warning)
         #expect(!config.isEnabled(.timerRetainsSelf))

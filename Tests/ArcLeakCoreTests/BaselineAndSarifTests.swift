@@ -31,6 +31,7 @@ import Testing
 
         let path = FileManager.default.temporaryDirectory
             .appending(path: "arcleak-baseline-\(UUID().uuidString).json").path
+        defer { try? FileManager.default.removeItem(atPath: path) }
         try Baseline(findings: old).write(path: path)
         let loaded = try Baseline.load(path: path)
 
@@ -60,6 +61,7 @@ import Testing
     @Test func malformedBaselineFailsClosed() throws {
         let path = FileManager.default.temporaryDirectory
             .appending(path: "arcleak-baseline-\(UUID().uuidString).json").path
+        defer { try? FileManager.default.removeItem(atPath: path) }
         try #"{"version": 99, "tool": "arcleak", "fingerprints": []}"#
             .write(toFile: path, atomically: true, encoding: .utf8)
         #expect(throws: ArcLeakError.self) {
