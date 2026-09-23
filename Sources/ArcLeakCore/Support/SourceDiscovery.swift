@@ -23,6 +23,12 @@ public enum SourceDiscovery {
     /// the kernel refused the path (ELOOP), and two such links multiplied at
     /// every level and never finished. Entries are visited in sorted order, so
     /// which spelling comes first does not depend on the file system.
+    ///
+    /// `isExcluded` is asked about each file's path as it was reached, and
+    /// about each directory's with a trailing `/`. A directory it excludes is
+    /// not walked — every file below would be excluded — and does not count
+    /// as visited, so a link named like an exclude pattern cannot hide the
+    /// real directory behind it.
     public static func swiftFiles(under directory: String, isExcluded: (String) -> Bool) -> [String] {
         let manager = FileManager.default
         var files: [String] = []
@@ -43,12 +49,18 @@ public enum SourceDiscovery {
                 // Resolved first — attributesOfItem does not traverse a final
                 // symlink.
                 let resolved = URL(fileURLWithPath: full).resolvingSymlinksInPath().path
-                guard let attributes = try? manager.attributesOfItem(atPath: resolved) else { continue }
-                if attributes[.type] as? FileAttributeType == .typeDirectory {
-                    if visited.insert(identity(of: resolved, attributes: attributes)).inserted {
+                let attributes = try? manager.attributesOfItem(atPath: resolved)
+                if let attributes, attributes[.type] as? FileAttributeType == .typeDirectory {
+                    let unvisited =
+                        !isExcluded(full + "/")
+                        && visited.insert(identity(of: resolved, attributes: attributes)).inserted
+                    if unvisited {
                         stack.append(full)
                     }
                 } else if full.hasSuffix(".swift"), !isExcluded(full) {
+                    // Listed even when it cannot be examined: the analyzer
+                    // then reports it degraded rather than it silently
+                    // missing from the corpus.
                     files.append(full)
                 }
             }
