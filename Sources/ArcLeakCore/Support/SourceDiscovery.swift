@@ -1,3 +1,5 @@
+import ProjectModel
+
 #if canImport(FoundationEssentials)
     internal import FoundationEssentials
 #else
@@ -31,6 +33,19 @@ public enum SourceDiscovery {
     /// real directory behind it.
     public static func swiftFiles(under directory: String, isExcluded: (String) -> Bool) -> [String] {
         files(under: directory, isExcluded: isExcluded) { $0.hasSuffix(".swift") }
+    }
+
+    /// The project files under `directory`: Xcode projects, package
+    /// manifests, property lists, storyboards and xibs, walked as
+    /// ``swiftFiles(under:isExcluded:)`` walks, sorted.
+    public static func projectFiles(under directory: String, isExcluded: (String) -> Bool) -> [String] {
+        files(under: directory, isExcluded: isExcluded, where: isProjectFile)
+    }
+
+    /// Whether `path` names a project file ``projectFiles(under:isExcluded:)``
+    /// would list.
+    public static func isProjectFile(_ path: String) -> Bool {
+        SystemEntryPoints.isProjectFile(path) || ProjectPlatforms.isPlatformSource(path)
     }
 
     /// The files under `directory` whose path `isIncluded` accepts, walked

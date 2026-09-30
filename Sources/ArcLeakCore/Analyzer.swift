@@ -1,3 +1,5 @@
+import ProjectModel
+
 #if canImport(FoundationEssentials)
     public import FoundationEssentials
 #else
@@ -33,8 +35,12 @@ public struct Analyzer: Sendable {
     /// - Parameter reportScope: narrows the *report* to a set of files; nil
     ///   reports everything. The corpus is analyzed whole either way — see
     ///   ``ReportScope``.
+    /// - Parameter projectFiles: Xcode projects, package manifests,
+    ///   Info.plists, storyboards and xibs: they give the platforms `#if`
+    ///   evaluates and the classes the system creates.
     public func analyze(
         files: [String],
+        projectFiles: [String] = [],
         cacheURL: URL? = nil,
         index: (any IndexReading)? = nil,
         reportScope: ReportScope? = nil
@@ -62,8 +68,11 @@ public struct Analyzer: Sendable {
             }
             .sorted()
             .joined(separator: ",")
+        let project = Self.projectFacts(from: projectFiles)
+        let platforms = configuration.platforms.map { Set($0) } ?? project.platforms
         let definesSalt =
             configuration.activeDefines.sorted().joined(separator: ",") + "|" + contractSalt
+            + "|os=" + platforms.sorted().joined(separator: ",")
 
         // Bounded fan-out: one blocking read + parse per file would otherwise
         // spawn `included.count` tasks that block the (core-count-sized)
@@ -90,6 +99,8 @@ public struct Analyzer: Sendable {
                         snapshot: snapshot,
                         index: index,
                         configuration: configuration,
+                        platforms: platforms,
+                        systemEntryPoints: project.systemEntryPoints,
                         definesSalt: definesSalt
                     )
                 }
@@ -192,6 +203,7 @@ public struct Analyzer: Sendable {
             path: path,
             source: source,
             defines: configuration.activeDefines,
+            platforms: Set(configuration.platforms ?? []),
             contracts: configuration.contracts ?? []
         )
         if let index {
@@ -214,9 +226,16 @@ public struct Analyzer: Sendable {
             corpus.map { ($0.path, SuppressionTable(directives: $0.directives)) },
             uniquingKeysWith: { first, _ in first }
         )
+        let factsByPath = Dictionary(corpus.map { ($0.path, $0) }, uniquingKeysWith: { first, _ in first })
 
         var report = AnalysisReport()
-        for finding in raw {
+        for rawFinding in raw {
+            let facts = factsByPath[rawFinding.path]
+            if let reason = ProjectContext.withholdingReason(for: rawFinding, in: facts) {
+                report.suppressed.append(AnalysisReport.SuppressedFinding(finding: rawFinding, reason: reason))
+                continue
+            }
+            let finding = ProjectContext.annotated(rawFinding, in: facts)
             if let reason = tables[finding.path]?.suppression(for: finding.rule, line: finding.line) {
                 report.suppressed.append(
                     AnalysisReport.SuppressedFinding(finding: finding, reason: reason)
@@ -255,6 +274,8 @@ public struct Analyzer: Sendable {
         snapshot: FactsCache,
         index: (any IndexReading)?,
         configuration: Configuration,
+        platforms: Set<String>,
+        systemEntryPoints: Set<String>,
         definesSalt: String
     ) -> FileOutcome {
         let data: Data
@@ -282,11 +303,13 @@ public struct Analyzer: Sendable {
                 path: path,
                 source: source,
                 defines: configuration.activeDefines,
+                platforms: platforms,
                 contracts: configuration.contracts ?? []
             )
         }
         let effective = index.map { facts.upgraded(with: $0) } ?? facts
-        let findings = RuleEngine.check(file: effective, configuration: configuration)
+        let findings = RuleEngine.check(
+            file: effective, configuration: configuration, systemEntryPoints: systemEntryPoints)
         return FileOutcome(
             facts: facts,
             effectiveFacts: effective,
@@ -294,6 +317,22 @@ public struct Analyzer: Sendable {
             cacheHit: cacheHit,
             findings: findings
         )
+    }
+
+    /// What the project files say: the platforms the project builds for,
+    /// and the classes the system creates. An unreadable file says nothing.
+    static func projectFacts(from projectFiles: [String]) -> (platforms: Set<String>, systemEntryPoints: Set<String>) {
+        var platforms: Set<String> = []
+        var entryPoints: Set<String> = []
+        for path in projectFiles {
+            guard let data = try? read(path: path) else { continue }
+            let contents = String(decoding: data, as: UTF8.self)
+            platforms.formUnion(ProjectPlatforms.platforms(path: path, contents: contents))
+            for entryPoint in SystemEntryPoints.scan(path: path, contents: contents) {
+                entryPoints.insert(entryPoint.typeName)
+            }
+        }
+        return (platforms, entryPoints)
     }
 
     private static func read(path: String) throws(ArcLeakError) -> Data {

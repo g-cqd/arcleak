@@ -1,3 +1,4 @@
+import ProjectModel
 import SwiftIfConfig
 import SwiftParser
 import SwiftSyntax
@@ -9,11 +10,12 @@ public enum FactsExtraction {
         path: String,
         source: String,
         defines: Set<String> = [],
+        platforms: Set<String> = [],
         contracts: [Configuration.UserContract] = []
     ) -> FileFacts {
         let tree = Parser.parse(source: source)
         let converter = SourceLocationConverter(fileName: path, tree: tree)
-        let buildConfiguration = buildConfiguration(defines: defines)
+        let buildConfiguration = buildConfiguration(defines: defines, platforms: platforms)
 
         let members = MemberCollector(buildConfiguration: buildConfiguration)
         members.walk(tree)
@@ -29,18 +31,30 @@ public enum FactsExtraction {
 
         var facts = extractor.finish()
         facts.directives = scanDirectives(tree: tree, converter: converter)
+        facts.regionSpans = CodeRegionScanner.scan(tree, converter: converter).map(RegionSpanFact.init)
+        facts.isTestCode = TestConventions.isTestFile(path: path, tree: tree)
+        facts.isGenerated = GeneratedCode.isGenerated(path: path, tree: tree)
         return facts
     }
 
-    /// Facts follow what a compile would see: the host platform's `os()`
-    /// conditions plus the user's `--define`/config custom conditions.
-    /// (`canImport` modules are not modeled yet — documented limitation.)
-    static func buildConfiguration(defines: Set<String>) -> StaticBuildConfiguration {
+    /// Facts follow what a compile would see: the `os()` conditions of the
+    /// project's platforms (the host's when none is known) plus the custom
+    /// conditions. (`canImport` modules are not modeled yet — documented
+    /// limitation.)
+    static func buildConfiguration(
+        defines: Set<String>,
+        platforms: Set<String> = []
+    ) -> StaticBuildConfiguration {
         var configuration = StaticBuildConfiguration(
             customConditions: defines,
             languageVersion: VersionTuple(6),
             compilerVersion: VersionTuple(6, 4)
         )
+        if !platforms.isEmpty {
+            // `os(OSX)` is the older spelling of `os(macOS)`.
+            configuration.targetOSs = platforms.contains("macOS") ? platforms.union(["OSX"]) : platforms
+            return configuration
+        }
         #if os(macOS)
             configuration.targetOSs = ["macOS", "OSX"]
         #elseif os(Linux)
