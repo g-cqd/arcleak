@@ -335,7 +335,8 @@ struct LspServer {
             }
             return Diagnostic(
                 range: OutRange(start: position, end: position),
-                severity: finding.severity == .error ? 1 : 2,
+                // LSP DiagnosticSeverity: 1 error, 2 warning, 3 information.
+                severity: finding.severity == .error ? 1 : finding.severity == .warning ? 2 : 3,
                 code: finding.rule.rawValue,
                 source: ToolInfo.name,
                 message: finding.note.map { "\(finding.message) — \($0)" } ?? finding.message

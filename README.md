@@ -45,7 +45,7 @@ Swift 6.4 toolchain, macOS 15+ or Linux. No released toolchain ships tools
 ```sh
 arcleak analyze Sources             # xcode-format diagnostics, exit 1 on errors
 arcleak analyze --format json .     # machine-readable report (also: --format sarif)
-arcleak analyze --strict Sources    # exit 1 on any finding
+arcleak analyze --strict Sources    # exit 1 on any warning or error; notes never fail
 arcleak analyze --fix Sources       # apply [weak self] fix-its (--fix-dry-run to preview)
 arcleak analyze --index-store .     # resolve cross-module types via the index (macOS-only)
 arcleak rules                       # list rules, severities, suppression syntax
@@ -53,9 +53,28 @@ arcleak rules timer-retains-self    # one rule's retention contract and fix
 arcleak lsp                         # LSP server over stdio: diagnostics + accept quick-fix
 ```
 
-Exit codes: `0` clean or warnings-only, `1` error-severity findings (or any
-finding with `--strict`), and `64`, `70`, `74` or `78` when the gate itself
+Exit codes: `0` clean or warnings and notes only, `1` error-severity findings
+(or any warning with `--strict`), and `64`, `70`, `74` or `78` when the gate itself
 broke — see [Exit codes](#exit-codes).
+
+**Project context** — where a type lives changes what its leak costs.
+Directory arguments are searched for project files as well as Swift files:
+Xcode projects, package manifests, Info.plists, storyboards and xibs (or pass
+them explicitly).
+
+- `#if os(...)` follows the platforms the project builds for (an Xcode
+  project's `SDKROOT`, a manifest's `platforms`), else the host's; the
+  `platforms` configuration key overrides both.
+- The debug build is analyzed, `DEBUG` set, and a finding in `#if DEBUG` code
+  says only debug builds compile it; `"debugBuild": false` analyzes the
+  release build instead.
+- Findings in previews and in generated files are withheld, listed with the
+  suppressed findings and the reason.
+- A finding in test code (a file importing XCTest or Testing, or a test path)
+  says so.
+- A class a project file tells the system to create (an extension's principal
+  class, a scene delegate, a storyboard custom class) lives for the whole
+  process or extension: its findings are notes, which never fail a run.
 
 **Baseline** — adopt on a legacy codebase by accepting current debt and
 gating only new findings:
@@ -73,7 +92,7 @@ swallow new bugs.
 (`~/Library/Caches/arcleak/<workspace>/facts.json`; override with
 `--cache-path`, disable with `--no-cache`). Only parsed facts are cached. Each
 file's entry is keyed by its content and by the configuration facts depend on
-(`defines`, `contracts`); the whole cache is keyed by the arcleak build that
+(`defines`, `debugBuild`, `platforms`, `contracts`); the whole cache is keyed by the arcleak build that
 wrote it — its executable, not just its version — so a rebuilt or reinstalled
 arcleak starts cold rather than trust facts another build extracted. A run
 over part of the workspace keeps the other files' entries; only entries of
@@ -440,8 +459,8 @@ reporting nothing.
 
 | Code | Meaning |
 |---|---|
-| `0` | the gate passed: no error-severity finding, so warnings alone pass; with `--strict`, no finding at all. Also after `--write-baseline` and `--fix` |
-| `1` | the gate failed on findings: an error-severity finding, or with `--strict` any finding — and nothing else |
+| `0` | the gate passed: no error-severity finding, so warnings and notes alone pass; with `--strict`, no warning or error. Also after `--write-baseline` and `--fix` |
+| `1` | the gate failed on findings: an error-severity finding, or with `--strict` any warning or error — and nothing else |
 | `64` | usage error: a bad argument, a path that does not exist, an unreadable `--only-from` file |
 | `70` | nothing was analyzed: every file was skipped, and the report on stdout says which and why; or the run failed or was cancelled, and stdout is empty |
 | `74` | a file could not be written: a `--fix` result (files written before it keep their fixes), or the `--stamp` of a run that passed |
@@ -449,7 +468,7 @@ reporting nothing.
 
 `1` means findings *only*, so a step that posts a review comment on `1` will
 not fire on a typo in the config file. Warnings are always reported, but only
-`--strict` makes them fail the gate. A cancelled run reports **no** findings
+`--strict` makes them fail the gate, and a note never does. A cancelled run reports **no** findings
 and exits `70` rather than looking clean: a whole-program analysis over a
 partial corpus does not report less, it reports wrongly.
 

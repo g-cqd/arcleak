@@ -41,13 +41,23 @@ public enum RuleEngine {
         MutualStrongPropertiesRule.self
     ]
 
-    public static func check(file: FileFacts, configuration: Configuration) -> [Finding] {
+    /// - Parameter systemEntryPoints: type names project files tell the
+    ///   system to create; findings on them become notes.
+    public static func check(
+        file: FileFacts,
+        configuration: Configuration,
+        systemEntryPoints: Set<String> = []
+    ) -> [Finding] {
         var findings: [Finding] = []
         for type in file.types {
+            let isSystemEntryPoint = systemEntryPoints.contains(type.name)
             for rule in rules where rule.emits.contains(where: configuration.isEnabled) {
+                let typeFindings = rule.check(type: type, path: file.path, configuration: configuration)
+                    .filter { configuration.isEnabled($0.rule) }
                 findings.append(
-                    contentsOf: rule.check(type: type, path: file.path, configuration: configuration)
-                        .filter { configuration.isEnabled($0.rule) }
+                    contentsOf: isSystemEntryPoint
+                        ? typeFindings.map { ProjectContext.systemEntryPoint($0, typeName: type.name) }
+                        : typeFindings
                 )
             }
         }
