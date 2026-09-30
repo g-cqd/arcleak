@@ -175,7 +175,8 @@ public struct Analyzer: Sendable {
             }
         }
 
-        var report = Self.assemble(raw: raw, corpus: corpus, reportScope: reportScope)
+        var report = Self.assemble(
+            raw: raw, corpus: corpus, reportScope: reportScope, regionSelection: regionSelection)
 
         // Anchor fingerprints to the repository, not to this machine's checkout
         // path or to whether the caller remembered --relative-to. Display is a
@@ -215,12 +216,21 @@ public struct Analyzer: Sendable {
                 corpus: [facts], configuration: configuration, index: index
             )
         )
-        let report = Self.assemble(raw: raw, corpus: [facts])
+        let report = Self.assemble(raw: raw, corpus: [facts], regionSelection: regionSelection)
         return (report.findings, report.suppressed)
     }
 
+    /// The parsed `--include`/`--exclude` selection; `Configuration.load`
+    /// already validated it, so this can only fail for a `Configuration`
+    /// built by hand with a bogus region name, and it fails open rather than
+    /// making a rejected name analyze nothing.
+    private var regionSelection: RegionSelection {
+        (try? configuration.regionSelection()) ?? .none
+    }
+
     private static func assemble(
-        raw: [Finding], corpus: [FileFacts], reportScope: ReportScope? = nil
+        raw: [Finding], corpus: [FileFacts], reportScope: ReportScope? = nil,
+        regionSelection: RegionSelection = .none
     ) -> AnalysisReport {
         let tables = Dictionary(
             corpus.map { ($0.path, SuppressionTable(directives: $0.directives)) },
@@ -231,11 +241,13 @@ public struct Analyzer: Sendable {
         var report = AnalysisReport()
         for rawFinding in raw {
             let facts = factsByPath[rawFinding.path]
-            if let reason = ProjectContext.withholdingReason(for: rawFinding, in: facts) {
+            if let reason = ProjectContext.withholdingReason(
+                for: rawFinding, in: facts, regionSelection: regionSelection)
+            {
                 report.suppressed.append(AnalysisReport.SuppressedFinding(finding: rawFinding, reason: reason))
                 continue
             }
-            let finding = ProjectContext.annotated(rawFinding, in: facts)
+            let finding = ProjectContext.annotated(rawFinding, in: facts, regionSelection: regionSelection)
             if let reason = tables[finding.path]?.suppression(for: finding.rule, line: finding.line) {
                 report.suppressed.append(
                     AnalysisReport.SuppressedFinding(finding: finding, reason: reason)
