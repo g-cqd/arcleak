@@ -1,5 +1,5 @@
 {
-  "originHash" : "03f7399692baa845ae5d1ba97d799b575d3ca563fd5310fe8b89fa2d658cc89c",
+  "originHash" : "0a05e493a6d5602b409a787cdc28a06823ee907fc30bfb3ecec4d92f841c79be",
   "pins" : [
     {
       "identity" : "aemi",
@@ -15,6 +15,14 @@
       "location" : "https://github.com/g-cqd/AemiJSON.git",
       "state" : {
         "revision" : "6b8e5b9fb14b6c835d0dca13ba15f5bb1f3831de"
+      }
+    },
+    {
+      "identity" : "analyzerkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/g-cqd/analyzerkit.git",
+      "state" : {
+        "revision" : "47c6a9585fecd44fd70eb84530996fb1473d2868"
       }
     },
     {
