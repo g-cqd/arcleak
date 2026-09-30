@@ -1,3 +1,5 @@
+public import ProjectModel
+
 #if canImport(FoundationEssentials)
     import FoundationEssentials
 #else
@@ -41,6 +43,16 @@ public struct Configuration: Sendable, Codable, Equatable {
     /// analyzed for a strong-`self` cycle exactly like `.sink`); `anchorLeak`
     /// lands with cross-file release plumbing.
     public var contracts: [UserContract]?
+    /// Regions (comma-separated: `preview,debug,test,mock,generated,script`,
+    /// or `all`) to treat as first-class code: a leak or cycle withheld
+    /// because it lives in preview or generated code is reported like any
+    /// other, tagged with its region; one in `#if DEBUG` or test code drops
+    /// the note that says so. The same key, with the same values, in
+    /// deadwood, arcleak and dolly.
+    public var includeRegions: String?
+    /// Regions to keep out of scope even if `includeRegions` (or `all`)
+    /// names them; wins where the two disagree about the same region.
+    public var excludeRegions: String?
 
     /// Decodes a partial configuration.
     ///
@@ -59,6 +71,8 @@ public struct Configuration: Sendable, Codable, Equatable {
         self.debugBuild = try container.decodeIfPresent(Bool.self, forKey: .debugBuild)
         self.platforms = try container.decodeIfPresent([String].self, forKey: .platforms)
         self.contracts = try container.decodeIfPresent([UserContract].self, forKey: .contracts)
+        self.includeRegions = try container.decodeIfPresent(String.self, forKey: .includeRegions)
+        self.excludeRegions = try container.decodeIfPresent(String.self, forKey: .excludeRegions)
     }
 
     public init(
@@ -67,7 +81,9 @@ public struct Configuration: Sendable, Codable, Equatable {
         defines: [String]? = nil,
         debugBuild: Bool? = nil,
         platforms: [String]? = nil,
-        contracts: [UserContract]? = nil
+        contracts: [UserContract]? = nil,
+        includeRegions: String? = nil,
+        excludeRegions: String? = nil
     ) {
         self.rules = rules
         self.exclude = exclude
@@ -75,6 +91,8 @@ public struct Configuration: Sendable, Codable, Equatable {
         self.debugBuild = debugBuild
         self.platforms = platforms
         self.contracts = contracts
+        self.includeRegions = includeRegions
+        self.excludeRegions = excludeRegions
     }
 
     public struct UserContract: Sendable, Codable, Equatable {
@@ -130,6 +148,12 @@ public struct Configuration: Sendable, Codable, Equatable {
 
     public static let `default` = Configuration()
 
+    /// The parsed region selection; throws on an unknown region name from
+    /// either key.
+    public func regionSelection() throws(UnknownRegionName) -> RegionSelection {
+        try RegionSelection(include: includeRegions, exclude: excludeRegions)
+    }
+
     public static func load(path: String) throws(ArcLeakError) -> Configuration {
         let data = try BoundedFileReader.read(path: path)
         let config: Configuration
@@ -144,6 +168,11 @@ public struct Configuration: Sendable, Codable, Equatable {
         if let empty = config.contracts?.first(where: { $0.callee.isEmpty }) {
             _ = empty
             throw .configurationInvalid(path: path, detail: "contract with empty callee")
+        }
+        do {
+            _ = try config.regionSelection()
+        } catch {
+            throw .configurationInvalid(path: path, detail: error.description)
         }
         return config
     }

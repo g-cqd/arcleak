@@ -52,7 +52,7 @@ let package = Package(
         // generated files, platforms and system entry points.
         .package(
             url: "https://github.com/g-cqd/analyzerkit.git",
-            revision: "47c6a9585fecd44fd70eb84530996fb1473d2868"
+            revision: "b0153775221c15f865eaf71d55d7f5df7b51df6c"
         ),
     ],
     targets: [
