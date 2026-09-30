@@ -27,6 +27,13 @@ public struct Configuration: Sendable, Codable, Equatable {
     /// Custom `#if` conditions treated as set (the compiler's `-D`); optional
     /// so existing configuration files keep decoding.
     public var defines: [String]?
+    /// Analyze the debug build (`DEBUG` set), the default, or the release
+    /// build (`false`). Findings in `#if DEBUG` code say they only concern
+    /// debug builds.
+    public var debugBuild: Bool?
+    /// The `os()` names `#if` evaluates as true (`iOS`, `macOS`, ...); nil
+    /// takes them from the project files, then from the host.
+    public var platforms: [String]?
     /// User-supplied retention contracts extending the knowledge base.
     /// Supports `tokenProducer` (the call returns a lifetime token that must be
     /// owned) and `sinkWrapper` (a custom Combine wrapper such as `React.to`
@@ -49,6 +56,8 @@ public struct Configuration: Sendable, Codable, Equatable {
             try container.decodeIfPresent([String: RuleSettings].self, forKey: .rules) ?? [:]
         self.exclude = try container.decodeIfPresent([String].self, forKey: .exclude) ?? []
         self.defines = try container.decodeIfPresent([String].self, forKey: .defines)
+        self.debugBuild = try container.decodeIfPresent(Bool.self, forKey: .debugBuild)
+        self.platforms = try container.decodeIfPresent([String].self, forKey: .platforms)
         self.contracts = try container.decodeIfPresent([UserContract].self, forKey: .contracts)
     }
 
@@ -56,11 +65,15 @@ public struct Configuration: Sendable, Codable, Equatable {
         rules: [String: RuleSettings] = [:],
         exclude: [String] = [],
         defines: [String]? = nil,
+        debugBuild: Bool? = nil,
+        platforms: [String]? = nil,
         contracts: [UserContract]? = nil
     ) {
         self.rules = rules
         self.exclude = exclude
         self.defines = defines
+        self.debugBuild = debugBuild
+        self.platforms = platforms
         self.contracts = contracts
     }
 
@@ -105,7 +118,15 @@ public struct Configuration: Sendable, Codable, Equatable {
         }
     }
 
-    public var activeDefines: Set<String> { Set(defines ?? []) }
+    /// The custom conditions set: the configured defines, plus `DEBUG` for a
+    /// debug build.
+    public var activeDefines: Set<String> {
+        var active = Set(defines ?? [])
+        if debugBuild ?? true {
+            active.insert("DEBUG")
+        }
+        return active
+    }
 
     public static let `default` = Configuration()
 

@@ -62,7 +62,7 @@ struct Analyze: AsyncParsableCommand {
     @Option(name: .long, help: "Path to .arcleak.json (default: ./.arcleak.json when present).")
     var config: String?
 
-    @Flag(name: .long, help: "Exit non-zero on any finding, not just errors.")
+    @Flag(name: .long, help: "Exit non-zero on any warning or error finding; notes never fail a run.")
     var strict = false
 
     @Option(
@@ -175,7 +175,7 @@ struct Analyze: AsyncParsableCommand {
         if !define.isEmpty {
             configuration.defines = (configuration.defines ?? []) + define
         }
-        let files = try discoverSwiftFiles(configuration: configuration)
+        let (files, projectFiles) = try discoverInputs(configuration: configuration)
         guard !files.isEmpty else {
             throw ValidationError(ArcLeakError.noInputs.description)
         }
@@ -196,7 +196,7 @@ struct Analyze: AsyncParsableCommand {
 
         var report = await Analyzer(configuration: configuration)
             .analyze(
-                files: files, cacheURL: cacheURL(), index: index,
+                files: files, projectFiles: projectFiles, cacheURL: cacheURL(), index: index,
                 reportScope: reportScope
             )
         // Once: the run rewrites the cache it could not use.
@@ -320,7 +320,9 @@ struct Analyze: AsyncParsableCommand {
         if writeBaseline != nil {
             return
         }
-        let failed = strict ? !report.findings.isEmpty : report.maxSeverity == .error
+        // Notes inform; they never fail a run, not even a strict one.
+        let failed =
+            strict ? report.findings.contains { $0.severity > .note } : report.maxSeverity == .error
         if !failed, let stamp {
             try? FileManager.default.createDirectory(
                 at: URL(fileURLWithPath: stamp).deletingLastPathComponent(),
@@ -637,8 +639,15 @@ struct Analyze: AsyncParsableCommand {
     /// because `Finding.path` feeds the fingerprint, and a fingerprint that
     /// depends on how the corpus was spelled on the command line makes
     /// baselines unusable across invocation styles.
-    private func discoverSwiftFiles(configuration: Configuration) throws -> [String] {
+    ///
+    /// Project files (Xcode projects, manifests, Info.plists, storyboards,
+    /// xibs) found the same way, or given explicitly, give the platforms and
+    /// the classes the system creates; they are read, never parsed as Swift.
+    private func discoverInputs(
+        configuration: Configuration
+    ) throws -> (swiftFiles: [String], projectFiles: [String]) {
         var files: Set<String> = []
+        var projectFiles: Set<String> = []
         for path in paths {
             guard
                 // Resolved first — attributesOfItem does not traverse a final
@@ -651,12 +660,18 @@ struct Analyze: AsyncParsableCommand {
                 throw ValidationError("no such file or directory: \(path)")
             }
             if type != .typeDirectory {
-                files.insert(URL(fileURLWithPath: path).path)
+                if SourceDiscovery.isProjectFile(path) {
+                    projectFiles.insert(URL(fileURLWithPath: path).path)
+                } else {
+                    files.insert(URL(fileURLWithPath: path).path)
+                }
                 continue
             }
             files.formUnion(SourceDiscovery.swiftFiles(under: path, isExcluded: configuration.isExcluded(path:)))
+            projectFiles.formUnion(
+                SourceDiscovery.projectFiles(under: path, isExcluded: configuration.isExcluded(path:)))
         }
-        return files.sorted()
+        return (files.sorted(), projectFiles.sorted())
     }
 }
 
