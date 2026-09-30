@@ -48,6 +48,12 @@ let package = Package(
             url: "https://github.com/g-cqd/AemiJSON.git",
             revision: "6b8e5b9fb14b6c835d0dca13ba15f5bb1f3831de"
         ),
+        // The project model the analyzers share: code regions, test code,
+        // generated files, platforms and system entry points.
+        .package(
+            url: "https://github.com/g-cqd/analyzerkit.git",
+            revision: "a849bb985138ecea0a8d3c8aa8e15499625585d9"
+        ),
     ],
     targets: [
         .target(
@@ -57,6 +63,7 @@ let package = Package(
                 .product(name: "SwiftParser", package: "swift-syntax"),
                 .product(name: "SwiftIfConfig", package: "swift-syntax"),
                 .product(name: "AemiJSON", package: "AemiJSON"),
+                .product(name: "ProjectModel", package: "analyzerkit"),
                 .product(
                     name: "IndexStoreDB",
                     package: "indexstore-db",
