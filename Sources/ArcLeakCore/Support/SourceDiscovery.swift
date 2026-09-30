@@ -30,6 +30,16 @@ public enum SourceDiscovery {
     /// as visited, so a link named like an exclude pattern cannot hide the
     /// real directory behind it.
     public static func swiftFiles(under directory: String, isExcluded: (String) -> Bool) -> [String] {
+        files(under: directory, isExcluded: isExcluded) { $0.hasSuffix(".swift") }
+    }
+
+    /// The files under `directory` whose path `isIncluded` accepts, walked
+    /// as ``swiftFiles(under:isExcluded:)`` walks, sorted.
+    static func files(
+        under directory: String,
+        isExcluded: (String) -> Bool,
+        where isIncluded: (String) -> Bool
+    ) -> [String] {
         let manager = FileManager.default
         var files: [String] = []
         let start = URL(fileURLWithPath: directory).resolvingSymlinksInPath().path
@@ -57,7 +67,7 @@ public enum SourceDiscovery {
                     if unvisited {
                         stack.append(full)
                     }
-                } else if full.hasSuffix(".swift"), !isExcluded(full) {
+                } else if isIncluded(full), !isExcluded(full) {
                     // Listed even when it cannot be examined: the analyzer
                     // then reports it degraded rather than it silently
                     // missing from the corpus.
