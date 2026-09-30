@@ -17,30 +17,51 @@ enum ProjectContext {
     static let testNote =
         "test code: the object lives for the test run at most; if the retention is deliberate assertion plumbing, accept it with // @al:accept"
 
-    /// The reason to withhold a finding, or nil to report it.
-    static func withholdingReason(for finding: Finding, in facts: FileFacts?) -> String? {
+    /// The reason to withhold a finding, or nil to report it. `--include
+    /// preview`/`--include generated` turns the withhold off — the caller
+    /// still runs the finding through `annotated`, which tags it with its
+    /// region so it stays filterable.
+    static func withholdingReason(
+        for finding: Finding, in facts: FileFacts?, regionSelection: RegionSelection = .none
+    ) -> String? {
         guard let facts else { return nil }
         let region = facts.region(ofLine: finding.line)
-        if region.contains(.generated) {
+        if region.contains(.generated), !regionSelection.isIncluded(.generated) {
             return generatedReason
         }
-        if region.contains(.preview) {
+        if region.contains(.preview), !regionSelection.isIncluded(.preview) {
             return previewReason
         }
         return nil
     }
 
-    /// The finding with the notes its region calls for.
-    static func annotated(_ finding: Finding, in facts: FileFacts?) -> Finding {
+    /// The finding with the notes its region calls for, and a region tag for
+    /// one an `--include`d region kept from being withheld.
+    static func annotated(
+        _ finding: Finding, in facts: FileFacts?, regionSelection: RegionSelection = .none
+    ) -> Finding {
         guard let facts else { return finding }
         let region = facts.region(ofLine: finding.line)
         var result = finding
-        if region.contains(.debugOnly) {
+        // A reassuring note is exactly what `--include debug`/`--include test`
+        // asks to drop: the caller wants this region checked like any other,
+        // not told it's probably fine.
+        if region.contains(.debugOnly), !regionSelection.isIncluded(.debugOnly) {
             result = result.adding(note: debugNote)
         }
         // The Combine rules already explain XCTest's lifetime.
-        if region.contains(.test), finding.note?.contains("XCTest holds") != true {
+        if region.contains(.test), !regionSelection.isIncluded(.test),
+            finding.note?.contains("XCTest holds") != true
+        {
             result = result.adding(note: testNote)
+        }
+        // Tagged only for a region that would otherwise have withheld this
+        // finding entirely (preview, generated) — one already reported
+        // regardless of inclusion (debug, test) needs no tag to stay
+        // filterable, since it was never conditional on the flag.
+        let taggedRegion = region.intersection([.generated, .preview])
+        if !taggedRegion.isEmpty, regionSelection.isIncluded(taggedRegion) {
+            result = result.adding(note: "region: \(taggedRegion.names)")
         }
         return result
     }
