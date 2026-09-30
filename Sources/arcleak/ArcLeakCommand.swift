@@ -1,5 +1,6 @@
 import ArcLeakCore
 public import ArgumentParser
+import ProjectModel
 import SystemPackage
 
 #if canImport(FoundationEssentials)
@@ -112,6 +113,26 @@ struct Analyze: AsyncParsableCommand {
     )
     var define: [String] = []
 
+    @Option(
+        name: .long,
+        help: ArgumentHelp(
+            "Regions to treat as first-class code: preview,debug,test,mock,generated,script, or all.",
+            discussion:
+                "A leak or cycle withheld because it lives in preview or generated code is reported "
+                + "like any other, tagged \"region: <name>\" so it can be filtered back out; one in "
+                + "#if DEBUG or test code drops the note that explains why it might be fine. mock "
+                + "and script name no region arcleak withholds or annotates today, so including them "
+                + "has no effect. The same key, with the same values, in deadwood, arcleak and dolly."
+        )
+    )
+    var include: String?
+
+    @Option(
+        name: .long,
+        help: "Regions to keep out of scope even if --include (or \"all\") names them."
+    )
+    var exclude: String?
+
     @Flag(name: .long, help: "Apply mechanical [weak self] fix-its for fixable findings, in place.")
     var fix = false
 
@@ -174,6 +195,17 @@ struct Analyze: AsyncParsableCommand {
         var configuration = try loadConfiguration()
         if !define.isEmpty {
             configuration.defines = (configuration.defines ?? []) + define
+        }
+        if let include {
+            configuration.includeRegions = include
+        }
+        if let exclude {
+            configuration.excludeRegions = exclude
+        }
+        do {
+            _ = try configuration.regionSelection()
+        } catch {
+            throw ValidationError(error.description)
         }
         let (files, projectFiles) = try discoverInputs(configuration: configuration)
         guard !files.isEmpty else {
