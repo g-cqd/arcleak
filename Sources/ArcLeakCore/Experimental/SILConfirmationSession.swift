@@ -95,6 +95,9 @@
                             }
                             return .timedOut
                         }
+                        // Cancelled once both drains finish: the deadline did not
+                        // fire, and the exit wait below reaps the child.
+                        if Task.isCancelled { return .exited }
                         try? await Task.sleep(for: .milliseconds(10))
                     }
                     return .exited
@@ -116,11 +119,10 @@
                     case .exited:
                         break
                     }
-                    // Once both pipes hit EOF the compile is done; cancel the
-                    // watchdog and stop consuming.
+                    // Both pipes closed: stop the watchdog, but keep reading
+                    // so a deadline it already hit is still recorded.
                     if drainsDone == 2 {
                         group.cancelAll()
-                        break
                     }
                 }
             }

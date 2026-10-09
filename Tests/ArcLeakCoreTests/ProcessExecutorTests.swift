@@ -28,6 +28,17 @@
             #expect(failed.exitCode == 1)
         }
 
+        @Test("A child past its deadline is terminated and the call throws timedOut")
+        func timesOut() async {
+            await #expect(throws: ProcessExecutor.Error.self) {
+                try await ProcessExecutor.run(
+                    executable: URL(fileURLWithPath: "/bin/sleep"),
+                    arguments: ["30"],
+                    timeout: .milliseconds(200)
+                )
+            }
+        }
+
         @Test("A cancelled caller still waits for the child's exit before reading its status")
         func cancelledCallerDoesNotReadStatusEarly() async {
             let task = Task {
