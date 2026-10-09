@@ -153,7 +153,7 @@ import Testing
         #expect(run.status == 0)
         #expect(
             String(decoding: run.standardOutput, as: UTF8.self).contains(
-                "~/Library/Caches/arcleak/<workspace>/facts.json"))
+                "~/Library/Caches/arcleak/<key>/facts.json"))
     }
 
     @Test("A facts cache that cannot be used is a miss, reported at most once")
