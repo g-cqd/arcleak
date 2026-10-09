@@ -14,16 +14,19 @@
 /// is genuinely new. That is the same silent-failure shape the flag exists to
 /// remove.
 ///
-/// So the fingerprint stops depending on how the run was spelled at all: it
-/// hashes the path relative to the repository root, found here, whatever the
-/// report is later formatted to show.
+/// So inside a repository the fingerprint hashes the path relative to the
+/// repository root, found here, and does not depend on the working directory
+/// or on `--relative-to .` at the root. `--relative-to <dir>` rewrites the
+/// fingerprint path relative to `<dir>`, so a baseline must be written and
+/// applied with the same `--relative-to`. Outside a repository the absolute
+/// path is hashed unless `--relative-to` is given.
 public enum RepositoryRoot {
     /// Walks up from `path` looking for a `.git` entry.
     ///
     /// Both a directory (an ordinary clone) and a file (a worktree or submodule,
     /// where `.git` is a pointer) count. Returns nil outside a repository, in
     /// which case fingerprints keep hashing the absolute path — there is no
-    /// better anchor available, and behaviour is unchanged from before.
+    /// better anchor available.
     public static func detect(from path: String) -> String? {
         var directory = URL(fileURLWithPath: path).standardized
         if directory.pathExtension == "swift" || !directory.hasDirectoryPath {
