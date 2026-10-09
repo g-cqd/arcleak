@@ -101,7 +101,7 @@ struct Analyze: AsyncParsableCommand {
                 + "directory as the uriBaseId SRCROOT. Use `--relative-to .` in CI."))
     var relativeTo: String?
 
-    @Option(name: .long, help: "Facts-cache file. Default: ~/Library/Caches/arcleak/<workspace>/facts.json.")
+    @Option(name: .long, help: "Facts-cache file. Default: ~/Library/Caches/arcleak/<key>/facts.json.")
     var cachePath: String?
 
     @Flag(name: .long, help: "Disable the incremental facts cache.")
