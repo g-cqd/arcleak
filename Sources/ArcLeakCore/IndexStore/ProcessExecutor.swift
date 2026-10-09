@@ -93,7 +93,8 @@
             // stdout and stderr are drained concurrently (a serial drain deadlocks
             // when the child fills the other pipe); a watchdog child terminates the
             // process past the deadline. When both drains hit EOF the child has
-            // exited and closed its pipes, so the watchdog is cancelled.
+            // exited and closed its pipes, so the watchdog is cancelled, but its
+            // verdict (a deadline that already fired) is still collected.
             enum DrainEvent: Sendable {
                 case out(Data)
                 case err(Data)
@@ -134,6 +135,9 @@
                             }
                             return .timedOut
                         }
+                        // Cancelled once both drains finish: the deadline did not
+                        // fire, and the exit wait below reaps the child.
+                        if Task.isCancelled { return .exited }
                         try? await Task.sleep(for: .milliseconds(10))
                     }
                     return .exited
@@ -158,8 +162,9 @@
                         break
                     }
                     if drainsDone == 2 {
+                        // Both pipes closed: stop the watchdog, but keep reading
+                        // so a deadline it already hit is still recorded.
                         group.cancelAll()
-                        break
                     }
                 }
             }
