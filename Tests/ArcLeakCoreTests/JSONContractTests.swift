@@ -82,5 +82,10 @@ import Testing
         let suppressed = try #require((object["suppressed"] as? [[String: Any]])?.first)
         #expect(Set(suppressed.keys) == ["finding"])
         #expect(object["cacheLoadFailure"] as? String == "x")
+
+        let unset = try #require(
+            try JSONSerialization.jsonObject(
+                with: Data(ReportFormatter.format(AnalysisReport(findings: [bare]), as: .json).utf8)) as? [String: Any])
+        #expect(!unset.keys.contains("cacheLoadFailure"))
     }
 }
