@@ -27,5 +27,21 @@
             )
             #expect(failed.exitCode == 1)
         }
+
+        @Test("A cancelled caller still waits for the child's exit before reading its status")
+        func cancelledCallerDoesNotReadStatusEarly() async {
+            let task = Task {
+                try await ProcessExecutor.run(
+                    executable: URL(fileURLWithPath: "/bin/sleep"),
+                    arguments: ["1"]
+                )
+            }
+            try? await Task.sleep(for: .milliseconds(100))
+            task.cancel()
+            // Reaching here without a crash is the assertion: before the fix a
+            // cancelled wait returned early and read terminationStatus of a
+            // running process. Either outcome of the call is acceptable.
+            _ = await task.result
+        }
     }
 #endif
