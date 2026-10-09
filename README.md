@@ -106,6 +106,83 @@ cannot be read or decoded — truncated or the wrong JSON shape, say — is
 reported once on stderr and rewritten. Either way the run parses every file
 afresh.
 
+## CLI and JSON contract (1.x)
+
+Within 1.x, `arcleak analyze <paths…>`, the flags below, the exit codes and the JSON fields do not change incompatibly. Adding a flag or a field is not a breaking change.
+
+| Flag | Meaning |
+|---|---|
+| `--format` | `xcode` (default, build-log lines), `json` (the report below) or `sarif` (SARIF 2.1.0) |
+| `--only <path>`, `--only-from <file>` | report only these files; repeatable, or one path per line (`-` reads stdin). See [Report scope](#report-scope) |
+| `--relative-to <dir>` | print paths relative to `<dir>`; see [Fingerprints](#fingerprints-are-portable-by-default) |
+| `--baseline <file>`, `--write-baseline <file>` | drop accepted findings; write the current findings as a baseline, then exit `0` |
+| `--config <file>` | configuration file; default `./.arcleak.json` when present |
+| `--cache-path <file>`, `--no-cache` | facts-cache file; disable the cache. See [Facts cache](#facts-cache-and-parallel-jobs) |
+| `--strict` | warnings fail the gate too; notes never do |
+| `--include <regions>`, `--exclude <regions>` | `preview`, `debug`, `test`, `mock`, `generated`, `script` or `all`: analyze as first-class code, or keep out of scope |
+
+### Exit status (details: [Exit codes](#exit-codes))
+
+| Code | Meaning |
+|---|---|
+| `0` | the gate passed; also after `--write-baseline` and `--fix` |
+| `1` | findings failed the gate, and nothing else |
+| `64` | usage: bad argument, missing path, unreadable `--only-from`, `--write-baseline` with `--only` |
+| `70` | nothing analyzed (stdout names the skipped files), or the run failed or was cancelled (stdout empty) |
+| `74` | a `--fix` or `--stamp` file could not be written |
+| `78` | invalid configuration, or a missing, malformed or unwritable baseline |
+
+### Report scope
+
+- The whole corpus is analyzed; only the report is scoped, because the ownership graph spans files.
+- A finding is kept when any of its locations (primary or `related`) is in scope. Only kept findings decide the exit code.
+- Scope entries are canonicalized like finding paths, so `--relative-to` changes how paths print, never which findings are kept.
+- An empty scope (an empty `--only-from` file) keeps nothing: an empty report and exit `0`.
+- Out-of-scope findings are not printed; the JSON report lists them in `outOfScope`, and the summary counts them.
+
+### JSON report
+
+`--format json` prints one object:
+
+| Field | Meaning |
+|---|---|
+| `schemaVersion` | integer, `1` today |
+| `findings` | reported findings: in scope, not suppressed, not baselined |
+| `suppressed` | findings silenced by a suppression comment, each with `finding` and `reason` |
+| `outOfScope` | findings outside `--only` / `--only-from` |
+| `degradedFiles` | files skipped or read with errors, each with `path` and `detail` |
+| `analyzedFileCount` | files analyzed |
+| `cacheHits`, `cacheMisses` | facts reused from the cache, and facts parsed |
+| `wasCancelled` | `false` in every printed report: a cancelled run prints nothing and exits `70` |
+
+Each element of `findings`:
+
+| Field | Meaning |
+|---|---|
+| `rule`, `severity` | rule id (`arcleak rules` lists them); `note`, `warning` or `error` |
+| `path`, `line`, `column` | location, absolute or relative to `--relative-to`; `line` and `column` are 1-based, `column` counts UTF-8 bytes |
+| `message` | one-line description |
+| `note` | optional; omitted when there is none |
+| `related` | optional `[{path, line, column}]` of the other locations; omitted when empty |
+| `fingerprintPath` | optional; the path the fingerprint hashes; omitted outside a git repository |
+| `fingerprint` | stable identity, the value `--baseline` matches |
+
+`schemaVersion` is shared by arcleak, dolly and deadwood. It changes only on a breaking change: a field removed, renamed, retyped, made required or optional, given a new meaning, or a closed value set (rule ids, severities) changed. Consumers ignore unknown fields and reject a `schemaVersion` above the one they were written for.
+
+### Facts cache and parallel jobs
+
+- The default cache is `~/Library/Caches/arcleak/<key>/facts.json`. The key identifies the git repository of the working directory (the directory itself outside one), so all its subdirectories share one cache.
+- Entries are keyed by path and validated against the file's content and the configuration (`defines`, `debugBuild`, `platforms`, `contracts`). A cache written by another arcleak build is ignored whole; a stale or torn entry is never served.
+- Writes are atomic and replace the whole file: concurrent runs can lose each other's new entries (the last writer wins), but never read wrong facts.
+- Parallel CI jobs on one machine: give each its own `--cache-path`, which avoids lost updates and evictions. `--no-cache` disables the cache; a file over 64 MiB is neither read nor written.
+
+### Baselines and fingerprints
+
+- `fingerprint` hashes the rule, the path, `line`, `column` and `message`. `--baseline` and `--write-baseline` match on the repository-relative path (absolute outside a repository), so a baseline is the same with or without `--relative-to`.
+- The printed `fingerprint` and `fingerprintPath` of `--format json` and SARIF do follow `--relative-to`: do not compare them with a baseline file.
+- Because `line` and `column` are hashed, an edit above a baselined finding re-surfaces it; regenerate the baseline after large refactors.
+- New findings only: on the base branch, `arcleak analyze . --write-baseline base.json` (unscoped); on the pull request, `arcleak analyze . --baseline base.json --only-from changed.txt`.
+
 ## Cross-module resolution (`--index-store`, macOS-only)
 
 By default arcleak reasons only about types declared in the analyzed corpus —
@@ -209,6 +286,8 @@ On demand: `swift package arcleak [paths…]`. For non-SwiftPM projects, an
 Xcode run-script phase invoking `arcleak analyze "${SRCROOT}/Sources"` does
 the same. A composite GitHub Action ships in `action.yml` (build, analyze,
 SARIF upload to code scanning).
+
+**Why there is no Xcode plugin.** The SwiftPM build-tool plugin runs once per target, with only that target's sources. Whole-program rules such as `mutual-strong-properties` build their ownership graph from every type, so a cycle that crosses targets is invisible to every run. Gate the whole repository in CI or pre-push instead: `arcleak analyze . --only-from changed.txt …` (see [the pull-request gate](#using-it-as-a-pull-request-gate)).
 
 ## Accepting a finding
 
@@ -402,13 +481,17 @@ whole repository.
 
 `Finding.fingerprint` — what `--baseline` matches and what SARIF exports as
 `partialFingerprints` — hashes the path **relative to the repository root**,
-found by walking up for `.git`. So a baseline committed to the repository
-matches on any machine, and it does not matter whether the corpus was named as
-a directory or as an explicit file list, or where the checkout lives.
+found by walking up for `.git` (outside a repository, the path as given). So a
+baseline committed to the repository matches on any machine, whether the corpus
+was named as a directory or as an explicit file list, and wherever the checkout
+lives. `--baseline` and `--write-baseline` always use this fingerprint, so a
+baseline does not depend on `--relative-to`.
 
-`--relative-to <dir>` additionally changes the paths that are *displayed* (and
-re-anchors fingerprints to that directory, which from the repository root is
-the same anchor). SARIF uris must be repository-relative for code scanning to
+`--relative-to <dir>` changes the paths that are *displayed*, and re-anchors the
+`fingerprintPath` and `fingerprint` fields of `--format json` and the SARIF
+`partialFingerprints` to that directory (from the repository root, that is the
+same anchor). Do not compare those printed fingerprints with a baseline written
+without the flag. SARIF uris must be repository-relative for code scanning to
 link them, so pass it when uploading SARIF.
 
 ### SARIF locations
@@ -461,10 +544,10 @@ reporting nothing.
 |---|---|
 | `0` | the gate passed: no error-severity finding, so warnings and notes alone pass; with `--strict`, no warning or error. Also after `--write-baseline` and `--fix` |
 | `1` | the gate failed on findings: an error-severity finding, or with `--strict` any warning or error — and nothing else |
-| `64` | usage error: a bad argument, a path that does not exist, an unreadable `--only-from` file |
+| `64` | usage error: a bad argument, a path that does not exist, an unreadable `--only-from` file, or `--write-baseline` combined with `--only`/`--only-from` |
 | `70` | nothing was analyzed: every file was skipped, and the report on stdout says which and why; or the run failed or was cancelled, and stdout is empty |
 | `74` | a file could not be written: a `--fix` result (files written before it keep their fixes), or the `--stamp` of a run that passed |
-| `78` | invalid configuration, or a missing or malformed baseline |
+| `78` | invalid configuration, or a missing, malformed or unwritable baseline |
 
 `1` means findings *only*, so a step that posts a review comment on `1` will
 not fire on a typo in the config file. Warnings are always reported, but only
