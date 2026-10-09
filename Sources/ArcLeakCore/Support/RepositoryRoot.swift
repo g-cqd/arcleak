@@ -16,10 +16,11 @@
 ///
 /// So inside a repository the fingerprint hashes the path relative to the
 /// repository root, found here, and does not depend on the working directory
-/// or on `--relative-to .` at the root. `--relative-to <dir>` rewrites the
-/// fingerprint path relative to `<dir>`, so a baseline must be written and
-/// applied with the same `--relative-to`. Outside a repository the absolute
-/// path is hashed unless `--relative-to` is given.
+/// or on `--relative-to .` at the root. `--baseline` and `--write-baseline`
+/// always hash this repository-relative path (the absolute path outside a
+/// repository), whatever `--relative-to` says; `--relative-to <dir>` re-anchors
+/// only the printed `fingerprintPath` and `fingerprint` of JSON and SARIF, so
+/// do not compare those with a baseline file.
 public enum RepositoryRoot {
     /// Walks up from `path` looking for a `.git` entry.
     ///
