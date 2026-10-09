@@ -42,7 +42,7 @@ diagnostics = read()
 assert diagnostics["method"] == "textDocument/publishDiagnostics", diagnostics
 codes = [d["code"] for d in diagnostics["params"]["diagnostics"]]
 assert "stored-closure-strong-self" in codes, codes
-diagnostic_range = diagnostics["params"]["diagnostics"][0]["range"]
+diagnostic_range = next(d for d in diagnostics["params"]["diagnostics"] if d["code"] == "stored-closure-strong-self")["range"]
 
 send({"jsonrpc": "2.0", "id": 2, "method": "textDocument/codeAction",
       "params": {"textDocument": {"uri": uri},
