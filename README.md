@@ -165,9 +165,9 @@ Each element of `findings`:
 | `note` | optional; omitted when there is none |
 | `related` | optional `[{path, line, column}]` of the other locations; omitted when empty |
 | `fingerprintPath` | optional; the path the fingerprint hashes; omitted outside a git repository |
-| `fingerprint` | stable identity, the value `--baseline` matches |
+| `fingerprint` | stable identity; equals the value `--baseline` matches unless `--relative-to` names a directory other than the repository root |
 
-`schemaVersion` is shared by arcleak, dolly and deadwood. It changes only on a breaking change: a field removed, renamed, retyped, made required or optional, given a new meaning, or a closed value set (rule ids, severities) changed. Consumers ignore unknown fields and reject a `schemaVersion` above the one they were written for.
+`schemaVersion` is shared by arcleak, dolly and deadwood. It changes only when a field is removed, renamed, retyped, made required or optional, or changes meaning, or the closed set of severities changes; rule ids are an open set (a new rule can appear in any 1.x release, so consumers must handle unknown rule ids); consumers ignore unknown fields and reject a higher `schemaVersion`.
 
 ### Facts cache and parallel jobs
 
