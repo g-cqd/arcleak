@@ -52,7 +52,12 @@
         ]
 
         static func corpusSnippets(limit: Int) -> [String] {
-            let root = "/Users/me/Developer/ongoing/swift/arcleak/Sources"
+            let root = URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appending(path: "Sources")
+                .path
             var paths: [String] = []
             if let e = FileManager.default.enumerator(atPath: root) {
                 for case let p as String in e where p.hasSuffix(".swift") {
