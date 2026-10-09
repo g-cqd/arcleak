@@ -1,4 +1,4 @@
-import ProjectModel
+public import ProjectModel
 
 #if canImport(FoundationEssentials)
     public import FoundationEssentials
@@ -32,9 +32,12 @@ public struct Analyzer: Sendable {
     /// and the file's content fingerprint matches (parsing dominates runtime;
     /// rules always re-run, so findings can never go stale relative to rules or
     /// configuration).
-    /// - Parameter reportScope: narrows the *report* to a set of files; nil
-    ///   reports everything. The corpus is analyzed whole either way — see
-    ///   ``ReportScope``.
+    /// - Parameter reportScope: narrows the *report* to a set of files; nil reports everything.
+    ///   The corpus is always analyzed whole: `mutual-strong-properties` walks an ownership graph
+    ///   built from every type, so dropping the files a cycle passes through would erase the cycle.
+    ///   A finding is kept when its anchor or any related location is in scope, because a cycle
+    ///   anchors at an arbitrary link, so a pull request that closes it must see it in whichever
+    ///   file the anchor landed. Contract: ``ProjectModel/ReportScope``.
     /// - Parameter projectFiles: Xcode projects, package manifests,
     ///   Info.plists, storyboards and xibs: they give the platforms `#if`
     ///   evaluates and the classes the system creates.
