@@ -89,7 +89,8 @@ out of the baseline — regenerate deliberately rather than let fuzzy matching
 swallow new bugs.
 
 **Cache** — on by default, one per workspace
-(`~/Library/Caches/arcleak/<workspace>/facts.json`; override with
+(`~/Library/Caches/arcleak/<key>/facts.json` on macOS, the platform's caches
+directory elsewhere; override with
 `--cache-path`, disable with `--no-cache`). Only parsed facts are cached. Each
 file's entry is keyed by its content and by the configuration facts depend on
 (`defines`, `debugBuild`, `platforms`, `contracts`); the whole cache is keyed by the arcleak build that
@@ -108,7 +109,11 @@ afresh.
 
 ## CLI and JSON contract (1.x)
 
+The contract is versioned by the JSON `schemaVersion` (currently 1) and holds from this release on; arcleak's own version number may still be 0.x.
+
 Within 1.x, `arcleak analyze <paths…>`, the flags below, the exit codes and the JSON fields do not change incompatibly. Adding a flag or a field is not a breaking change.
+
+JSON goes to stdout and stderr is free-form text, so do not merge them with `2>&1`; a document without `schemaVersion` is not a 1.x report. Outside the freeze: flags not listed in this section (`--define`, `--stamp`, `--experimental-*`), the `rules` and `lsp` subcommands, and the ArcLeakCore library API.
 
 | Flag | Meaning |
 |---|---|
@@ -121,16 +126,9 @@ Within 1.x, `arcleak analyze <paths…>`, the flags below, the exit codes and th
 | `--strict` | warnings fail the gate too; notes never do |
 | `--include <regions>`, `--exclude <regions>` | `preview`, `debug`, `test`, `mock`, `generated`, `script` or `all`: analyze as first-class code, or keep out of scope |
 
-### Exit status (details: [Exit codes](#exit-codes))
+### Exit status
 
-| Code | Meaning |
-|---|---|
-| `0` | the gate passed; also after `--write-baseline` and `--fix` |
-| `1` | findings failed the gate, and nothing else |
-| `64` | usage: bad argument, missing path, unreadable `--only-from`, `--write-baseline` with `--only` |
-| `70` | nothing analyzed (stdout names the skipped files), or the run failed or was cancelled (stdout empty) |
-| `74` | a `--fix` or `--stamp` file could not be written |
-| `78` | invalid configuration, or a missing, malformed or unwritable baseline |
+The exit codes and their meanings are listed in [Exit codes](#exit-codes); within 1.x they do not change incompatibly.
 
 ### Report scope
 
@@ -139,20 +137,22 @@ Within 1.x, `arcleak analyze <paths…>`, the flags below, the exit codes and th
 - Scope entries are canonicalized like finding paths, so `--relative-to` changes how paths print, never which findings are kept.
 - An empty scope (an empty `--only-from` file) keeps nothing: an empty report and exit `0`.
 - Out-of-scope findings are not printed; the JSON report lists them in `outOfScope`, and the summary counts them.
+- Scope entries resolve against the working directory, but `git diff --name-only` prints repository-root-relative paths: run from the repository root, or use `git diff --relative`. A scope that matches no analyzed file prints a warning to stderr and exits `0`.
 
 ### JSON report
 
-`--format json` prints one object:
+`--format json` prints one object. Optional keys are omitted when they have no value, never written as `null`.
 
 | Field | Meaning |
 |---|---|
 | `schemaVersion` | integer, `1` today |
 | `findings` | reported findings: in scope, not suppressed, not baselined |
-| `suppressed` | findings silenced by a suppression comment, each with `finding` and `reason` |
+| `suppressed` | findings silenced by a suppression comment, each with `finding` and `reason`; `reason` is optional, omitted when the directive gave none |
 | `outOfScope` | findings outside `--only` / `--only-from` |
 | `degradedFiles` | files skipped or read with errors, each with `path` and `detail` |
 | `analyzedFileCount` | files analyzed |
 | `cacheHits`, `cacheMisses` | facts reused from the cache, and facts parsed |
+| `cacheLoadFailure` | optional string; present only when the facts cache was ignored as unreadable or undecodable; omitted otherwise |
 | `wasCancelled` | `false` in every printed report: a cancelled run prints nothing and exits `70` |
 
 Each element of `findings`:
@@ -164,14 +164,14 @@ Each element of `findings`:
 | `message` | one-line description |
 | `note` | optional; omitted when there is none |
 | `related` | optional `[{path, line, column}]` of the other locations; omitted when empty |
-| `fingerprintPath` | optional; the path the fingerprint hashes; omitted outside a git repository |
-| `fingerprint` | stable identity; equals the value `--baseline` matches unless `--relative-to` names a directory other than the repository root |
+| `fingerprintPath` | optional; the path the fingerprint hashes. Set inside a git repository (relative to its root) and for paths under a `--relative-to` directory; omitted otherwise |
+| `fingerprint` | stable identity; equals the value `--baseline` matches unless `--relative-to` names a directory other than the repository root. Outside a repository, `--relative-to` also makes the printed fingerprint differ from the baseline's |
 
 `schemaVersion` is shared by arcleak, dolly and deadwood. It changes only when a field is removed, renamed, retyped, made required or optional, or changes meaning, or the closed set of severities changes; rule ids are an open set (a new rule can appear in any 1.x release, so consumers must handle unknown rule ids); consumers ignore unknown fields and reject a higher `schemaVersion`.
 
 ### Facts cache and parallel jobs
 
-- The default cache is `~/Library/Caches/arcleak/<key>/facts.json`. The key identifies the git repository of the working directory (the directory itself outside one), so all its subdirectories share one cache.
+- The default cache is `~/Library/Caches/arcleak/<key>/facts.json` on macOS, and under the platform's caches directory elsewhere. The key identifies the git repository of the working directory (the directory itself outside one), so all its subdirectories share one cache.
 - Entries are keyed by path and validated against the file's content and the configuration (`defines`, `debugBuild`, `platforms`, `contracts`). A cache written by another arcleak build is ignored whole; a stale or torn entry is never served.
 - Writes are atomic and replace the whole file: concurrent runs can lose each other's new entries (the last writer wins), but never read wrong facts.
 - Parallel CI jobs on one machine: give each its own `--cache-path`, which avoids lost updates and evictions. `--no-cache` disables the cache; a file over 64 MiB is neither read nor written.
@@ -181,7 +181,7 @@ Each element of `findings`:
 - `fingerprint` hashes the rule, the path, `line`, `column` and `message`. `--baseline` and `--write-baseline` match on the repository-relative path (absolute outside a repository), so a baseline is the same with or without `--relative-to`.
 - The printed `fingerprint` and `fingerprintPath` of `--format json` and SARIF do follow `--relative-to`: do not compare them with a baseline file.
 - Because `line` and `column` are hashed, an edit above a baselined finding re-surfaces it; regenerate the baseline after large refactors.
-- New findings only: on the base branch, `arcleak analyze . --write-baseline base.json` (unscoped); on the pull request, `arcleak analyze . --baseline base.json --only-from changed.txt`.
+- New findings only (findings not present at the same position on the base branch): on the base branch, `arcleak analyze . --write-baseline base.json` (unscoped); on the pull request, `arcleak analyze . --baseline base.json --only-from changed.txt`. An edit above a pre-existing finding in a changed file re-surfaces it, because the fingerprint includes line and column.
 
 ## Cross-module resolution (`--index-store`, macOS-only)
 
@@ -287,7 +287,7 @@ Xcode run-script phase invoking `arcleak analyze "${SRCROOT}/Sources"` does
 the same. A composite GitHub Action ships in `action.yml` (build, analyze,
 SARIF upload to code scanning).
 
-**Why there is no Xcode plugin.** The SwiftPM build-tool plugin runs once per target, with only that target's sources. Whole-program rules such as `mutual-strong-properties` build their ownership graph from every type, so a cycle that crosses targets is invisible to every run. Gate the whole repository in CI or pre-push instead: `arcleak analyze . --only-from changed.txt …` (see [the pull-request gate](#using-it-as-a-pull-request-gate)).
+**Limits of the build-tool plugin.** It analyzes one target's sources per run, so `mutual-strong-properties` cycles that cross targets are invisible to it, and there is no Xcode plugin for the same reason. Treat the whole-repository CI gate as authoritative: run `arcleak analyze . --only-from changed.txt …` in CI or pre-push (see [the pull-request gate](#using-it-as-a-pull-request-gate)).
 
 ## Accepting a finding
 
