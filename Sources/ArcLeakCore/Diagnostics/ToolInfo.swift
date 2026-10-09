@@ -8,6 +8,6 @@ public enum ToolInfo {
     // The on-disk FactsCache is gated by the build that wrote it, not by this
     // string (see BuildIdentity): two builds of one version can extract
     // different facts, and the current coder only ever reads caches it wrote.
-    public static let version = "0.9.0"
+    public static let version = "0.10.0"
     public static let informationURI = "https://github.com/g-cqd/arcleak"
 }
