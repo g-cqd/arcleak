@@ -7,6 +7,7 @@
 //  that introduced it whenever the anchor lived in another file.
 
 import Foundation
+import ProjectModel
 import Testing
 
 @testable import ArcLeakCore

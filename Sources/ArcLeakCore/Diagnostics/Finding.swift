@@ -1,3 +1,5 @@
+public import ProjectModel
+
 /// A location related to a finding — for a cross-type retain cycle, one per
 /// link in the cycle beyond the anchor.
 ///
@@ -62,6 +64,10 @@ public struct Finding: Sendable, Equatable {
         self.related = related
         self.fingerprintPath = fingerprintPath
     }
+}
+
+extension Finding: ScopedFinding {
+    public var relatedPaths: [String] { related.map(\.path) }
 }
 
 extension Finding: Comparable {
