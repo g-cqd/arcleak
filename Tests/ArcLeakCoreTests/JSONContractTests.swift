@@ -48,7 +48,8 @@ import Testing
         let text = ReportFormatter.format(report, as: .json)
         let object = try #require(try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
 
-        #expect(object["schemaVersion"] as? Int == ReportSchema.version)
+        // The literal, not `ReportSchema.version`: a bump is a contract change and must fail here.
+        #expect(object["schemaVersion"] as? Int == 1)
         #expect(Set(object.keys) == Self.topLevelKeys)
 
         let findings = try #require(object["findings"] as? [[String: Any]])
@@ -58,5 +59,28 @@ import Testing
         let related = try #require(first["related"] as? [[String: Any]])
         let location = try #require(related.first)
         #expect(Set(location.keys) == Self.relatedLocationKeys)
+    }
+
+    @Test func `optional fields are omitted, not null`() throws {
+        let bare = Finding(
+            rule: .mutualStrongProperties, severity: .warning,
+            path: "a.swift", line: 1, column: 1, message: "m")
+        var report = AnalysisReport(
+            findings: [bare],
+            suppressed: [.init(finding: bare, reason: nil)],
+            degradedFiles: [.init(path: "b.swift", detail: "d")],
+            analyzedFileCount: 1)
+        report.cacheLoadFailure = "x"
+        let object = try #require(
+            try JSONSerialization.jsonObject(
+                with: Data(ReportFormatter.format(report, as: .json).utf8)) as? [String: Any])
+
+        let first = try #require((object["findings"] as? [[String: Any]])?.first)
+        #expect(Set(first.keys) == Self.findingKeys.subtracting(["note", "related", "fingerprintPath"]))
+        #expect(first["line"] is Int)
+
+        let suppressed = try #require((object["suppressed"] as? [[String: Any]])?.first)
+        #expect(Set(suppressed.keys) == ["finding"])
+        #expect(object["cacheLoadFailure"] as? String == "x")
     }
 }
