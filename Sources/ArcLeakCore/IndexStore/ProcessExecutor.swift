@@ -79,6 +79,7 @@
             let stderrPipe = Pipe()
             process.standardOutput = stdoutPipe
             process.standardError = stderrPipe
+            let termination = ProcessTermination(watching: process)
 
             do {
                 try process.run()
@@ -163,7 +164,7 @@
                 }
             }
 
-            process.waitUntilExit()
+            await termination.wait()
 
             if timedOut {
                 throw Error.timedOut(executable: executable.path, after: timeout)
