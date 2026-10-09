@@ -52,6 +52,7 @@
             let errPipe = Pipe()
             process.standardOutput = outPipe
             process.standardError = errPipe
+            let termination = ProcessTermination(watching: process)
 
             do {
                 try process.run()
@@ -124,7 +125,7 @@
                 }
             }
 
-            process.waitUntilExit()
+            await termination.wait()
             if timedOut {
                 return .failed("swiftc exceeded \(timeout) budget")
             }
