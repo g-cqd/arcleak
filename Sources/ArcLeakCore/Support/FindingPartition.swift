@@ -1,8 +1,8 @@
 extension Array {
     /// One-pass split by a predicate, preserving relative order in both halves.
     ///
-    /// `Baseline.filter` and `ReportScope.filter` are the same partition
-    /// wearing different names for the two halves. Named after the
+    /// `Baseline.filter` is its caller: the kept findings and the baselined
+    /// ones are the two halves. Named after the
     /// swift-algorithms (and future-stdlib) `partitioned(by:)`, matching its
     /// convention that the non-matching half comes first.
     func partitioned(
