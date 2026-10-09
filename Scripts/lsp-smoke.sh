@@ -42,12 +42,11 @@ diagnostics = read()
 assert diagnostics["method"] == "textDocument/publishDiagnostics", diagnostics
 codes = [d["code"] for d in diagnostics["params"]["diagnostics"]]
 assert "stored-closure-strong-self" in codes, codes
-line = diagnostics["params"]["diagnostics"][0]["range"]["start"]["line"]
+diagnostic_range = diagnostics["params"]["diagnostics"][0]["range"]
 
 send({"jsonrpc": "2.0", "id": 2, "method": "textDocument/codeAction",
       "params": {"textDocument": {"uri": uri},
-                 "range": {"start": {"line": line, "character": 0},
-                           "end": {"line": line, "character": 1}}}})
+                 "range": diagnostic_range}})
 actions = read()
 assert actions["result"], actions
 edit = actions["result"][0]["edit"]["changes"][uri][0]["newText"]
