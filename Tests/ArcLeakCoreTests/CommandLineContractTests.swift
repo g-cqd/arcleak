@@ -253,6 +253,38 @@ import Testing
         #expect(log.invocation?["executionSuccessful"] as? Bool == true)
         #expect(log.results.map { $0["ruleId"] as? String } == ["arcleak/degraded-file"])
     }
+
+    // MARK: - Report scope
+
+    @Test("A scope spelled through a symlinked prefix matches its file without warning")
+    func scopeSpelledThroughSymlinkDoesNotWarn() throws {
+        let root = try Workspace.make(["A.swift": "final class A {}\n"])
+        defer { try? FileManager.default.removeItem(at: root) }
+        // On macOS /var links to /private/var. The analyzed file and the scope
+        // carry the /private spelling, which canonicalization strips; the raw
+        // corpus and the canonical scope only agree if the corpus is
+        // canonicalized too.
+        #if os(macOS)
+            let file = "/private" + root.path + "/A.swift"
+        #else
+            let file = root.path + "/A.swift"
+        #endif
+        let run = try BuiltTool.run(["analyze", file, "--no-cache", "--only", file], in: root)
+
+        #expect(run.status == 0)
+        #expect(!run.standardError.contains("matches no analyzed file"))
+    }
+
+    @Test("A scope that names no analyzed file still warns")
+    func scopeNamingNoAnalyzedFileWarns() throws {
+        let root = try Workspace.make(["A.swift": "final class A {}\n"])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let run = try BuiltTool.run(
+            ["analyze", root.path, "--no-cache", "--only", "Missing.swift"], in: root)
+
+        #expect(run.status == 0)
+        #expect(run.standardError.contains("matches no analyzed file"))
+    }
 }
 
 // MARK: - Harness

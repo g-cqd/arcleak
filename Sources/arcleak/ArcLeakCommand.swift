@@ -218,8 +218,11 @@ struct Analyze: AsyncParsableCommand {
         // A non-empty scope that intersects zero corpus files is almost always a
         // misconfiguration (paths relative to the wrong directory, wrong workdir),
         // and it silently reports nothing. Warn loudly; an *empty* scope stays
-        // silent — "no Swift changed" is legitimate.
-        if let scope = reportScope, !scope.files.isEmpty, !files.contains(where: scope.files.contains) {
+        // silent — "no Swift changed" is legitimate. The corpus is canonicalized
+        // the way the scope is, so a path spelled through a symlink still matches.
+        if let scope = reportScope, !scope.files.isEmpty,
+            ReportScope(files: files).files.isDisjoint(with: scope.files)
+        {
             standardError.write(
                 Data(
                     "arcleak: warning: --only scope matches no analyzed file — check that scope paths are relative to the right directory\n"
