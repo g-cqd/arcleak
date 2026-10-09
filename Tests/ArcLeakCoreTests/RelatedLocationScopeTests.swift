@@ -13,9 +13,10 @@ import Testing
 @testable import ArcLeakCore
 
 @Suite struct RelatedLocationScopeTests {
-    private static let corpus =
-        "/Users/gc/Developer/ongoing/swift/arcleak/Tests/ArcLeakCoreTests/Fixtures/Corpus/MutualPair"
-    private static var available: Bool { FileManager.default.fileExists(atPath: corpus) }
+    private static let corpus = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .appending(path: "Fixtures/Corpus/MutualPair")
+        .path
 
     private func analyze(scope: ReportScope?) async -> AnalysisReport {
         let files =
@@ -25,9 +26,7 @@ import Testing
         return await Analyzer().analyze(files: files, reportScope: scope)
     }
 
-    @Test(
-        "A cross-file cycle carries every link as a related location",
-        .enabled(if: RelatedLocationScopeTests.available))
+    @Test("A cross-file cycle carries every link as a related location")
     func cycleCarriesRelatedLocations() async throws {
         let report = await analyze(scope: nil)
         let cycle = try #require(report.findings.first { $0.rule == .mutualStrongProperties })
@@ -36,9 +35,7 @@ import Testing
         #expect(!cycle.related.contains { $0.path == cycle.path })
     }
 
-    @Test(
-        "Scoping to a non-anchor file still reports the cycle",
-        .enabled(if: RelatedLocationScopeTests.available))
+    @Test("Scoping to a non-anchor file still reports the cycle")
     func scopeMatchesNonAnchorFile() async throws {
         let unscoped = await analyze(scope: nil)
         let cycle = try #require(unscoped.findings.first { $0.rule == .mutualStrongProperties })
@@ -49,9 +46,7 @@ import Testing
         #expect(report.findings.contains { $0.rule == .mutualStrongProperties })
     }
 
-    @Test(
-        "Related locations do not enter the fingerprint",
-        .enabled(if: RelatedLocationScopeTests.available))
+    @Test("Related locations do not enter the fingerprint")
     func relatedDoesNotAffectFingerprint() async throws {
         let report = await analyze(scope: nil)
         let cycle = try #require(report.findings.first { $0.rule == .mutualStrongProperties })
