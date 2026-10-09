@@ -601,13 +601,13 @@ struct Analyze: AsyncParsableCommand {
     /// nil means "report everything". An *empty* scope is meaningful and
     /// distinct: `--only-from` pointed at a change set with no Swift files, so
     /// nothing should be reported.
-    private func resolveReportScope() throws -> ReportScope? {
+    private func resolveReportScope() throws -> ArcLeakCore.ReportScope? {
         guard !only.isEmpty || onlyFrom != nil else { return nil }
         var entries = only
         if let onlyFrom {
             entries.append(contentsOf: try readScopeEntries(from: onlyFrom))
         }
-        return ReportScope(files: entries)
+        return ArcLeakCore.ReportScope(files: entries)
     }
 
     private func readScopeEntries(from source: String) throws -> [String] {
