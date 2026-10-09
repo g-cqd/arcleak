@@ -1,4 +1,4 @@
-// `Process` is corelibs-style Foundation: macOS-only here, like its callers.
+// `Process` is a corelibs Foundation type: macOS-only here, like its callers.
 #if os(macOS)
     import Foundation
 
@@ -28,9 +28,16 @@
         }
 
         /// Suspends until the watched process has exited (returns at once if it
-        /// already has). `terminationStatus` is valid afterwards.
+        /// already has); `terminationStatus` is valid afterwards. Single-use: call
+        /// `wait()` once per process.
+        ///
+        /// Caller cancellation does not cut the wait short: an `AsyncStream`
+        /// iterator ends on cancellation, and reading `terminationStatus` before
+        /// the process exits is invalid, so the stream is drained in an
+        /// unstructured task that does not inherit the caller's cancellation.
         func wait() async {
-            for await _ in exits {}
+            let exits = exits
+            await Task { for await _ in exits {} }.value
         }
     }
 #endif
