@@ -19,6 +19,8 @@ jobs:
       contents: write
     with:
       tool: arcleak
-      linux-extra: Scripts/lsp-smoke.sh "$(swift build --show-bin-path)/arcleak"
-      macos-extra: Scripts/run-leak-oracle.sh "$(swift build --show-bin-path)/leak-oracle"
+      # The LSP smoke test drives the server with python3, which the Linux image does not carry.
+      macos-extra: |
+        Scripts/run-leak-oracle.sh "$(swift build --show-bin-path)/leak-oracle"
+        Scripts/lsp-smoke.sh "$(swift build --show-bin-path)/arcleak"
       macos-timeout: 45
