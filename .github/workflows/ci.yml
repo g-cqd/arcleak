@@ -1,125 +1,24 @@
 name: CI
 
+# The graph (lint, linux and macOS in parallel, release archives on main and tags, one required gate) lives in
+# the shared workflow; this file only says what is specific to arcleak. A `v*` tag publishes the release.
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
+  workflow_dispatch:
 
-# A push supersedes any still-running CI for the same ref: cancel it.
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+permissions:
+  contents: read
 
-# The package requires swift-tools 6.4, which no *released* toolchain ships
-# yet — so both lanes run a 6.4.x toolchain: Linux via the nightly-6.4.x
-# container (the REQUIRED gate), macOS via a dated 6.4.x dev-snapshot pkg
-# installed by the vendored ./.github/actions/setup-swift. The macOS lane
-# carries the Darwin-only coverage (runtime leak oracle, SILGen) and is
-# informational until 6.4 GA; both lanes ride the same 6.4.x branch.
 jobs:
-  linux:
-    runs-on: ubuntu-latest
-    container: swiftlang/swift:nightly-6.4.x-jammy
-    # Hard bound on the whole job, post-run cleanup included.
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          # CI never pushes; skipping the credential write also makes
-          # checkout's post-run cleanup (its only job) a no-op.
-          persist-credentials: false
-      - name: Build (warnings are errors via package settings)
-        run: swift build --build-tests
-      - name: Tests
-        # --no-parallel: the nightly Linux concurrency runtime has crashed under
-        # swift-testing's parallel executor; serial is stable and fast enough.
-        run: swift test --no-parallel
-      - name: Self-dogfood
-        run: swift run arcleak analyze Sources --strict --no-cache
-      - name: swift-format lint
-        run: Scripts/lint-format.sh
-      - name: GCD prohibition
-        run: Scripts/no-gcd.sh
-      - name: Release binary
-        # Dynamic link — the nightly container's static-stdlib SDK does not
-        # link. Portability comes from SwiftPM's $ORIGIN rpath: the release
-        # workflow bundles the runtime .so files next to the binary.
-        run: |
-          swift build -c release
-          BIN="$(swift build -c release --show-bin-path)/arcleak"
-          "$BIN" --version
-          cp "$BIN" arcleak
-      - uses: actions/upload-artifact@v4
-        with:
-          name: arcleak-${{ github.sha }}-linux-x86_64
-          path: arcleak
-          retention-days: 14
-
-  macos:
-    runs-on: macos-26
-    # Informational until 6.4 GA reaches Xcode.
-    continue-on-error: true
-    # Post-run stall, root-caused across four hung runs: every wedge sat at
-    # the first step boundary after the leak-oracle step, with all steps
-    # green and fast, and the hung jobs never uploaded logs. Signature: an
-    # orphaned child (oracle/toolchain descendant) inherits the runner's log
-    # pipe; the runner waits for pipe EOF to finalize steps and upload logs,
-    # so one survivor wedges everything AFTER its step — a late reaper step
-    # can run but its own completion never registers (observed live).
-    # Countermeasure: pipe isolation. Child-spawning steps write to FILES
-    # (children then hold file fds, which cannot wedge pipe-EOF waits) and
-    # cat the file afterward. The census step then safely names and kills
-    # survivors on the now-unwedgeable log pipe.
-    # Bound raised for the IndexStoreDB dependency, which compiles from source
-    # on macOS (gated out on Linux) and roughly doubles the cold build time.
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          persist-credentials: false
-      - name: Install Swift 6.4 (vendored dated snapshot)
-        timeout-minutes: 10
-        uses: ./.github/actions/setup-swift
-      - name: Build & test
-        timeout-minutes: 30
-        run: |
-          set +e
-          { swift build --build-tests && swift test --no-parallel; } > build-test.log 2>&1 < /dev/null
-          status=$?
-          cat build-test.log
-          exit $status
-      - name: Runtime ground-truth oracle
-        # The script bounds every scenario in its own process group and
-        # self-reaps before exiting (nightly runtimes race an exit-teardown
-        # deadlock under `leaks -atExit`); worst case is scenarios × 30 s.
-        timeout-minutes: 12
-        run: |
-          set +e
-          Scripts/run-leak-oracle.sh "$(swift build --show-bin-path)/leak-oracle" > oracle.log 2>&1 < /dev/null
-          status=$?
-          cat oracle.log
-          exit $status
-      - name: Release binary
-        run: |
-          set +e
-          swift build -c release > release-build.log 2>&1 < /dev/null
-          status=$?
-          cat release-build.log
-          [ $status -ne 0 ] && exit $status
-          cp "$(swift build -c release --show-bin-path)/arcleak" arcleak
-      - uses: actions/upload-artifact@v4
-        with:
-          name: arcleak-${{ github.sha }}-macos-arm64
-          path: arcleak
-          retention-days: 14
-      - name: Straggler census and reap
-        # Prior steps' children hold file fds, not the log pipe, so this step
-        # can finalize — its output names the orphan for future tightening.
-        if: always()
-        run: |
-          echo "toolchain processes still alive:"
-          pgrep -fl 'swift|leaks|leak-oracle|xctest|SourceKitService|sourcekit-lsp' || echo "(none)"
-          for pattern in swift-frontend swift-driver swift-build swift-package swift-test swift-testing swiftpm-testing-helper xctest SourceKitService sourcekit-lsp leak-oracle leaks; do
-            pkill -9 -f "$pattern" 2>/dev/null || true
-          done
-          exit 0
+  ci:
+    uses: Aemi-Studio/aemi/.github/workflows/swift-tool.yml@ci/shared-tool-workflow
+    permissions:
+      contents: write
+    with:
+      tool: arcleak
+      linux-extra: Scripts/lsp-smoke.sh "$(swift build --show-bin-path)/arcleak"
+      macos-extra: Scripts/run-leak-oracle.sh "$(swift build --show-bin-path)/leak-oracle"
+      macos-timeout: 45
