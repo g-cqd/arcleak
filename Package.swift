@@ -30,7 +30,7 @@ let package = Package(
         .plugin(name: "ArcLeakCommandPlugin", targets: ["ArcLeakCommandPlugin"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "603.0.2"),
+        .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "604.0.0"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.8.2"),
         // swift-system: a safe, Sendable stdio surface (stderr writes; the LSP
         // server's stdin/stdout framing). Foundation's FileHandle is
@@ -40,19 +40,19 @@ let package = Package(
         // Linked into ArcLeakCore on macOS only (see the target dependency).
         .package(
             url: "https://github.com/swiftlang/indexstore-db.git",
-            revision: "cb3b960568f18a3cc018923f5824323b5c4edd0b"
+            revision: "64aa0b26913249c4e7c21d351a215fba02702003"
         ),
         // The pinned JSON package uses Aemi's kernel and runtime products.
         // Only the internal facts cache uses this codec; report byte formats stay stable.
         .package(
             url: "https://github.com/g-cqd/AemiJSON.git",
-            revision: "6b8e5b9fb14b6c835d0dca13ba15f5bb1f3831de"
+            revision: "3cf4aeddd3d7b280e4aa5f6ab69b169ecd127286"
         ),
         // The project model the analyzers share: code regions, test code,
         // generated files, platforms and system entry points.
         .package(
             url: "https://github.com/g-cqd/analyzerkit.git",
-            revision: "2168bbbad5cee4993c191830bc5c37c165477e89"
+            revision: "7a55ccf08d32d5b814d5e3c0877c2e296d5339d4"
         ),
     ],
     targets: [
