@@ -39,3 +39,22 @@ final class ProxiedBridge: NSObject, WKScriptMessageHandler {
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {}
 }
+
+// The controller is held weakly and the handler is removed in deinit: self
+// keeps neither the web view nor the controller, so there is no cycle. The
+// controller keeps self only while the web view lives, and deinit runs once
+// it is gone.
+final class WeakControllerBridge: NSObject, WKScriptMessageHandler {
+    weak var contentController: WKUserContentController?
+
+    func attach(to contentController: WKUserContentController) {
+        self.contentController = contentController
+        contentController.add(self, name: "b")
+    }
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {}
+
+    deinit {
+        contentController?.removeScriptMessageHandler(forName: "b")
+    }
+}
