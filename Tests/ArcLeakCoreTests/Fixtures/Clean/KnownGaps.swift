@@ -163,3 +163,18 @@ final class RateWatcher: NSObject {
 
     func refresh() {}
 }
+
+// Gap 10: an RxSwift Disposable assigned to a member of self instead of a
+// bag. The built-in templates for subscribe, bind and drive require
+// .disposed(by:) or addDisposableTo(_:), because a home-grown bus can use the
+// same names for tokens that do not keep the closure.
+final class SearchViewModel {
+    let query = PublishSubject<String>()
+    var subscription: Disposable?
+
+    func bind() {
+        subscription = query.subscribe(onNext: { text in self.search(text) })
+    }
+
+    func search(_ text: String) {}
+}

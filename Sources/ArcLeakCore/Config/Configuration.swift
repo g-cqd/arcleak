@@ -112,10 +112,10 @@ public struct Configuration: Sendable, Codable, Equatable {
             case sinkWrapper
             /// An RxSwift-style subscription (`subscribe(onNext:)`, `bind`,
             /// `drive`) whose Disposable goes into a bag on `self` through a
-            /// chained `.disposed(by:)` (or `addDisposableTo(_:)`), or is
-            /// assigned to a member of `self`: a strong-`self` closure feeds
-            /// `combine-sink-self-cycle`. Built in for `subscribe`, `bind` and
-            /// `drive`.
+            /// chained `.disposed(by:)` (or `addDisposableTo(_:)`): a
+            /// strong-`self` closure feeds `combine-sink-self-cycle`. A result
+            /// assigned to a member of `self` does not count. Built in for
+            /// `subscribe`, `bind` and `drive`.
             case disposeBag
             /// A SwiftSignalKit-style subscription (`signal.start(next:)`)
             /// whose Disposable is passed to `self.<disposable>.set(_:)` or
