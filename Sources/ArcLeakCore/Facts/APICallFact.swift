@@ -71,8 +71,7 @@ public struct APICallFact: Sendable, Equatable, Codable {
     public let position: SourcePosition
     /// `repeats:` argument when it is a boolean literal; nil when absent/dynamic.
     public let repeats: Bool?
-    /// True when a `target:`/`on:`/`delegate:` style argument is literally `self`
-    /// (for `observe(\.keyPath)`: the observed object is `self`).
+    /// True when a `target:`/`on:`/`delegate:` style argument is literally `self`.
     public let targetIsSelf: Bool
     /// True when the call's receiver is a stored member of the enclosing type
     /// (`self.source.setEventHandler { … }`) — the edge self → receiver exists.

@@ -835,11 +835,6 @@ final class FactsExtractor: SyntaxVisitor {
             case "observe" where node.arguments.first?.expression.is(KeyPathExprSyntax.self) == true:
                 kind = .kvoObserve
                 closureLabels = ["changeHandler"]
-                // The observed object: `self` itself, or a member of self.
-                targetIsSelf = isSelf(member.base)
-                if let base = member.base {
-                    receiverIsSelfMember = memberOfSelfName(base) != nil
-                }
             case "addPeriodicTimeObserver":
                 kind = .periodicTimeObserver
                 closureLabels = ["using"]
