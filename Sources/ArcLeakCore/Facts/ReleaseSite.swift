@@ -13,6 +13,7 @@ public struct ReleaseSite: Sendable, Equatable, Codable {
         case cancel
         case removeObserver
         case sessionInvalidate
+        case removeScriptMessageHandler
 
         public init?(calleeName: String) {
             switch calleeName {
@@ -20,6 +21,8 @@ public struct ReleaseSite: Sendable, Equatable, Codable {
             case "cancel": self = .cancel
             case "removeObserver": self = .removeObserver
             case "invalidateAndCancel", "finishTasksAndInvalidate": self = .sessionInvalidate
+            case "removeScriptMessageHandler", "removeAllScriptMessageHandlers":
+                self = .removeScriptMessageHandler
             default: return nil
             }
         }

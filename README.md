@@ -421,6 +421,7 @@ capturing `self` strongly) is flagged; the same call with `[weak self]` is not.
 | `urlsession-delegate-leak` | warning† | `URLSession(configuration:delegate: self, …)` with no reachable invalidation |
 | `dispatch-source-cycle` | error | dispatch source stored on `self` whose handler captures `self` strongly, no reachable `cancel()` |
 | `unowned-outlives-owner` | warning | `[unowned self]` in an anchor-held closure — traps if `self` deallocates first |
+| `webview-script-handler-cycle` | warning† | `userContentController.add(self, name:)` (or `add(_:contentWorld:name:)`) with no reachable `removeScriptMessageHandler(forName:)` or `removeAllScriptMessageHandlers()` |
 | `dead-weak-capture` | warning, opt-in | `[weak self]` whose body never uses `self` |
 | `delegate-strong-property` | warning, opt-in | strong stored property named/typed like a delegate |
 
