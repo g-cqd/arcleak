@@ -146,7 +146,9 @@ final class EventFeed {
 // its change handler until it is deallocated (apple/swift@d6b4691dc8,
 // stdlib/public/Darwin/Foundation/NSObject.swift), so self → observation →
 // handler → self stays. kvo-observation-self-cycle treats a reachable
-// invalidate() as a managed lifecycle, as timer-retains-self does.
+// invalidate() as a managed lifecycle, as timer-retains-self does. Any
+// invalidate() in the type counts, including a Timer's: the rule does not
+// check what it is called on.
 final class RateWatcher: NSObject {
     let player = AVPlayer()
     var observation: NSKeyValueObservation?
