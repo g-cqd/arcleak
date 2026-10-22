@@ -34,8 +34,9 @@ public struct APICallFact: Sendable, Equatable, Codable {
         /// `setEventHandler`/`setCancelHandler` on a dispatch source — handlers are
         /// Block_copy-ed and held by the source until replaced or cancelled.
         case dispatchSourceHandler
-        /// `<…>.userContentController.add(_:name:)` / `add(_:contentWorld:name:)`
-        /// / `addScriptMessageHandler(_:contentWorld:name:)` — the controller keeps the script message handler until
+        /// `<…>.userContentController.add(_:name:)`, `add(_:contentWorld:name:)`
+        /// or `addScriptMessageHandler(_:contentWorld:name:)` — the controller
+        /// keeps the script message handler until
         /// `removeScriptMessageHandler(forName:)` or
         /// `removeAllScriptMessageHandlers()` (observed behaviour; Apple's
         /// documentation does not state the retention).
