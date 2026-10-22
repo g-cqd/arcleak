@@ -91,7 +91,7 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
         case .webviewScriptHandlerCycle:
             "userContentController.add(self, name:) with no reachable removeScriptMessageHandler — the controller keeps self"
         case .secCleanupInUnreachableDeinit:
-            "deinit wipes bytes, invalidates a session, closes a handle or cancels work in a type kept alive by a reported cycle (opt-in)"
+            "deinit wipes bytes, invalidates a session, closes a handle or cancels work in a type a reported cycle may keep alive (opt-in)"
         case .secSessionInCycle:
             "Tags cycle findings on a type holding a WKWebView, LAContext, ASWebAuthenticationSession or delegate URLSession (opt-in)"
         case .kvoObservationSelfCycle:
@@ -322,11 +322,12 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
             Security pack, opt-in (CWE-401, CWE-226). A deinit that zeroes memory
             (`resetBytes(in:)`, `memset`), invalidates a session or timer, closes a
             handle, cancels work or removes an observer is cleanup the type relies
-            on. When the same type is kept alive by a cycle arcleak reports
+            on. When the same type has a finding arcleak reports as keeping it alive
             (stored-closure-strong-self, combine-sink-self-cycle,
-            task-nonterminating-self, …), deinit never runs: secrets stay in memory,
-            sessions stay valid, handles stay open. The finding is a note anchored
-            on the cycle finding it depends on.
+            task-nonterminating-self, …), deinit may never run: secrets can stay in
+            memory, sessions valid, handles open. "May": some of those findings are
+            warnings, not proven cycles (a source may complete, a teardown may run).
+            The finding is a note anchored on the cycle finding it depends on.
 
             Covers the cycles reported per type; the cross-type cycles of
             mutual-strong-properties are not linked to deinit bodies.
@@ -348,7 +349,9 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
             URLSession created with a delegate) gets a note naming them.
 
             Types are matched by name; cross-type cycles of mutual-strong-properties
-            are not tagged.
+            are not tagged. A `@al:disable sec-session-in-cycle` directive has no
+            effect, since there is no finding to suppress; disable the rule in
+            `.arcleak.json` instead.
 
             Enable with `{"rules": {"sec-session-in-cycle": {"enabled": true}}}`
             (arcleak 0.10.2 and earlier reject the id).

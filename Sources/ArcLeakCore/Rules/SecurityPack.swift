@@ -3,8 +3,10 @@
 /// enabled through `rules.<id>.enabled` in `.arcleak.json`.
 ///
 /// `sec-cleanup-in-unreachable-deinit` (CWE-401, CWE-226): the type's deinit
-/// wipes bytes, invalidates, closes, cancels or removes something, and a cycle
-/// reported on the same type keeps it alive, so that cleanup never runs.
+/// wipes bytes, invalidates, closes, cancels or removes something, and a
+/// finding reported on the same type may keep it alive, so that cleanup may
+/// never run. "May": `keepsSelfAlive` includes warnings, which are not all
+/// proven cycles (a source may complete, a teardown may run).
 ///
 /// `sec-session-in-cycle` (CWE-401): a tag, not a finding of its own. When the
 /// type holds a web view, an authentication context or session, or a URL
@@ -63,7 +65,7 @@ enum SecurityPack {
             line: cycle.line,
             column: cycle.column,
             message:
-                "security: deinit of '\(type.name)' \(actions.joined(separator: ", ")), but the \(cycle.rule.rawValue) finding here keeps '\(type.name)' alive, so that cleanup never runs",
+                "security: deinit of '\(type.name)' \(actions.joined(separator: ", ")), but the \(cycle.rule.rawValue) finding here may keep '\(type.name)' alive, so that cleanup may never run",
             note:
                 "CWE-401/CWE-226: break the cycle, and move cleanup that must happen (wiping secrets, invalidating sessions, closing handles) to a reachable teardown path"
         )
