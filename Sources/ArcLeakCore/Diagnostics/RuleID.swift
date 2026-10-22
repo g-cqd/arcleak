@@ -93,12 +93,12 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
             "Strong stored property named/typed like a delegate — likely back-reference cycle (opt-in)"
         case .webviewScriptHandlerCycle:
             "userContentController.add(self, name:) with no reachable removeScriptMessageHandler — the controller keeps self"
+        case .kvoObservationSelfCycle:
+            "observe(\\.keyPath) change handler captures `self` strongly and the NSKeyValueObservation is stored on `self`"
         case .secCleanupInUnreachableDeinit:
             "deinit wipes bytes, invalidates a session, closes a handle or cancels work in a type a reported cycle may keep alive (opt-in)"
         case .secSessionInCycle:
             "Tags cycle findings on a type holding a WKWebView, LAContext, ASWebAuthenticationSession or delegate URLSession (opt-in)"
-        case .kvoObservationSelfCycle:
-            "observe(\\.keyPath) change handler captures `self` strongly and the NSKeyValueObservation is stored on `self`"
         }
     }
 
@@ -281,8 +281,8 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
             """
             `userContentController.add(self, name:)` (or `add(_:contentWorld:name:)`,
             `addScriptMessageHandler(_:contentWorld:name:)`) registers `self` as a
-            script message handler. The user content controller
-            keeps the handler until `removeScriptMessageHandler(forName:)` or
+            script message handler. The user content controller keeps the handler
+            until `removeScriptMessageHandler(forName:)` or
             `removeAllScriptMessageHandlers()` runs, and the web view's configuration
             keeps the controller: WKWebView → configuration → userContentController →
             self. When `self` also keeps the web view, its configuration or its content
