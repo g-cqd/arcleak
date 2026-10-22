@@ -53,15 +53,25 @@ public enum RuleEngine {
         var findings: [Finding] = []
         for type in file.types {
             let isSystemEntryPoint = systemEntryPoints.contains(type.name)
+            var typeFindings: [Finding] = []
             for rule in rules where rule.emits.contains(where: configuration.isEnabled) {
-                let typeFindings = rule.check(type: type, path: file.path, configuration: configuration)
-                    .filter { configuration.isEnabled($0.rule) }
-                findings.append(
-                    contentsOf: isSystemEntryPoint
-                        ? typeFindings.map { ProjectContext.systemEntryPoint($0, typeName: type.name) }
-                        : typeFindings
+                typeFindings.append(
+                    contentsOf: rule.check(type: type, path: file.path, configuration: configuration)
+                        .filter { configuration.isEnabled($0.rule) }
                 )
             }
+            // The opt-in security pack reads the type's own findings.
+            typeFindings = SecurityPack.apply(
+                to: typeFindings,
+                type: type,
+                path: file.path,
+                configuration: configuration
+            )
+            findings.append(
+                contentsOf: isSystemEntryPoint
+                    ? typeFindings.map { ProjectContext.systemEntryPoint($0, typeName: type.name) }
+                    : typeFindings
+            )
         }
         return findings.sorted()
     }
