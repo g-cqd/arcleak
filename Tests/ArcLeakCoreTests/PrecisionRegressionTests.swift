@@ -497,4 +497,41 @@ import Testing
         #expect(sinkFindings.count == 1)
         #expect(sinkFindings.first?.message.contains("nested closure's capture list") == false)
     }
+
+    // MARK: - Script message handlers
+
+    @Test("webview-script-handler-cycle: the deinit-only error needs a web view or controller self keeps")
+    func scriptHandlerErrorNeedsOwnership() {
+        let source = """
+            import WebKit
+            final class Owning: NSObject, WKScriptMessageHandler {
+                let webView = WKWebView()
+                func load() {
+                    webView.configuration.userContentController.add(self, name: "a")
+                }
+                deinit {
+                    webView.configuration.userContentController.removeScriptMessageHandler(forName: "a")
+                }
+            }
+            final class WeakHolder: NSObject, WKScriptMessageHandler {
+                weak var contentController: WKUserContentController?
+                func attach(to contentController: WKUserContentController) {
+                    self.contentController = contentController
+                    contentController.add(self, name: "b")
+                }
+                deinit {
+                    contentController?.removeScriptMessageHandler(forName: "b")
+                }
+            }
+            final class Attached: NSObject, WKScriptMessageHandler {
+                func attach(to contentController: WKUserContentController) {
+                    contentController.add(self, name: "c")
+                }
+            }
+            """
+        let handlerFindings = findings(source).filter { $0.rule == .webviewScriptHandlerCycle }
+        #expect(handlerFindings.map(\.line) == [5, 23])
+        #expect(handlerFindings.map(\.severity) == [.error, .warning])
+        #expect(handlerFindings.last?.message.hasPrefix("observed:") == true)
+    }
 }
