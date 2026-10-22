@@ -534,4 +534,47 @@ import Testing
         #expect(handlerFindings.map(\.severity) == [.error, .warning])
         #expect(handlerFindings.last?.message.hasPrefix("observed:") == true)
     }
+
+    @Test("webview-script-handler-cycle: the error needs the add receiver rooted in an owned WebKit property")
+    func scriptHandlerErrorNeedsOwnedReceiver() {
+        let source = """
+            import SwiftUI
+            import WebKit
+            final class Unrelated: NSObject, WKScriptMessageHandler {
+                let preview = WKWebView()
+                weak var contentController: WKUserContentController?
+                func attach(to contentController: WKUserContentController) {
+                    self.contentController = contentController
+                    contentController.add(self, name: "a")
+                }
+                deinit {
+                    contentController?.removeScriptMessageHandler(forName: "a")
+                }
+            }
+            final class OwnedController: NSObject, WKScriptMessageHandler {
+                let contentController = WKUserContentController()
+                func attach() {
+                    contentController.add(self, name: "b")
+                }
+                deinit {
+                    contentController.removeScriptMessageHandler(forName: "b")
+                }
+            }
+            final class SwiftUIPreview: NSObject, WKScriptMessageHandler {
+                var preview: WebView?
+                weak var contentController: WKUserContentController?
+                func attach(to contentController: WKUserContentController) {
+                    self.contentController = contentController
+                    contentController.add(self, name: "c")
+                }
+                deinit {
+                    contentController?.removeScriptMessageHandler(forName: "c")
+                }
+            }
+            """
+        let handlerFindings = findings(source).filter { $0.rule == .webviewScriptHandlerCycle }
+        #expect(handlerFindings.map(\.line) == [8, 17])
+        #expect(handlerFindings.map(\.severity) == [.warning, .error])
+        #expect(handlerFindings.first?.message.hasPrefix("observed:") == true)
+    }
 }
