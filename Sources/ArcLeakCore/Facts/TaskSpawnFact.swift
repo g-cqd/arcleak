@@ -9,16 +9,21 @@ public struct TaskSpawnFact: Sendable, Equatable, Codable {
     /// the syntactic markers of a task that plausibly never completes.
     public let hasNonterminatingBody: Bool
     public let consumption: ResultConsumption
+    /// Body contains `await` at its own level — a finite task that can still
+    /// hold its captures for as long as the awaited work takes.
+    public let bodyAwaits: Bool
 
     public init(
         position: SourcePosition,
         selfCapture: SelfCaptureKind,
         hasNonterminatingBody: Bool,
-        consumption: ResultConsumption
+        consumption: ResultConsumption,
+        bodyAwaits: Bool = false
     ) {
         self.position = position
         self.selfCapture = selfCapture
         self.hasNonterminatingBody = hasNonterminatingBody
         self.consumption = consumption
+        self.bodyAwaits = bodyAwaits
     }
 }

@@ -55,7 +55,7 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
         case .combineAssignSelfCycle:
             "assign(to:on: self) retains `self` strongly while `self` stores the cancellable"
         case .taskNonterminatingSelf:
-            "A non-terminating Task captures `self` strongly (Task bodies capture `self` implicitly)"
+            "A non-terminating Task, or a stored Task cancelled only in deinit, captures `self` strongly"
         case .unstoredLifetimeToken:
             "Lifetime token (AnyCancellable, observation, observer handle) is discarded — the work it owns stops immediately"
         case .tokenStoredInLocal:
@@ -163,9 +163,16 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
             `self` forever; storing the handle on `self` makes it a cycle whose only exit
             is a cancel() that deinit can never reach.
 
+            A finite task whose body awaits is flagged in one shape only: its handle is
+            stored on `self` and its only `cancel()` sits in deinit. That cancel cannot
+            run while the task holds `self`, so `self` lives as long as the awaited
+            work, forever if it never returns — the deinit-only idiom of
+            timer-retains-self. Reported at the configured severity (warning by
+            default), since the awaited work usually does return.
+
             Fix: `[weak self]` and exit when self is nil, or cancel from a reachable
-            path. Finite tasks are deliberately not flagged — lifetime extension is not
-            a leak.
+            path. Other finite tasks are deliberately not flagged — lifetime extension
+            is not a leak.
             """
         case .unstoredLifetimeToken:
             """

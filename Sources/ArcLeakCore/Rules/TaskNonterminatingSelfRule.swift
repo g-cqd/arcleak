@@ -8,7 +8,11 @@
 /// `self` with no `self` token in source — the compiler's explicit-self guard
 /// is deliberately absent here, which is exactly why this rule exists.
 /// Finite tasks capturing `self` are lifetime extension, not leaks; they are
-/// not flagged.
+/// not flagged — except one shape: a task whose body awaits, whose handle is
+/// stored on `self`, and whose only `cancel()` sits in `deinit`. That cancel
+/// cannot run while the task holds `self`, so `self` lives as long as the
+/// awaited work, forever if it never returns (the timer rule's deinit-only
+/// idiom). Not definite, so it reports at the configured severity.
 struct TaskNonterminatingSelfRule: Rule {
     static let emits: [RuleID] = [.taskNonterminatingSelf]
 
@@ -19,8 +23,23 @@ struct TaskNonterminatingSelfRule: Rule {
         // observer, and dispatch-source rules. Deinit-only cancel stays a
         // finding: deinit is unreachable while the task retains self.
         guard !type.hasReachableRelease(.cancel) else { return [] }
+        let cancelOnlyInDeinit = type.releaseOnlyInDeinit(.cancel)
         return type.taskSpawns.compactMap { spawn in
-            guard spawn.selfCapture.isStrong, spawn.hasNonterminatingBody else { return nil }
+            guard spawn.selfCapture.isStrong else { return nil }
+            guard spawn.hasNonterminatingBody else {
+                guard cancelOnlyInDeinit, spawn.bodyAwaits, spawn.consumption.storesIntoSelf else { return nil }
+                return Finding(
+                    rule: .taskNonterminatingSelf,
+                    severity: configuration.severity(for: .taskNonterminatingSelf),
+                    path: path,
+                    line: spawn.position.line,
+                    column: spawn.position.column,
+                    message:
+                        "Task stored on self captures self strongly and is cancelled only in deinit — self lives until every await in the task returns",
+                    note:
+                        "deinit cannot run while the task holds self, so its cancel() never fires; if an await never returns, self leaks — capture [weak self] or cancel from a reachable path (viewDidDisappear/stop())"
+                )
+            }
 
             let implicitly: String
             if case .strong(implicit: true) = spawn.selfCapture {
