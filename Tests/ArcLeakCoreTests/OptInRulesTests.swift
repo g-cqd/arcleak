@@ -1,7 +1,7 @@
 import ArcLeakCore
 import Testing
 
-/// The two opt-in rules: disabled by default, precise when enabled.
+/// The opt-in rules: disabled by default, precise when enabled.
 @Suite struct OptInRulesTests {
     private let deadWeakSource = """
         final class Noisy {
@@ -64,5 +64,54 @@ import Testing
             .analyze(source: delegateSource, path: "b.swift").findings
         #expect(findings.map(\.rule) == [.delegateStrongProperty])
         #expect(findings.first?.message.contains("'delegate'") == true)
+    }
+
+    private let vaultSource = """
+        import Foundation
+
+        final class KeyVault {
+            var key = Data(count: 32)
+            var onChange: (() -> Void)?
+
+            func arm() {
+                onChange = { self.rotate() }
+            }
+
+            func rotate() {}
+
+            deinit {
+                key.resetBytes(in: 0..<key.count)
+            }
+        }
+
+        final class Session {
+            var handle: FileHandle?
+
+            deinit {
+                handle?.closeFile()
+            }
+        }
+        """
+
+    @Test("sec-cleanup-in-unreachable-deinit is silent by default")
+    func secCleanupDisabledByDefault() {
+        let findings = Analyzer().analyze(source: vaultSource, path: "Vault.swift").findings
+        #expect(findings.map(\.rule) == [.storedClosureStrongSelf])
+    }
+
+    @Test("sec-cleanup-in-unreachable-deinit notes a deinit cleanup that a reported cycle makes unreachable")
+    func secCleanupWhenEnabled() throws {
+        let configuration = Configuration(
+            rules: ["sec-cleanup-in-unreachable-deinit": .init(enabled: true)]
+        )
+        let findings = Analyzer(configuration: configuration)
+            .analyze(source: vaultSource, path: "Vault.swift").findings
+        // Only KeyVault: Session closes its handle in deinit but no cycle keeps it alive.
+        #expect(findings.map(\.rule) == [.secCleanupInUnreachableDeinit, .storedClosureStrongSelf])
+        let cleanup = try #require(findings.first { $0.rule == .secCleanupInUnreachableDeinit })
+        #expect(cleanup.severity == .note)
+        #expect(cleanup.line == 8)
+        #expect(cleanup.message.contains("deinit of 'KeyVault' wipes memory"))
+        #expect(cleanup.message.contains("stored-closure-strong-self"))
     }
 }
