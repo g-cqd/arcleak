@@ -1,6 +1,7 @@
 # Releasing arcleak
 
-Pushing a tag `vX.Y.Z` runs `.github/workflows/release.yml`: it builds
+Pushing a tag `vX.Y.Z` runs the release job of the shared analyzer graph (`.github/workflows/ci.yml` calls it;
+the standalone `release.yml` was folded into it on 2026-10-19): it builds
 release binaries for Linux (static stdlib, x86_64) and macOS (arm64),
 verifies `arcleak --version` matches the tag, and publishes a GitHub release
 with the archives, SHA-256 checksums, and generated notes. Every CI run on
