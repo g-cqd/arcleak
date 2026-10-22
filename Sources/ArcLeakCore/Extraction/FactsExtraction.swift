@@ -180,7 +180,7 @@ final class FactsExtractor: SyntaxVisitor {
             type.storedProperties = collectedFacts.storedProperties
             type.storedClosures = collectedFacts.storedClosures.filter { closure in
                 guard let child = closure.ownedChild else { return true }
-                return isOwnedReferenceChild(child, properties: collectedFacts.storedProperties)
+                return Self.isOwnedChild(child, properties: collectedFacts.storedProperties)
             }
             type.apiCalls = Self.resolveUpstreams(
                 collectedFacts.apiCalls,
@@ -194,15 +194,11 @@ final class FactsExtractor: SyntaxVisitor {
     }
 
     /// A closure stored through `self.<child>.<member>` closes a cycle only
-    /// when `self` owns the child: a strong stored property of this type. A
-    /// child whose declared type is a struct or enum of this file is exempt;
-    /// a child of unknown type (declared in another file or the SDK) counts.
-    private func isOwnedReferenceChild(_ child: String, properties: [StoredPropertyFact]) -> Bool {
-        guard let property = properties.first(where: { $0.name == child }),
-            property.strength == .strong
-        else { return false }
-        guard let typeName = property.referencedTypeNames.first else { return true }
-        return memberTable[typeName]?.isReferenceType != false
+    /// when `self` owns the child: a strong stored property of this type. The
+    /// child's type does not matter: a class child is kept by reference, and
+    /// a struct child is stored inline in `self`, closure included.
+    private static func isOwnedChild(_ child: String, properties: [StoredPropertyFact]) -> Bool {
+        properties.contains { $0.name == child && $0.strength == .strong }
     }
 
     /// Post-pass once the whole type is collected: an unknown upstream whose

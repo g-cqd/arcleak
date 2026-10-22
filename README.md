@@ -424,7 +424,7 @@ capturing `self` strongly) is flagged; the same call with `[weak self]` is not.
 
 | id | default | detects |
 |---|---|---|
-| `stored-closure-strong-self` | error‡ | closure stored on `self` (property, `lazy` initializer, member collection) capturing `self` strongly; also one level down, on a child `self` owns through a strong stored property (`self.toolbar.onTap = { self… }`, `.append`) |
+| `stored-closure-strong-self` | error‡ | closure stored on `self` (property, `lazy` initializer, member collection) capturing `self` strongly; also one level down, on a child `self` owns through a strong stored property, class or struct (`self.toolbar.onTap = { self… }`, `.append`) |
 | `combine-sink-self-cycle` | error | strong-`self` `sink` whose `AnyCancellable` is stored on `self` — including `self` captured only to feed a nested closure's `[weak self]`; also, as a warning, RxSwift `subscribe(onNext:)`/`bind`/`drive` + `.disposed(by:)` into a bag on `self`, and SwiftSignalKit `start(next:)` kept in a disposable on `self` (finite sources stay silent) |
 | `combine-assign-self-cycle` | error | `assign(to:on: self)` with the cancellable stored on `self` |
 | `timer-retains-self` | warning† | repeating `Timer`/`CADisplayLink` retaining `self` with no reachable `invalidate()` |
