@@ -153,6 +153,7 @@ import Testing
         #expect(cleanup.line == 8)
         #expect(cleanup.message.contains("deinit of 'KeyVault' wipes memory"))
         #expect(cleanup.message.contains("stored-closure-strong-self"))
+        #expect(cleanup.message.hasSuffix("so that cleanup may never run"))
     }
 
     private let webSource = """
