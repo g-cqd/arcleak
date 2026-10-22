@@ -178,7 +178,10 @@ final class FactsExtractor: SyntaxVisitor {
             type.attributeNames = memberTable[name]?.typeAttributes ?? []
             type.deadWeakCaptures = collectedFacts.deadWeakCaptures
             type.storedProperties = collectedFacts.storedProperties
-            type.storedClosures = collectedFacts.storedClosures
+            type.storedClosures = collectedFacts.storedClosures.filter { closure in
+                guard let child = closure.ownedChild else { return true }
+                return isOwnedReferenceChild(child, properties: collectedFacts.storedProperties)
+            }
             type.apiCalls = Self.resolveUpstreams(
                 collectedFacts.apiCalls,
                 properties: collectedFacts.storedProperties
@@ -188,6 +191,18 @@ final class FactsExtractor: SyntaxVisitor {
             facts.types.append(type)
         }
         return facts
+    }
+
+    /// A closure stored through `self.<child>.<member>` closes a cycle only
+    /// when `self` owns the child: a strong stored property of this type. A
+    /// child whose declared type is a struct or enum of this file is exempt;
+    /// a child of unknown type (declared in another file or the SDK) counts.
+    private func isOwnedReferenceChild(_ child: String, properties: [StoredPropertyFact]) -> Bool {
+        guard let property = properties.first(where: { $0.name == child }),
+            property.strength == .strong
+        else { return false }
+        guard let typeName = property.referencedTypeNames.first else { return true }
+        return memberTable[typeName]?.isReferenceType != false
     }
 
     /// Post-pass once the whole type is collected: an unknown upstream whose
@@ -480,11 +495,18 @@ final class FactsExtractor: SyntaxVisitor {
 
     override func visit(_ node: SequenceExprSyntax) -> SyntaxVisitorContinueKind {
         let elements = Array(node.elements)
-        guard
-            elements.count == 3,
-            elements[1].is(AssignmentExprSyntax.self),
-            let member = memberOfSelfName(elements[0])
-        else { return .visitChildren }
+        guard elements.count == 3, elements[1].is(AssignmentExprSyntax.self) else { return .visitChildren }
+        let member: String
+        let ownedChild: String?
+        if let name = memberOfSelfName(elements[0]) {
+            member = name
+            ownedChild = nil
+        } else if let target = ownedChildTarget(elements[0]) {
+            member = "\(target.child).\(target.member)"
+            ownedChild = target.child
+        } else {
+            return .visitChildren
+        }
 
         if let closure = unwrapped(elements[2]).as(ClosureExprSyntax.self) {
             let analysis = ClosureCaptureAnalysis.analyze(
@@ -496,7 +518,8 @@ final class FactsExtractor: SyntaxVisitor {
                 StoredClosureFact(
                     position: position(of: closure),
                     targetMember: member,
-                    selfCapture: analysis.selfCapture
+                    selfCapture: analysis.selfCapture,
+                    ownedChild: ownedChild
                 )
             )
         } else if strongCaptureEquivalent(elements[2]) {
@@ -505,7 +528,8 @@ final class FactsExtractor: SyntaxVisitor {
                     position: position(of: elements[2]),
                     targetMember: member,
                     selfCapture: .strong(implicit: false),
-                    isMethodReference: true
+                    isMethodReference: true,
+                    ownedChild: ownedChild
                 )
             )
         }
@@ -937,9 +961,19 @@ final class FactsExtractor: SyntaxVisitor {
         guard
             let member = node.calledExpression.as(MemberAccessExprSyntax.self),
             ["append", "insert"].contains(member.declName.baseName.text),
-            let base = member.base,
-            let collection = memberOfSelfName(base)
+            let base = member.base
         else { return }
+        let collection: String
+        let ownedChild: String?
+        if let name = memberOfSelfName(base) {
+            collection = name
+            ownedChild = nil
+        } else if let target = ownedChildTarget(base) {
+            collection = "\(target.child).\(target.member)"
+            ownedChild = target.child
+        } else {
+            return
+        }
 
         var closure = node.trailingClosure
         if closure == nil {
@@ -956,9 +990,26 @@ final class FactsExtractor: SyntaxVisitor {
             StoredClosureFact(
                 position: position(of: closure),
                 targetMember: collection,
-                selfCapture: analysis.selfCapture
+                selfCapture: analysis.selfCapture,
+                ownedChild: ownedChild
             )
         )
+    }
+
+    /// `self.toolbar.onTap` / `toolbar?.onTap` / `toolbar!.onTap` → ("toolbar",
+    /// "onTap") when `toolbar` is a member of `self` (not a shadowing local).
+    /// Exactly one level: `self.a.b.c` is not matched.
+    private func ownedChildTarget(_ expr: some ExprSyntaxProtocol) -> (child: String, member: String)? {
+        guard let access = ExprSyntax(expr).as(MemberAccessExprSyntax.self), var base = access.base else {
+            return nil
+        }
+        if let optional = base.as(OptionalChainingExprSyntax.self) {
+            base = optional.expression
+        } else if let forced = base.as(ForceUnwrapExprSyntax.self) {
+            base = forced.expression
+        }
+        guard let child = memberOfSelfName(base) else { return nil }
+        return (child, access.declName.baseName.text)
     }
 
     /// `self.method`, a bare member-method name, or a self-referencing local
