@@ -48,11 +48,14 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
     }
 
     /// SARIF `properties.tags` of the security pack's rules; nil for the
-    /// others.
-    public var securityTags: [String]? {
+    /// others. Each CWE is tagged in two forms: `external/cwe/cwe-N`, the tag
+    /// CodeQL queries carry, and the plain `CWE-N`.
+    var securityTags: [String]? {
         switch self {
-        case .secCleanupInUnreachableDeinit: ["security", "CWE-401", "CWE-226"]
-        case .secSessionInCycle: ["security", "CWE-401"]
+        case .secCleanupInUnreachableDeinit:
+            ["security", "external/cwe/cwe-401", "external/cwe/cwe-226", "CWE-401", "CWE-226"]
+        case .secSessionInCycle:
+            ["security", "external/cwe/cwe-401", "CWE-401"]
         default: nil
         }
     }
