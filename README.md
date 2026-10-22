@@ -440,6 +440,13 @@ capturing `self` strongly) is flagged; the same call with `[weak self]` is not.
 | `kvo-observation-self-cycle` | warning | `self.<obs> = <x>.observe(\.keyPath) { … self … }` where `<x>` is `self` or a member of `self` and the change handler captures `self` strongly |
 | `dead-weak-capture` | warning, opt-in | `[weak self]` whose body never uses `self` |
 | `delegate-strong-property` | warning, opt-in | strong stored property named/typed like a delegate |
+| `sec-cleanup-in-unreachable-deinit` | note, opt-in | security (CWE-401, CWE-226): a `deinit` that wipes bytes, invalidates a session, closes a handle or cancels work, in a type kept alive by a cycle reported on that type |
+
+Security pack: the `sec-` rules ship disabled and are enabled one by one in
+`.arcleak.json`, like the other opt-in rules (`{"rules":
+{"sec-cleanup-in-unreachable-deinit": {"enabled": true}}}`). There is no
+separate switch. A configuration that names them is rejected by arcleak
+0.10.2 and earlier as an unknown rule id.
 
 Bound method references (`handler = self.method`, `sink(receiveValue:
 handle)`) and self-referencing local functions passed as values feed the same

@@ -14,6 +14,13 @@ public struct ReleaseSite: Sendable, Equatable, Codable {
         case removeObserver
         case sessionInvalidate
         case removeScriptMessageHandler
+        /// `resetBytes(in:)`, `memset`, `memset_s` — wiping memory, typically
+        /// key material (only the deinit occurrences matter, to the opt-in
+        /// `sec-cleanup-in-unreachable-deinit`).
+        case zeroBytes
+        /// `close()`, `closeFile()` — releasing a file, socket or database
+        /// handle.
+        case close
 
         public init?(calleeName: String) {
             switch calleeName {
@@ -23,6 +30,8 @@ public struct ReleaseSite: Sendable, Equatable, Codable {
             case "invalidateAndCancel", "finishTasksAndInvalidate": self = .sessionInvalidate
             case "removeScriptMessageHandler", "removeAllScriptMessageHandlers":
                 self = .removeScriptMessageHandler
+            case "resetBytes", "memset", "memset_s": self = .zeroBytes
+            case "close", "closeFile": self = .close
             default: return nil
             }
         }
