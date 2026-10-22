@@ -458,7 +458,8 @@ Security pack: the `sec-` rules ship disabled and are enabled one by one in
 "sec-session-in-cycle": {"enabled": true}}}`). There is no
 separate switch. A configuration that names them is rejected by arcleak
 0.10.2 and earlier as an unknown rule id. In SARIF output their rule
-descriptors carry `properties.tags` (`security` and the CWE ids).
+descriptors carry `properties.tags`: `security`, and each CWE id in two forms,
+`external/cwe/cwe-401` (the form CodeQL queries use) and `CWE-401`.
 
 Bound method references (`handler = self.method`, `sink(receiveValue:
 handle)`) and self-referencing local functions passed as values feed the same

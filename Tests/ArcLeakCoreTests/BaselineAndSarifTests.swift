@@ -89,8 +89,11 @@ import Testing
         func tags(_ id: String) -> [String]? {
             (rules.first { $0["id"] as? String == id }?["properties"] as? [String: Any])?["tags"] as? [String]
         }
-        #expect(tags("sec-cleanup-in-unreachable-deinit") == ["security", "CWE-401", "CWE-226"])
-        #expect(tags("sec-session-in-cycle") == ["security", "CWE-401"])
+        #expect(
+            tags("sec-cleanup-in-unreachable-deinit")
+                == ["security", "external/cwe/cwe-401", "external/cwe/cwe-226", "CWE-401", "CWE-226"]
+        )
+        #expect(tags("sec-session-in-cycle") == ["security", "external/cwe/cwe-401", "CWE-401"])
         #expect(rules.first { $0["id"] as? String == "stored-closure-strong-self" }?["properties"] == nil)
 
         let results = try #require(run["results"] as? [[String: Any]])
