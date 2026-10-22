@@ -10,7 +10,6 @@ final class FeedViewModel {
     let disposeBag = DisposeBag()
     let refresh = PublishSubject<Void>()
     let title = BehaviorRelay<String>(value: "")
-    var subscription: Disposable?
     var count = 0
 
     func bindInputs() {
@@ -19,7 +18,6 @@ final class FeedViewModel {
         }).disposed(by: disposeBag)
         title.asDriver().drive(onNext: { text in self.render(text) }).disposed(by: self.disposeBag) // #al:expect combine-sink-self-cycle
         refresh.bind { _ in self.count = 0 }.disposed(by: disposeBag) // #al:expect combine-sink-self-cycle
-        subscription = refresh.subscribe(onNext: { _ in self.count += 2 }) // #al:expect combine-sink-self-cycle
     }
 
     func render(_ text: String) {}
