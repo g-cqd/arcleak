@@ -76,4 +76,25 @@ import Testing
         #expect(findings.map(\.rule) == [.combineSinkSelfCycle])
         #expect(findings.first?.message.contains("self → disposable → closure → self") == true)
     }
+
+    @Test("subscribe needs the bag spelling; start(next:) still counts when assigned to a member")
+    func assignedTokens() {
+        let source = """
+            final class Feed {
+                let bus = Bus()
+                let signal = Signal<Int, NoError>()
+                var token: Token?
+                var disposable: Disposable?
+                var last = 0
+
+                func start() {
+                    token = bus.subscribe { value in self.last = value }
+                    disposable = signal.start(next: { value in self.last = value })
+                }
+            }
+            """
+        let findings = Analyzer().analyze(source: source, path: "Feed.swift").findings
+        #expect(findings.map(\.rule) == [.combineSinkSelfCycle])
+        #expect(findings.map(\.line) == [10])
+    }
 }
