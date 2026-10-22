@@ -30,10 +30,13 @@ closures, Combine `sink` and `assign`, timers, notification observers,
 are runtime-proven: the leak oracle (`Scripts/run-leak-oracle.sh`)
 reconstructs each one and verifies it with `leaks -atExit` and deinit
 canaries on every macOS CI run. The oracle does not cover
-`webview-script-handler-cycle`, `kvo-observation-self-cycle`, the RxSwift and
-SwiftSignalKit subscriptions of `combine-sink-self-cycle`, or closures stored
-on an owned child: those rest on documented or observed behaviour and on
-public fixes, cited in each rule's explanation (`arcleak rules <id>`).
+`webview-script-handler-cycle`, `kvo-observation-self-cycle`, the finite
+`Task` stored on `self` and cancelled only in `deinit` (its oracle scenario is
+the non-terminating task), the RxSwift and SwiftSignalKit subscriptions of
+`combine-sink-self-cycle`, or closures stored on an owned child: those rest on
+documented or observed behaviour and on public fixes, cited in each rule's
+explanation (`arcleak rules <id>`). The `sec-*` rows are reasoned from the
+other rules' findings and are not oracle-covered either.
 
 ## Requirements
 
@@ -394,7 +397,10 @@ all must be present to match), `tokenName` (optional diagnostic name), and
   Disposable is passed to `self.<disposable>.set(_:)` or `.add(_:)`, or assigned
   to a member of `self`. Same report and finiteness rules. Built in for
   `start(next:)` (declare it with `"requiredLabels": ["next"]` for other
-  callees of that shape).
+  callees of that shape). A `disposeBag` subscription counts only through
+  `.disposed(by:)` or `addDisposableTo(_:)`; a Disposable assigned to a member
+  of `self` is matched only by `signalDisposable` (declare it for a home-grown
+  token).
 
 A dropped reactive Disposable does not end its subscription, so the two
 reactive templates feed only the cycle rule, never the premature-release rules.
@@ -446,7 +452,7 @@ capturing `self` strongly) is flagged; the same call with `[weak self]` is not.
 | `dispatch-source-cycle` | error | dispatch source stored on `self` whose handler captures `self` strongly, no reachable `cancel()` |
 | `unowned-outlives-owner` | warning | `[unowned self]` in an anchor-held closure — traps if `self` deallocates first |
 | `webview-script-handler-cycle` | warning† | `userContentController.add(self, name:)` (or `add(_:contentWorld:name:)`) with no reachable `removeScriptMessageHandler(forName:)` or `removeAllScriptMessageHandlers()`; the deinit-only **error** needs the `add` receiver to start at a strong stored `WKWebView`, `WKWebViewConfiguration` or `WKUserContentController` property of the type; a parameter or local receiver is at most an "observed" warning, and a type that keeps none of them is silent on a deinit-only removal |
-| `kvo-observation-self-cycle` | warning | `self.<obs> = <x>.observe(\.keyPath) { … self … }` (any observed object `<x>`) whose change handler captures `self` strongly, with no reachable `invalidate()` in the type |
+| `kvo-observation-self-cycle` | warning | `self.<obs> = <x>.observe(\.keyPath) { … self … }` (any observed object `<x>`) whose change handler captures `self` strongly, with no reachable `invalidate()` in the type (any `invalidate()` counts, a Timer's included). `invalidate()` alone does not release the change handler: also set the observation to nil |
 | `dead-weak-capture` | warning, opt-in | `[weak self]` whose body never uses `self` |
 | `delegate-strong-property` | warning, opt-in | strong stored property named/typed like a delegate |
 | `sec-session-in-cycle` | opt-in tag | security (CWE-401): adds a note to each cycle finding on a type that keeps a `WKWebView`, `LAContext`, `ASWebAuthenticationSession` or a `URLSession` with a delegate; no finding of its own. `@al:disable` has no effect on it, since it emits no findings to suppress: turn it off in `.arcleak.json` |
@@ -457,7 +463,9 @@ Security pack: the `sec-` rules ship disabled and are enabled one by one in
 {"sec-cleanup-in-unreachable-deinit": {"enabled": true},
 "sec-session-in-cycle": {"enabled": true}}}`). There is no
 separate switch. A configuration that names them is rejected by arcleak
-0.10.2 and earlier as an unknown rule id. In SARIF output their rule
+0.10.2 and earlier as an unknown rule id. Likewise, a contract with the
+`disposeBag` or `signalDisposable` template is rejected by 0.10.2 and earlier
+as an unknown template. In SARIF output their rule
 descriptors carry `properties.tags`: `security`, and each CWE id in two forms,
 `external/cwe/cwe-401` (the form CodeQL queries use) and `CWE-401`.
 

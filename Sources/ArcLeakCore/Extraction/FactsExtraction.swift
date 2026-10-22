@@ -589,7 +589,10 @@ final class FactsExtractor: SyntaxVisitor {
     /// User-KB fallback: `tokenProducer` calls feed the premature-release rules
     /// exactly like built-in token APIs; `sinkWrapper` calls additionally have
     /// their closure argument analyzed for a strong-`self` cycle exactly like
-    /// `.sink` (`React.to { self.… }` stored on `self`).
+    /// `.sink` (`React.to { self.… }` stored on `self`). The built-in reactive
+    /// contracts (`subscribe`, `bind` and `drive` as `disposeBag`,
+    /// `start(next:)` as `signalDisposable`) are matched here too, after the
+    /// user contracts.
     private func matchUserContract(_ node: FunctionCallExprSyntax) -> APICallFact? {
         guard let member = node.calledExpression.as(MemberAccessExprSyntax.self) else { return nil }
         let callee = member.declName.baseName.text
@@ -670,7 +673,9 @@ final class FactsExtractor: SyntaxVisitor {
 
     /// Reactive subscriptions matched with no configuration: RxSwift's
     /// `subscribe`/`bind`/`drive` and SwiftSignalKit's `start(next:)`. User
-    /// contracts are tried first, so a user can redeclare any of these names.
+    /// contracts are tried first: one whose callee, base and labels match
+    /// decides the call, so it can redeclare these names; one whose base or
+    /// labels do not match falls through to the built-in.
     private static let builtInContracts: [Configuration.UserContract] = [
         .init(callee: "subscribe", tokenName: "the subscription's Disposable", template: .disposeBag),
         .init(callee: "bind", tokenName: "the subscription's Disposable", template: .disposeBag),
