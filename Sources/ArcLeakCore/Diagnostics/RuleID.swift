@@ -18,6 +18,7 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
     case deadWeakCapture = "dead-weak-capture"
     case delegateStrongProperty = "delegate-strong-property"
     case webviewScriptHandlerCycle = "webview-script-handler-cycle"
+    case kvoObservationSelfCycle = "kvo-observation-self-cycle"
 
     /// Default severity before configuration overrides.
     public var defaultSeverity: Severity {
@@ -28,7 +29,7 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
         case .timerRetainsSelf, .notificationObserverLeak, .taskNonterminatingSelf,
             .unstoredLifetimeToken, .tokenStoredInLocal, .mutualStrongProperties,
             .urlSessionDelegateLeak, .unownedOutlivesOwner, .deadWeakCapture,
-            .delegateStrongProperty, .webviewScriptHandlerCycle:
+            .delegateStrongProperty, .webviewScriptHandlerCycle, .kvoObservationSelfCycle:
             .warning
         }
     }
@@ -74,6 +75,8 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
             "Strong stored property named/typed like a delegate — likely back-reference cycle (opt-in)"
         case .webviewScriptHandlerCycle:
             "userContentController.add(self, name:) with no reachable removeScriptMessageHandler — the controller keeps self"
+        case .kvoObservationSelfCycle:
+            "observe(\\.keyPath) change handler captures `self` strongly and the NSKeyValueObservation is stored on `self`"
         }
     }
 
@@ -270,6 +273,20 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
 
             Fix: remove the handler from a reachable teardown path (viewDidDisappear,
             a close() method), or register a proxy that holds `self` weakly.
+            """
+        case .kvoObservationSelfCycle:
+            """
+            `self.observation = object.observe(\\.keyPath) { … self … }`, where the
+            observed object is `self` or one of its members. The returned
+            NSKeyValueObservation keeps its change handler, which keeps `self`, which
+            keeps the observation: self → observation → change handler → self.
+            Foundation, NSKeyValueObservation.invalidate(): "invalidate() will be
+            called automatically when an NSKeyValueObservation is deinited" — and the
+            observation is deinited only after `self`, which the cycle prevents.
+
+            Fix: `[weak self]` in the change handler, or invalidate() the observation
+            from a reachable path. A public fix of this shape:
+            wikipedia-ios@9db7aa718d.
             """
         }
     }
