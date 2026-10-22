@@ -58,3 +58,22 @@ final class WeakControllerBridge: NSObject, WKScriptMessageHandler {
         contentController?.removeScriptMessageHandler(forName: "b")
     }
 }
+
+// SwiftUI's WebView struct is not a WKWebView: keeping one does not make a
+// parameter controller the owned web view's, so the deinit-only removal is
+// silent, as for a type that keeps no web view.
+final class SwiftUIPreviewBridge: NSObject, WKScriptMessageHandler {
+    var preview: WebView?
+    weak var contentController: WKUserContentController?
+
+    func attach(to contentController: WKUserContentController) {
+        self.contentController = contentController
+        contentController.add(self, name: "a")
+    }
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {}
+
+    deinit {
+        contentController?.removeScriptMessageHandler(forName: "a")
+    }
+}

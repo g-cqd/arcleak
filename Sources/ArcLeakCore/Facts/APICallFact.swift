@@ -77,6 +77,11 @@ public struct APICallFact: Sendable, Equatable, Codable {
     /// True when the call's receiver is a stored member of the enclosing type
     /// (`self.source.setEventHandler { … }`) — the edge self → receiver exists.
     public let receiverIsSelfMember: Bool
+    /// The stored member of `self` that the call's receiver chain starts from
+    /// (`webView` in `webView.configuration.userContentController.add(…)`);
+    /// nil for a local, a parameter or any other root. Recorded only for
+    /// `scriptMessageHandlerAdd`.
+    public let receiverRootMember: String?
     /// Only meaningful for `combineSink`/`combineAssignOn`.
     public let upstreamFiniteness: UpstreamFiniteness
     /// Chain-root member name (`subject` in `subject.map{…}.sink`), used to
@@ -97,6 +102,7 @@ public struct APICallFact: Sendable, Equatable, Codable {
         repeats: Bool?,
         targetIsSelf: Bool,
         receiverIsSelfMember: Bool = false,
+        receiverRootMember: String? = nil,
         upstreamFiniteness: UpstreamFiniteness = .unknown,
         upstreamRootMember: String? = nil,
         closureSelfCapture: SelfCaptureKind?,
@@ -108,6 +114,7 @@ public struct APICallFact: Sendable, Equatable, Codable {
         self.repeats = repeats
         self.targetIsSelf = targetIsSelf
         self.receiverIsSelfMember = receiverIsSelfMember
+        self.receiverRootMember = receiverRootMember
         self.upstreamFiniteness = upstreamFiniteness
         self.upstreamRootMember = upstreamRootMember
         self.closureSelfCapture = closureSelfCapture
@@ -124,6 +131,7 @@ public struct APICallFact: Sendable, Equatable, Codable {
             repeats: repeats,
             targetIsSelf: targetIsSelf,
             receiverIsSelfMember: receiverIsSelfMember,
+            receiverRootMember: receiverRootMember,
             upstreamFiniteness: finiteness,
             upstreamRootMember: upstreamRootMember,
             closureSelfCapture: closureSelfCapture,
@@ -142,6 +150,7 @@ public struct APICallFact: Sendable, Equatable, Codable {
             repeats: repeats,
             targetIsSelf: targetIsSelf,
             receiverIsSelfMember: receiverIsSelfMember,
+            receiverRootMember: receiverRootMember,
             upstreamFiniteness: upstreamFiniteness,
             upstreamRootMember: upstreamRootMember,
             closureSelfCapture: closureSelfCapture,
