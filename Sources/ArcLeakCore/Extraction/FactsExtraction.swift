@@ -593,6 +593,11 @@ final class FactsExtractor: SyntaxVisitor {
     private func matchUserContract(_ node: FunctionCallExprSyntax) -> APICallFact? {
         guard let member = node.calledExpression.as(MemberAccessExprSyntax.self) else { return nil }
         let callee = member.declName.baseName.text
+        // Every member call passes here: return before allocating anything
+        // unless a user or built-in contract has this callee name.
+        guard Self.builtInCallees.contains(callee) || userContracts.contains(where: { $0.callee == callee }) else {
+            return nil
+        }
         let labels = node.arguments.compactMap { $0.label?.text }
         for contract in userContracts + Self.builtInContracts where contract.callee == callee {
             if let base = contract.base,
@@ -672,6 +677,8 @@ final class FactsExtractor: SyntaxVisitor {
             template: .signalDisposable
         ),
     ]
+
+    private static let builtInCallees = Set(builtInContracts.map(\.callee))
 
     /// Where a reactive Disposable goes: a chained `.disposed(by: bag)` or
     /// `.addDisposableTo(bag)` stores it in `bag`; an argument of
