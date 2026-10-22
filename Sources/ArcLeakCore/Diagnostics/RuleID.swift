@@ -17,6 +17,7 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
     case unownedOutlivesOwner = "unowned-outlives-owner"
     case deadWeakCapture = "dead-weak-capture"
     case delegateStrongProperty = "delegate-strong-property"
+    case webviewScriptHandlerCycle = "webview-script-handler-cycle"
 
     /// Default severity before configuration overrides.
     public var defaultSeverity: Severity {
@@ -27,7 +28,7 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
         case .timerRetainsSelf, .notificationObserverLeak, .taskNonterminatingSelf,
             .unstoredLifetimeToken, .tokenStoredInLocal, .mutualStrongProperties,
             .urlSessionDelegateLeak, .unownedOutlivesOwner, .deadWeakCapture,
-            .delegateStrongProperty:
+            .delegateStrongProperty, .webviewScriptHandlerCycle:
             .warning
         }
     }
@@ -71,6 +72,8 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
             "[weak self] whose body never uses self — capture-list noise (opt-in)"
         case .delegateStrongProperty:
             "Strong stored property named/typed like a delegate — likely back-reference cycle (opt-in)"
+        case .webviewScriptHandlerCycle:
+            "userContentController.add(self, name:) with no reachable removeScriptMessageHandler — the controller keeps self"
         }
     }
 
@@ -232,6 +235,25 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
 
             Fix: `[weak self]` for anchor-held closures; keep `unowned` for the
             book-blessed same-lifetime shape (closure stored on self, never escaping it).
+            """
+        case .webviewScriptHandlerCycle:
+            """
+            `userContentController.add(self, name:)` (or `add(_:contentWorld:name:)`,
+            `addScriptMessageHandler(_:contentWorld:name:)`) registers `self` as a
+            script message handler. The user content controller
+            keeps the handler until `removeScriptMessageHandler(forName:)` or
+            `removeAllScriptMessageHandlers()` runs, and the web view's configuration
+            keeps the controller: WKWebView → configuration → userContentController →
+            self. When `self` also owns the web view the loop is closed, and a removal
+            that only exists in deinit can never run.
+
+            Apple's documentation for add(_:name:) lists the removal methods next to it
+            but does not state the retention; this rule rests on observed behaviour.
+            Public fixes register a weak proxy instead of `self` for this reason
+            (firefox-ios@4d83f60171, element-x-ios@f8d094516d).
+
+            Fix: remove the handler from a reachable teardown path (viewDidDisappear,
+            a close() method), or register a proxy that holds `self` weakly.
             """
         }
     }
