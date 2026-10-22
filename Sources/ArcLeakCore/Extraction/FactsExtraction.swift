@@ -1056,10 +1056,21 @@ final class FactsExtractor: SyntaxVisitor {
     }
 
     private func recordReleaseSiteIfAny(_ node: FunctionCallExprSyntax) {
-        guard
-            let member = node.calledExpression.as(MemberAccessExprSyntax.self),
-            let kind = ReleaseSite.Kind(calleeName: member.declName.baseName.text)
-        else { return }
+        let kind: ReleaseSite.Kind
+        if let member = node.calledExpression.as(MemberAccessExprSyntax.self),
+            let memberKind = ReleaseSite.Kind(calleeName: member.declName.baseName.text)
+        {
+            kind = memberKind
+        } else if let reference = node.calledExpression.as(DeclReferenceExprSyntax.self),
+            ReleaseSite.Kind(calleeName: reference.baseName.text) == .zeroBytes
+        {
+            // `memset(buffer, 0, count)` is a free function. Only the
+            // zeroing kind is read from bare calls: a bare `cancel()` is a
+            // method of self, not a release of a stored handle.
+            kind = .zeroBytes
+        } else {
+            return
+        }
         let site = ReleaseSite(kind: kind, inDeinit: methodStack.last?.isDeinit ?? false)
         collected[typeStack.last ?? Self.fileScopeKey, default: CollectedFacts()]
             .releaseSites.append(site)

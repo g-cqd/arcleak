@@ -19,6 +19,7 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
     case delegateStrongProperty = "delegate-strong-property"
     case webviewScriptHandlerCycle = "webview-script-handler-cycle"
     case kvoObservationSelfCycle = "kvo-observation-self-cycle"
+    case secCleanupInUnreachableDeinit = "sec-cleanup-in-unreachable-deinit"
 
     /// Default severity before configuration overrides.
     public var defaultSeverity: Severity {
@@ -31,13 +32,15 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
             .urlSessionDelegateLeak, .unownedOutlivesOwner, .deadWeakCapture,
             .delegateStrongProperty, .webviewScriptHandlerCycle, .kvoObservationSelfCycle:
             .warning
+        case .secCleanupInUnreachableDeinit:
+            .note
         }
     }
 
     /// Opt-in rules ship disabled; enable per-rule in `.arcleak.json`.
     public var enabledByDefault: Bool {
         switch self {
-        case .deadWeakCapture, .delegateStrongProperty: false
+        case .deadWeakCapture, .delegateStrongProperty, .secCleanupInUnreachableDeinit: false
         default: true
         }
     }
@@ -75,6 +78,8 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
             "Strong stored property named/typed like a delegate — likely back-reference cycle (opt-in)"
         case .webviewScriptHandlerCycle:
             "userContentController.add(self, name:) with no reachable removeScriptMessageHandler — the controller keeps self"
+        case .secCleanupInUnreachableDeinit:
+            "deinit wipes bytes, invalidates a session, closes a handle or cancels work in a type kept alive by a reported cycle (opt-in)"
         case .kvoObservationSelfCycle:
             "observe(\\.keyPath) change handler captures `self` strongly and the NSKeyValueObservation is stored on `self`"
         }
@@ -287,6 +292,26 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
             Fix: `[weak self]` in the change handler, or invalidate() the observation
             from a reachable path. A public fix of this shape:
             wikipedia-ios@9db7aa718d.
+            """
+        case .secCleanupInUnreachableDeinit:
+            """
+            Security pack, opt-in (CWE-401, CWE-226). A deinit that zeroes memory
+            (`resetBytes(in:)`, `memset`), invalidates a session or timer, closes a
+            handle, cancels work or removes an observer is cleanup the type relies
+            on. When the same type is kept alive by a cycle arcleak reports
+            (stored-closure-strong-self, combine-sink-self-cycle,
+            task-nonterminating-self, …), deinit never runs: secrets stay in memory,
+            sessions stay valid, handles stay open. The finding is a note anchored
+            on the cycle finding it depends on.
+
+            Covers the cycles reported per type; the cross-type cycles of
+            mutual-strong-properties are not linked to deinit bodies.
+
+            Enable with `{"rules": {"sec-cleanup-in-unreachable-deinit": {"enabled":
+            true}}}` (arcleak 0.10.2 and earlier reject the id).
+
+            Fix: break the cycle, and move cleanup that must happen to a reachable
+            teardown path (logout, close(), viewDidDisappear).
             """
         }
     }
