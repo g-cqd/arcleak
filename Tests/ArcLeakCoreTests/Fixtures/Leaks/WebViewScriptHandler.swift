@@ -48,17 +48,16 @@ final class ReplyController: NSObject, WKScriptMessageHandlerWithReply {
 // Keeping the content controller strongly closes the loop too: self →
 // controller → self, and the deinit-only removal never runs (error).
 final class OwningBridge: NSObject, WKScriptMessageHandler {
-    var contentController: WKUserContentController?
+    let contentController = WKUserContentController()
 
-    func attach(to contentController: WKUserContentController) {
-        self.contentController = contentController
+    func attach() {
         contentController.add(self, name: "owning") // #al:expect webview-script-handler-cycle
     }
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {}
 
     deinit {
-        contentController?.removeScriptMessageHandler(forName: "owning")
+        contentController.removeScriptMessageHandler(forName: "owning")
     }
 }
 
@@ -70,4 +69,23 @@ final class AttachedBridge: NSObject, WKScriptMessageHandler {
     }
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {}
+}
+
+// The type keeps a web view for something else and registers on a controller
+// it is given: the receiver is a parameter, so no cycle is proven (warning,
+// with a message that starts with observed:), not the deinit-only error.
+final class PreviewBridge: NSObject, WKScriptMessageHandler {
+    let preview = WKWebView()
+    weak var contentController: WKUserContentController?
+
+    func attach(to contentController: WKUserContentController) {
+        self.contentController = contentController
+        contentController.add(self, name: "a") // #al:expect webview-script-handler-cycle
+    }
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {}
+
+    deinit {
+        contentController?.removeScriptMessageHandler(forName: "a")
+    }
 }

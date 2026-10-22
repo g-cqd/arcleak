@@ -22,3 +22,15 @@ final class FeedViewModel {
 
     func render(_ text: String) {}
 }
+
+// A property named first is not the operator first(): users.first?.events
+// is an ordinary source, so the subscription is reported like any other.
+final class UserListViewModel {
+    let disposeBag = DisposeBag()
+    var users: [UserSession] = []
+    var count = 0
+
+    func bindUsers() {
+        users.first?.events.subscribe { _ in self.count += 1 }.disposed(by: disposeBag) // #al:expect combine-sink-self-cycle
+    }
+}
