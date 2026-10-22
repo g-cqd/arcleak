@@ -163,7 +163,10 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
             These report as warnings, since completion of the source cannot be read
             from the call; finite sources (`Single`, `Completable`, `Maybe`, `just`,
             `take(1)`, `first()`) stay silent. Other spellings are declared with the
-            `disposeBag` and `signalDisposable` contract templates.
+            `disposeBag` and `signalDisposable` contract templates. A disposeBag
+            subscription counts only through .disposed(by:) or addDisposableTo(_:); a
+            Disposable assigned to a member of self is matched only by
+            signalDisposable (declare it for a home-grown token).
 
             Fix: `[weak self]` in the sink closure.
             """
@@ -315,8 +318,9 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
             observation is deinited only after `self`, which the cycle prevents.
 
             A reachable `invalidate()` in the type silences the rule, as it does for
-            timers. invalidate() stops the notifications, but the observation keeps
-            its handler until it is released (apple/swift@d6b4691dc8,
+            timers. Any `invalidate()` counts, including a Timer's: the rule does not
+            check what it is called on. invalidate() stops the notifications, but the
+            observation keeps its handler until it is released (apple/swift@d6b4691dc8,
             NSObject.swift), so release it too.
 
             Fix: `[weak self]` in the change handler, or invalidate() and release
