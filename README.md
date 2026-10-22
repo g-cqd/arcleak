@@ -448,7 +448,8 @@ Security pack: the `sec-` rules ship disabled and are enabled one by one in
 {"sec-cleanup-in-unreachable-deinit": {"enabled": true},
 "sec-session-in-cycle": {"enabled": true}}}`). There is no
 separate switch. A configuration that names them is rejected by arcleak
-0.10.2 and earlier as an unknown rule id.
+0.10.2 and earlier as an unknown rule id. In SARIF output their rule
+descriptors carry `properties.tags` (`security` and the CWE ids).
 
 Bound method references (`handler = self.method`, `sink(receiveValue:
 handle)`) and self-referencing local functions passed as values feed the same
