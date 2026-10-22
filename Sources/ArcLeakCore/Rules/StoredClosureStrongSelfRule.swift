@@ -2,6 +2,13 @@
 /// instance strongly is a guaranteed retain cycle (self → property → closure →
 /// self). Gated on the enclosing type being a known reference type: struct
 /// `self` is copied into the closure and cannot cycle.
+///
+/// One level down, `self.toolbar.onTap = { self.… }` (or `.append`) closes the
+/// same loop through a child `self` owns: self → toolbar → onTap → self. The
+/// child must be a strong stored property of this type (extraction drops weak
+/// or unowned children, locals, and children typed as a struct or enum of the
+/// same file). Warning, not error: a child may clear its callback after
+/// firing, which the source of `self` cannot show.
 struct StoredClosureStrongSelfRule: Rule {
     static let emits: [RuleID] = [.storedClosureStrongSelf]
 
@@ -9,6 +16,21 @@ struct StoredClosureStrongSelfRule: Rule {
         guard type.isReferenceType == true else { return [] }
         return type.storedClosures.compactMap { stored in
             guard stored.selfCapture.isStrong else { return nil }
+            if let child = stored.ownedChild {
+                let member = stored.targetMember.dropFirst(child.count + 1)
+                let value = stored.isMethodReference ? "bound method reference" : "closure"
+                return Finding(
+                    rule: .storedClosureStrongSelf,
+                    severity: min(configuration.severity(for: .storedClosureStrongSelf), .warning),
+                    path: path,
+                    line: stored.position.line,
+                    column: stored.position.column,
+                    message:
+                        "\(value) stored in '\(stored.targetMember)' captures self strongly — retain cycle through an owned child: self → \(child) → \(member) → self",
+                    note:
+                        "self keeps '\(child)' in a strong stored property and '\(child)' keeps the closure; capture [weak self], or clear '\(stored.targetMember)' when it is done"
+                )
+            }
             if stored.isMethodReference {
                 return Finding(
                     rule: .storedClosureStrongSelf,

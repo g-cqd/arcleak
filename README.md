@@ -409,7 +409,7 @@ capturing `self` strongly) is flagged; the same call with `[weak self]` is not.
 
 | id | default | detects |
 |---|---|---|
-| `stored-closure-strong-self` | error | closure stored on `self` (property, `lazy` initializer, member collection) capturing `self` strongly |
+| `stored-closure-strong-self` | error‡ | closure stored on `self` (property, `lazy` initializer, member collection) capturing `self` strongly; also one level down, on a child `self` owns through a strong stored property (`self.toolbar.onTap = { self… }`, `.append`) |
 | `combine-sink-self-cycle` | error | strong-`self` `sink` whose `AnyCancellable` is stored on `self` — including `self` captured only to feed a nested closure's `[weak self]` |
 | `combine-assign-self-cycle` | error | `assign(to:on: self)` with the cancellable stored on `self` |
 | `timer-retains-self` | warning† | repeating `Timer`/`CADisplayLink` retaining `self` with no reachable `invalidate()` |
@@ -430,6 +430,9 @@ capture pipeline as closures.
 
 † upgraded to **error** when the only release call sits in `deinit` (or the
 task handle is stored on `self`) — the release is unreachable by construction.
+
+‡ the owned-child path reports a **warning**: a child may clear its callback
+after firing, which the owner's source cannot show.
 
 ## Limits
 
