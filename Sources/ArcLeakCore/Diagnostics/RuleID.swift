@@ -51,7 +51,7 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
         case .notificationObserverLeak:
             "Block-based NotificationCenter observer captures `self` strongly; the center holds the block until removal"
         case .combineSinkSelfCycle:
-            "sink closure captures `self` strongly and the AnyCancellable is stored on `self`"
+            "sink (or Rx/SwiftSignalKit subscription) closure captures `self` strongly and its token is stored on `self`"
         case .combineAssignSelfCycle:
             "assign(to:on: self) retains `self` strongly while `self` stores the cancellable"
         case .taskNonterminatingSelf:
@@ -130,6 +130,15 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
             closure. Storing it on `self` while the closure captures `self` strongly
             closes the loop: self → cancellables → AnyCancellable → closure → self.
             AnyCancellable's deinit-cancel never fires — deinit is inside the cycle.
+
+            Reactive subscriptions close the same loop: RxSwift `subscribe(onNext:)`,
+            `bind` or `drive` followed by `.disposed(by: self.bag)`, and SwiftSignalKit
+            `self.disposable.set(signal.start(next:))`, give self → bag/disposable →
+            subscription → closure → self; the bag disposes only in its own deinit.
+            These report as warnings, since completion of the source cannot be read
+            from the call; finite sources (`Single`, `Completable`, `Maybe`, `just`,
+            `take(1)`, `first()`) stay silent. Other spellings are declared with the
+            `disposeBag` and `signalDisposable` contract templates.
 
             Fix: `[weak self]` in the sink closure.
             """

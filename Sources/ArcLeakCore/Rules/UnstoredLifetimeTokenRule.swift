@@ -101,7 +101,7 @@ struct UnstoredLifetimeTokenRule: Rule {
         case .timerScheduledBlock, .timerScheduledTarget, .displayLinkTarget,
             .urlSessionWithDelegate, .dispatchSourceHandler, .scriptMessageHandlerAdd:
             "the token"
-        case .userTokenProducer(let name), .userSinkWrapper(let name):
+        case .userTokenProducer(let name), .userSinkWrapper(let name), .reactiveSubscription(let name):
             name
         }
     }
@@ -119,7 +119,7 @@ struct UnstoredLifetimeTokenRule: Rule {
         case .timerScheduledBlock, .timerScheduledTarget, .displayLinkTarget,
             .urlSessionWithDelegate, .dispatchSourceHandler, .scriptMessageHandlerAdd:
             "the work it owns stops immediately"
-        case .userTokenProducer:
+        case .userTokenProducer, .reactiveSubscription:
             "the work it owns stops immediately (user contract)"
         case .userSinkWrapper:
             "the AnyCancellable-like token cancels on deinit, so the subscription ends before any value arrives (user contract)"

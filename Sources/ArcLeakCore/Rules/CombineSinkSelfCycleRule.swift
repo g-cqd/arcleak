@@ -1,7 +1,10 @@
 /// `publisher.sink { self.… }` stored into `self`'s cancellables — closed cycle:
 /// self → cancellable set → AnyCancellable → sink closure → self. Also fires on
 /// user-declared `sinkWrapper` contracts (custom Combine wrappers like
-/// `React.to`) whose returned token is stored on `self`.
+/// `React.to`) whose returned token is stored on `self`, and on reactive
+/// subscriptions (`disposeBag` / `signalDisposable` contracts, built in for
+/// RxSwift `subscribe`/`bind`/`drive` + `.disposed(by:)` and SwiftSignalKit
+/// `start(next:)`) whose Disposable `self` keeps.
 struct CombineSinkSelfCycleRule: Rule {
     static let emits: [RuleID] = [.combineSinkSelfCycle]
 
@@ -22,10 +25,18 @@ struct CombineSinkSelfCycleRule: Rule {
             // its contract diagnostic name and say "wrapper closure".
             let closureNoun: String
             let tokenNoun: String
-            if case .userSinkWrapper(let name) = call.kind {
+            var holder = "cancellable"
+            var ending = "the publisher completes or cancel() runs"
+            switch call.kind {
+            case .userSinkWrapper(let name):
                 closureNoun = "wrapper closure"
                 tokenNoun = name
-            } else {
+            case .reactiveSubscription(let name):
+                closureNoun = "subscription closure"
+                tokenNoun = name
+                holder = "disposable"
+                ending = "the source completes or the subscription is disposed"
+            default:
                 closureNoun = "sink closure"
                 tokenNoun = "its AnyCancellable"
             }
@@ -40,15 +51,15 @@ struct CombineSinkSelfCycleRule: Rule {
             case .unknown, .finite:
                 severity = .warning
                 note =
-                    "capture [weak self]; upstream completion could not be determined — the cycle persists until the publisher completes or cancel() runs"
+                    "capture [weak self]; upstream completion could not be determined — the cycle persists until \(ending)"
             }
             var message =
-                "retain cycle: \(closureNoun) captures self strongly and \(tokenNoun) is stored on self (self → cancellable → closure → self)"
+                "retain cycle: \(closureNoun) captures self strongly and \(tokenNoun) is stored on self (self → \(holder) → closure → self)"
             if call.selfCaptureViaNestedListOnly {
                 // The dev sees only a nested [weak self] and will disbelieve a
                 // bare "captures self strongly" — spell the mechanism out.
                 message =
-                    "retain cycle: the \(closureNoun) captures self strongly — its only `self` sits in a nested closure's capture list, and forming that nested [weak self] box forces the \(closureNoun) itself to capture self strongly (self → cancellable → closure → self)"
+                    "retain cycle: the \(closureNoun) captures self strongly — its only `self` sits in a nested closure's capture list, and forming that nested [weak self] box forces the \(closureNoun) itself to capture self strongly (self → \(holder) → closure → self)"
                 note = "the nested [weak self] does not protect the outer closure; " + note
             }
             if isTestCase {

@@ -48,6 +48,12 @@ public struct APICallFact: Sendable, Equatable, Codable {
         /// for a strong-`self` cycle (associated value = diagnostic name). Feeds
         /// both the premature-release rules and `combine-sink-self-cycle`.
         case userSinkWrapper(String)
+        /// `disposeBag` / `signalDisposable` contract (built in or
+        /// user-declared): a reactive subscription whose Disposable `self`
+        /// keeps (associated value = diagnostic name). Feeds only
+        /// `combine-sink-self-cycle`: dropping a reactive Disposable does not
+        /// end the subscription, so it is no premature-release token.
+        case reactiveSubscription(String)
     }
 
     /// Whether a Combine upstream provably completes. `Subscribers.Sink`
@@ -154,6 +160,8 @@ public struct APICallFact: Sendable, Equatable, Codable {
             false
         case .userTokenProducer, .userSinkWrapper:
             true
+        case .reactiveSubscription:
+            false
         }
     }
 
@@ -162,7 +170,7 @@ public struct APICallFact: Sendable, Equatable, Codable {
     /// user-declared `sinkWrapper` contracts (`React.to` and friends).
     public var feedsSinkCycleRule: Bool {
         switch kind {
-        case .combineSink, .userSinkWrapper:
+        case .combineSink, .userSinkWrapper, .reactiveSubscription:
             true
         default:
             false
