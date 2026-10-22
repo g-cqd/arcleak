@@ -20,6 +20,7 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
     case webviewScriptHandlerCycle = "webview-script-handler-cycle"
     case kvoObservationSelfCycle = "kvo-observation-self-cycle"
     case secCleanupInUnreachableDeinit = "sec-cleanup-in-unreachable-deinit"
+    case secSessionInCycle = "sec-session-in-cycle"
 
     /// Default severity before configuration overrides.
     public var defaultSeverity: Severity {
@@ -32,7 +33,7 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
             .urlSessionDelegateLeak, .unownedOutlivesOwner, .deadWeakCapture,
             .delegateStrongProperty, .webviewScriptHandlerCycle, .kvoObservationSelfCycle:
             .warning
-        case .secCleanupInUnreachableDeinit:
+        case .secCleanupInUnreachableDeinit, .secSessionInCycle:
             .note
         }
     }
@@ -40,7 +41,8 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
     /// Opt-in rules ship disabled; enable per-rule in `.arcleak.json`.
     public var enabledByDefault: Bool {
         switch self {
-        case .deadWeakCapture, .delegateStrongProperty, .secCleanupInUnreachableDeinit: false
+        case .deadWeakCapture, .delegateStrongProperty, .secCleanupInUnreachableDeinit, .secSessionInCycle:
+            false
         default: true
         }
     }
@@ -80,6 +82,8 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
             "userContentController.add(self, name:) with no reachable removeScriptMessageHandler — the controller keeps self"
         case .secCleanupInUnreachableDeinit:
             "deinit wipes bytes, invalidates a session, closes a handle or cancels work in a type kept alive by a reported cycle (opt-in)"
+        case .secSessionInCycle:
+            "Tags cycle findings on a type holding a WKWebView, LAContext, ASWebAuthenticationSession or delegate URLSession (opt-in)"
         case .kvoObservationSelfCycle:
             "observe(\\.keyPath) change handler captures `self` strongly and the NSKeyValueObservation is stored on `self`"
         }
@@ -312,6 +316,24 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
 
             Fix: break the cycle, and move cleanup that must happen to a reachable
             teardown path (logout, close(), viewDidDisappear).
+            """
+        case .secSessionInCycle:
+            """
+            Security pack, opt-in (CWE-401). A cycle that keeps a web view, an
+            LAContext, an ASWebAuthenticationSession or a URL session with a
+            delegate alive keeps authenticated state alive past the screen or flow
+            that owned it. This rule adds no finding of its own: when enabled, every
+            cycle finding on a type that keeps one of those objects (a strong stored
+            property of that declared type, a script message handler registration, a
+            URLSession created with a delegate) gets a note naming them.
+
+            Types are matched by name; cross-type cycles of mutual-strong-properties
+            are not tagged.
+
+            Enable with `{"rules": {"sec-session-in-cycle": {"enabled": true}}}`
+            (arcleak 0.10.2 and earlier reject the id).
+
+            Fix: break the cycle the note is attached to.
             """
         }
     }
