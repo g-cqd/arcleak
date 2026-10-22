@@ -117,9 +117,9 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
             One level down the proof is the same: `self.toolbar.onTap = { self… }`
             (or `.append`) where `toolbar` is a strong stored property of `self` gives
             self → toolbar → closure → self. Reported as a warning, since a child may
-            clear its callback after firing. Weak or unowned children, children held
-            in a local, and children typed as a struct or enum of the same file are
-            not reported.
+            clear its callback after firing. A struct child counts: `self` stores it
+            inline, closure included. Weak or unowned children, children held in a
+            local, and computed properties are not reported.
             """
         case .timerRetainsSelf:
             """
