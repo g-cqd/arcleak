@@ -282,8 +282,12 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
             keeps the handler until `removeScriptMessageHandler(forName:)` or
             `removeAllScriptMessageHandlers()` runs, and the web view's configuration
             keeps the controller: WKWebView → configuration → userContentController →
-            self. When `self` also owns the web view the loop is closed, and a removal
-            that only exists in deinit can never run.
+            self. When `self` also keeps the web view, its configuration or its content
+            controller in a strong stored property, the loop is closed and a removal
+            that only exists in deinit can never run: that is reported as an error.
+            A type that keeps none of them is not in a cycle (the controller keeps it
+            only while the web view lives): a deinit-only removal is silent there, and
+            a missing removal is a warning about the observed retention.
 
             Apple's documentation for add(_:name:) lists the removal methods next to it
             but does not state the retention; this rule rests on observed behaviour.

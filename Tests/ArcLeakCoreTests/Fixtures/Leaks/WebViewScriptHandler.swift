@@ -44,3 +44,30 @@ final class ReplyController: NSObject, WKScriptMessageHandlerWithReply {
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage, replyHandler: @escaping (Any?, String?) -> Void) {}
 }
+
+// Keeping the content controller strongly closes the loop too: self →
+// controller → self, and the deinit-only removal never runs (error).
+final class OwningBridge: NSObject, WKScriptMessageHandler {
+    var contentController: WKUserContentController?
+
+    func attach(to contentController: WKUserContentController) {
+        self.contentController = contentController
+        contentController.add(self, name: "owning") // #al:expect webview-script-handler-cycle
+    }
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {}
+
+    deinit {
+        contentController?.removeScriptMessageHandler(forName: "owning")
+    }
+}
+
+// A controller the type does not keep, and no removal: no cycle is proven,
+// but self lives as long as the web view (observed behaviour; warning).
+final class AttachedBridge: NSObject, WKScriptMessageHandler {
+    func attach(to contentController: WKUserContentController) {
+        contentController.add(self, name: "attached") // #al:expect webview-script-handler-cycle
+    }
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {}
+}
