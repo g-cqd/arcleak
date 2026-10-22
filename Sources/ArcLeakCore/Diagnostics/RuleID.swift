@@ -299,17 +299,23 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
             """
         case .kvoObservationSelfCycle:
             """
-            `self.observation = object.observe(\\.keyPath) { … self … }`, where the
-            observed object is `self` or one of its members. The returned
-            NSKeyValueObservation keeps its change handler, which keeps `self`, which
-            keeps the observation: self → observation → change handler → self.
-            Foundation, NSKeyValueObservation.invalidate(): "invalidate() will be
-            called automatically when an NSKeyValueObservation is deinited" — and the
+            `self.observation = object.observe(\\.keyPath) { … self … }`, whatever the
+            observed object is: the cycle runs through the observation, not through
+            the observed object. The returned NSKeyValueObservation keeps its change
+            handler, which keeps `self`, which keeps the observation: self →
+            observation → change handler → self. Foundation,
+            NSKeyValueObservation.invalidate(): "invalidate() will be called
+            automatically when an NSKeyValueObservation is deinited" — and the
             observation is deinited only after `self`, which the cycle prevents.
 
-            Fix: `[weak self]` in the change handler, or invalidate() the observation
-            from a reachable path. A public fix of this shape:
-            wikipedia-ios@9db7aa718d.
+            A reachable `invalidate()` in the type silences the rule, as it does for
+            timers. invalidate() stops the notifications, but the observation keeps
+            its handler until it is released (apple/swift@d6b4691dc8,
+            NSObject.swift), so release it too.
+
+            Fix: `[weak self]` in the change handler, or invalidate() and release
+            (`observation = nil`) the observation from a reachable path. A public fix
+            of this shape: wikipedia-ios@9db7aa718d.
             """
         case .secCleanupInUnreachableDeinit:
             """

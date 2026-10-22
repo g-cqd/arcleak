@@ -140,3 +140,26 @@ final class EventFeed {
         consumer?.cancel()
     }
 }
+
+// Gap 9: a KVO observation invalidated from a reachable stop() but never
+// released. invalidate() stops the notifications, but the observation keeps
+// its change handler until it is deallocated (apple/swift@d6b4691dc8,
+// stdlib/public/Darwin/Foundation/NSObject.swift), so self → observation →
+// handler → self stays. kvo-observation-self-cycle treats a reachable
+// invalidate() as a managed lifecycle, as timer-retains-self does.
+final class RateWatcher: NSObject {
+    let player = AVPlayer()
+    var observation: NSKeyValueObservation?
+
+    func start() {
+        observation = player.observe(\.rate) { _, _ in
+            self.refresh()
+        }
+    }
+
+    func stop() {
+        observation?.invalidate()
+    }
+
+    func refresh() {}
+}
