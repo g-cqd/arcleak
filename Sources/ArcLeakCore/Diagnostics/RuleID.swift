@@ -285,12 +285,15 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
             until `removeScriptMessageHandler(forName:)` or
             `removeAllScriptMessageHandlers()` runs, and the web view's configuration
             keeps the controller: WKWebView → configuration → userContentController →
-            self. When `self` also keeps the web view, its configuration or its content
-            controller in a strong stored property, the loop is closed and a removal
-            that only exists in deinit can never run: that is reported as an error.
-            A type that keeps none of them is not in a cycle (the controller keeps it
-            only while the web view lives): a deinit-only removal is silent there, and
-            a missing removal is a warning about the observed retention.
+            self. When the add call's receiver starts at a strong stored property of
+            `self` typed WKWebView, WKWebViewConfiguration or WKUserContentController
+            (`webView.configuration.userContentController.add(self, name:)`), the
+            loop is closed and a removal that only exists in deinit can never run:
+            that is reported as an error. A receiver that is a parameter or a local
+            proves no cycle, even when the type keeps a web view for something else:
+            the finding is then at most a warning about the observed retention. A
+            type that keeps none of them is not in a cycle (the controller keeps it
+            only while the web view lives): a deinit-only removal is silent there.
 
             Apple's documentation for add(_:name:) lists the removal methods next to it
             but does not state the retention; this rule rests on observed behaviour.

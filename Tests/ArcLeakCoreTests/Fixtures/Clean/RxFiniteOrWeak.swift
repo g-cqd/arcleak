@@ -25,6 +25,8 @@ final class ProfileViewModel {
         Maybe<Int>.empty().subscribe(onNext: { _ in self.count = 0 }).disposed(by: disposeBag)
         Observable.just(1).subscribe(onNext: { _ in self.count += 1 }).disposed(by: disposeBag)
         refresh.take(1).subscribe(onNext: { _ in self.count += 1 }).disposed(by: disposeBag)
+        refresh.first().asObservable().subscribe(onNext: { _ in self.count += 1 }).disposed(by: disposeBag)
+        Observable<Int>.empty().subscribe(onNext: { _ in self.count += 1 }).disposed(by: disposeBag)
         refresh.subscribe(onNext: { [weak self] _ in self?.count += 1 }).disposed(by: disposeBag)
 
         let bag = DisposeBag()
