@@ -8,9 +8,16 @@ final class Toolbar {
     var actions: [() -> Void] = []
 }
 
+// A struct child is stored inline in self, closure included: self → style →
+// onTap → self.
+struct ToolbarStyle {
+    var onTap: (() -> Void)?
+}
+
 final class Screen {
     let toolbar = Toolbar()
     var footer: Toolbar?
+    var style = ToolbarStyle()
     var count = 0
 
     func setUp() {
@@ -22,6 +29,7 @@ final class Screen {
             self.count += 1
         }
         toolbar.onTap = reload // #al:expect stored-closure-strong-self
+        style.onTap = { self.reload() } // #al:expect stored-closure-strong-self
     }
 
     func reload() {}
