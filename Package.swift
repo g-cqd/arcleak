@@ -35,7 +35,7 @@ let package = Package(
         // swift-system: a safe, Sendable stdio surface (stderr writes; the LSP
         // server's stdin/stdout framing). Foundation's FileHandle is
         // corelibs-only and would re-link ~47 MiB of ICU on Linux.
-        .package(url: "https://github.com/apple/swift-system.git", from: "1.7.1"),
+        .package(url: "https://github.com/apple/swift-system.git", from: "1.8.1"),
         // indexstore-db has no semver tags — revision-pinned per DESIGN.md.
         // Linked into ArcLeakCore on macOS only (see the target dependency).
         .package(
@@ -46,13 +46,13 @@ let package = Package(
         // Only the internal facts cache uses this codec; report byte formats stay stable.
         .package(
             url: "https://github.com/g-cqd/AemiJSON.git",
-            revision: "001c0a99a64e58a226e5851fedf1324a5fa2470c"
+            revision: "e8a6b0e5db6671cb73ddd80348defd0c3275245e"
         ),
         // The project model the analyzers share: code regions, test code,
         // generated files, platforms and system entry points.
         .package(
             url: "https://github.com/g-cqd/analyzerkit.git",
-            revision: "7a55ccf08d32d5b814d5e3c0877c2e296d5339d4"
+            revision: "fc27d648d8d22b9d09184b44e14b7e921bf63bbf"
         ),
     ],
     targets: [
