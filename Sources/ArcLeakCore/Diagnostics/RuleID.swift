@@ -47,6 +47,16 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
         }
     }
 
+    /// SARIF `properties.tags` of the security pack's rules; nil for the
+    /// others.
+    public var securityTags: [String]? {
+        switch self {
+        case .secCleanupInUnreachableDeinit: ["security", "CWE-401", "CWE-226"]
+        case .secSessionInCycle: ["security", "CWE-401"]
+        default: nil
+        }
+    }
+
     /// One-line human description used by `arcleak rules`.
     public var summary: String {
         switch self {
