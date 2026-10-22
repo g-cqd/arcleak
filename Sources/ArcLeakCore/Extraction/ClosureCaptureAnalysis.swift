@@ -4,6 +4,10 @@ import SwiftSyntax
 struct ClosureCaptureAnalysis: Sendable, Equatable {
     let selfCapture: SelfCaptureKind
     let hasNonterminatingBody: Bool
+    /// The closure's own body (not a nested closure) contains `await`: a Task
+    /// with such a body can outlive the call that spawned it by an unbounded
+    /// time.
+    let hasAwait: Bool
     /// True when the ONLY evidence for a strong capture is `self` in a nested
     /// closure's capture list (`sink { Task { [weak self] … } }`): the outer
     /// closure still captures `self` strongly to materialize the nested weak
@@ -36,6 +40,7 @@ struct ClosureCaptureAnalysis: Sendable, Equatable {
             return ClosureCaptureAnalysis(
                 selfCapture: listed,
                 hasNonterminatingBody: walker.sawNonterminatingLoop,
+                hasAwait: walker.sawAwait,
                 strongViaNestedCaptureOnly: false
             )
         }
@@ -54,6 +59,7 @@ struct ClosureCaptureAnalysis: Sendable, Equatable {
         return ClosureCaptureAnalysis(
             selfCapture: capture,
             hasNonterminatingBody: walker.sawNonterminatingLoop,
+            hasAwait: walker.sawAwait,
             strongViaNestedCaptureOnly: !walker.sawDirectSelf && walker.sawNestedCaptureListSelf
         )
     }
@@ -87,10 +93,12 @@ struct ClosureCaptureAnalysis: Sendable, Equatable {
     private init(
         selfCapture: SelfCaptureKind,
         hasNonterminatingBody: Bool,
+        hasAwait: Bool,
         strongViaNestedCaptureOnly: Bool
     ) {
         self.selfCapture = selfCapture
         self.hasNonterminatingBody = hasNonterminatingBody
+        self.hasAwait = hasAwait
         self.strongViaNestedCaptureOnly = strongViaNestedCaptureOnly
     }
 }
@@ -113,6 +121,8 @@ private final class BodyWalker: SyntaxVisitor {
     private var memberCandidates: Set<String> = []
     private var localNames: Set<String> = []
     private(set) var sawNonterminatingLoop = false
+    /// `await` at depth 0 (nested closures run on their own schedule).
+    private(set) var sawAwait = false
     /// Depth below the analyzed body: loops only count at depth 0.
     private var nestingDepth = 0
 
@@ -194,6 +204,11 @@ private final class BodyWalker: SyntaxVisitor {
         {
             sawNonterminatingLoop = true
         }
+        return .visitChildren
+    }
+
+    override func visit(_ node: AwaitExprSyntax) -> SyntaxVisitorContinueKind {
+        if nestingDepth == 0 { sawAwait = true }
         return .visitChildren
     }
 
