@@ -40,8 +40,10 @@ public struct Configuration: Sendable, Codable, Equatable {
     /// Supports `tokenProducer` (the call returns a lifetime token that must be
     /// owned) and `sinkWrapper` (a custom Combine wrapper such as `React.to`
     /// that returns an AnyCancellable-like token AND whose closure argument is
-    /// analyzed for a strong-`self` cycle exactly like `.sink`); `anchorLeak`
-    /// lands with cross-file release plumbing.
+    /// analyzed for a strong-`self` cycle exactly like `.sink`), and
+    /// `disposeBag` / `signalDisposable` (reactive subscriptions whose
+    /// Disposable `self` keeps; built in for the RxSwift and SwiftSignalKit
+    /// spellings); `anchorLeak` lands with cross-file release plumbing.
     public var contracts: [UserContract]?
     /// Regions (comma-separated: `preview,debug,test,mock,generated,script`,
     /// or `all`) to treat as first-class code: a leak or cycle withheld
@@ -108,6 +110,19 @@ public struct Configuration: Sendable, Codable, Equatable {
             /// premature-release rules; a strong-`self` closure whose token is
             /// stored on `self` feeds `combine-sink-self-cycle`.
             case sinkWrapper
+            /// An RxSwift-style subscription (`subscribe(onNext:)`, `bind`,
+            /// `drive`) whose Disposable goes into a bag on `self` through a
+            /// chained `.disposed(by:)` (or `addDisposableTo(_:)`), or is
+            /// assigned to a member of `self`: a strong-`self` closure feeds
+            /// `combine-sink-self-cycle`. Built in for `subscribe`, `bind` and
+            /// `drive`.
+            case disposeBag
+            /// A SwiftSignalKit-style subscription (`signal.start(next:)`)
+            /// whose Disposable is passed to `self.<disposable>.set(_:)` or
+            /// `.add(_:)`, or assigned to a member of `self`: a strong-`self`
+            /// closure feeds `combine-sink-self-cycle`. Built in for
+            /// `start(next:)`.
+            case signalDisposable
         }
 
         /// Callee name (`subscribe` in `bus.subscribe(handler:)`, `to` in
