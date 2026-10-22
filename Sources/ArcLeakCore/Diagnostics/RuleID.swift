@@ -44,7 +44,7 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
     public var summary: String {
         switch self {
         case .storedClosureStrongSelf:
-            "A closure stored on `self` captures `self` strongly — guaranteed retain cycle"
+            "A closure stored on `self`, or on a child `self` owns, captures `self` strongly — retain cycle"
         case .timerRetainsSelf:
             "A repeating Timer/CADisplayLink retains `self` (run loop → timer → self) with no reachable invalidate()"
         case .notificationObserverLeak:
@@ -88,6 +88,13 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
             `[unowned self]` only when "the closure and the instance … will always be
             deallocated at the same time" (TSPL, Automatic Reference Counting).
             Value types are exempt: struct `self` is copied, not retained.
+
+            One level down the proof is the same: `self.toolbar.onTap = { self… }`
+            (or `.append`) where `toolbar` is a strong stored property of `self` gives
+            self → toolbar → closure → self. Reported as a warning, since a child may
+            clear its callback after firing. Weak or unowned children, children held
+            in a local, and children typed as a struct or enum of the same file are
+            not reported.
             """
         case .timerRetainsSelf:
             """
