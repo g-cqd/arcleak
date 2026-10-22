@@ -644,6 +644,11 @@ final class FactsExtractor: SyntaxVisitor {
                 // returns and `self` assigns to a member is not provably a
                 // Disposable that keeps the closure.
                 let consumption = classifyReactiveConsumption(of: node)
+                // `return nil`, not `continue`: a contract whose callee, base
+                // and labels match decides the call, also when it decides that
+                // there is no finding (`continue` would hand a call that a
+                // user contract declares bag-only to a later contract, such as
+                // the built-in `signalDisposable` for `start(next:)`).
                 if contract.template == .disposeBag, consumption != .chainedStoreIn(memberOfSelf: true) {
                     return nil
                 }
@@ -710,10 +715,10 @@ final class FactsExtractor: SyntaxVisitor {
     }
 
     /// Sources and operators that complete: RxSwift's `Single`, `Completable`
-    /// and `Maybe` (and their `as…` conversions), `just`, `empty`, `first()`,
-    /// `take(1)` in the receiver, or a `subscribe(onSuccess:)` that only a
-    /// `Single` or `Maybe` offers. A completed subscription releases its
-    /// closures, so the cycle is transient.
+    /// and `Maybe` (and their `as…` conversions), the calls `just(…)`,
+    /// `empty()`, `first()` and `take(1)` in the receiver, or a
+    /// `subscribe(onSuccess:)` that only a `Single` or `Maybe` offers. A
+    /// completed subscription releases its closures, so the cycle is transient.
     private func reactiveFiniteness(
         of node: FunctionCallExprSyntax,
         labels: [String]
@@ -725,7 +730,9 @@ final class FactsExtractor: SyntaxVisitor {
         let tokens = receiver.tokens(viewMode: .sourceAccurate).map(\.text)
         for (index, token) in tokens.enumerated() {
             if Self.finiteReactiveMarkers.contains(token) { return .finite }
-            if token == "take", tokens.dropFirst(index + 1).prefix(3).elementsEqual(["(", "1", ")"]) {
+            if let call = Self.finiteReactiveCalls[token],
+                tokens.dropFirst(index + 1).prefix(call.count).elementsEqual(call)
+            {
                 return .finite
             }
         }
@@ -733,7 +740,13 @@ final class FactsExtractor: SyntaxVisitor {
     }
 
     private static let finiteReactiveMarkers: Set<String> = [
-        "Single", "Completable", "Maybe", "asSingle", "asCompletable", "asMaybe", "just", "empty", "first",
+        "Single", "Completable", "Maybe", "asSingle", "asCompletable", "asMaybe",
+    ]
+
+    /// Finite calls, matched with the tokens that follow the name: a property
+    /// named `first` (`users.first?.events`) is not the operator `first()`.
+    private static let finiteReactiveCalls: [String: [String]] = [
+        "just": ["("], "empty": ["(", ")"], "first": ["(", ")"], "take": ["(", "1", ")"],
     ]
 
     /// Strongest `self` capture across every closure a wrapper call carries —
@@ -822,6 +835,7 @@ final class FactsExtractor: SyntaxVisitor {
         let kind: APICallFact.Kind
         var targetIsSelf = false
         var receiverIsSelfMember = false
+        var receiverRootMember: String?
         var closureLabels: [String] = []
 
         if let member = node.calledExpression.as(MemberAccessExprSyntax.self) {
@@ -856,6 +870,7 @@ final class FactsExtractor: SyntaxVisitor {
                 if let handler = node.arguments.first, handler.label == nil {
                     targetIsSelf = isSelf(handler.expression)
                 }
+                receiverRootMember = rootMemberOfSelf(member.base)
             case "setEventHandler", "setCancelHandler", "setRegistrationHandler":
                 kind = .dispatchSourceHandler
                 closureLabels = ["handler"]
@@ -934,6 +949,7 @@ final class FactsExtractor: SyntaxVisitor {
             repeats: repeatsLiteral(),
             targetIsSelf: targetIsSelf,
             receiverIsSelfMember: receiverIsSelfMember,
+            receiverRootMember: receiverRootMember,
             upstreamFiniteness: finiteness,
             upstreamRootMember: rootMember,
             closureSelfCapture: closureCapture,
@@ -951,6 +967,27 @@ final class FactsExtractor: SyntaxVisitor {
             ?? base?.as(DeclReferenceExprSyntax.self)?.baseName.text
         guard let name else { return false }
         return name.lowercased().hasSuffix("contentcontroller")
+    }
+
+    /// The stored member of `self` that a receiver chain starts from, through
+    /// member accesses, `?` and `!`: `webView` in
+    /// `self.webView.configuration.userContentController`. Nil when the chain
+    /// starts at a local, a parameter or anything else.
+    private func rootMemberOfSelf(_ base: ExprSyntax?) -> String? {
+        var current = base
+        while let expr = current {
+            if let name = memberOfSelfName(expr) { return name }
+            if let member = expr.as(MemberAccessExprSyntax.self) {
+                current = member.base
+            } else if let optional = expr.as(OptionalChainingExprSyntax.self) {
+                current = optional.expression
+            } else if let forced = expr.as(ForceUnwrapExprSyntax.self) {
+                current = forced.expression
+            } else {
+                return nil
+            }
+        }
+        return nil
     }
 
     /// Operators that force completion regardless of what feeds them.
