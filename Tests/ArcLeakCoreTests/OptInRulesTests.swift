@@ -66,6 +66,46 @@ import Testing
         #expect(findings.first?.message.contains("'delegate'") == true)
     }
 
+    /// The back-reference shapes of public delegate leak fixes, pinned as the
+    /// rule sees them today: name or declared type ending in delegate or data
+    /// source, strong and stored. A strong back-reference named otherwise (a
+    /// parent coordinator) is outside the heuristic.
+    private let delegateShapes = """
+        protocol LoginFlowDelegate: AnyObject {}
+        final class AppCoordinator {}
+        final class ListDataSource {}
+        final class SheetDelegate {}
+
+        final class LoginViewController {
+            var delegate: (any LoginFlowDelegate)?
+            let flowDelegate: AppCoordinator
+            var tableDataSource: ListDataSource?
+            var handler: SheetDelegate?
+            var parentCoordinator: AppCoordinator?
+            weak var weakDelegate: (any LoginFlowDelegate)?
+            unowned let dataSource: ListDataSource
+            var delegates: [AppCoordinator] = []
+            var computedDelegate: SheetDelegate? { nil }
+
+            init(flowDelegate: AppCoordinator, dataSource: ListDataSource) {
+                self.flowDelegate = flowDelegate
+                self.dataSource = dataSource
+            }
+        }
+        """
+
+    @Test("delegate-strong-property: the delegate shapes of public fixes")
+    func delegateShapesWhenEnabled() {
+        #expect(Analyzer().analyze(source: delegateShapes, path: "Login.swift").findings.isEmpty)
+        let configuration = Configuration(
+            rules: ["delegate-strong-property": .init(enabled: true)]
+        )
+        let findings = Analyzer(configuration: configuration)
+            .analyze(source: delegateShapes, path: "Login.swift").findings
+        #expect(findings.map(\.rule).allSatisfy { $0 == .delegateStrongProperty })
+        #expect(findings.map(\.line) == [7, 8, 9, 10])
+    }
+
     private let vaultSource = """
         import Foundation
 
