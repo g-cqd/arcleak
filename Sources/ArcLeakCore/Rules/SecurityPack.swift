@@ -5,6 +5,11 @@
 /// `sec-cleanup-in-unreachable-deinit` (CWE-401, CWE-226): the type's deinit
 /// wipes bytes, invalidates, closes, cancels or removes something, and a cycle
 /// reported on the same type keeps it alive, so that cleanup never runs.
+///
+/// `sec-session-in-cycle` (CWE-401): a tag, not a finding of its own. When the
+/// type holds a web view, an authentication context or session, or a URL
+/// session with a delegate, each cycle finding on it gets a note saying what
+/// the cycle keeps alive.
 enum SecurityPack {
     /// Findings meaning "this instance can never deinit": a cycle through
     /// `self`, or an anchor (run loop, notification center, session, user
@@ -26,6 +31,14 @@ enum SecurityPack {
     ) -> [Finding] {
         guard let cycle = findings.filter({ keepsSelfAlive.contains($0.rule) }).min() else { return findings }
         var result = findings
+        if configuration.isEnabled(.secSessionInCycle) {
+            let held = sensitiveHeld(by: type)
+            if !held.isEmpty {
+                let tag =
+                    "security (sec-session-in-cycle, CWE-401): this cycle keeps \(held.joined(separator: ", ")) alive with '\(type.name)' — authenticated state outlives the object that owns it"
+                result = result.map { keepsSelfAlive.contains($0.rule) ? $0.adding(note: tag) : $0 }
+            }
+        }
         if configuration.isEnabled(.secCleanupInUnreachableDeinit),
             let cleanup = unreachableCleanup(type: type, cycle: cycle, path: path, configuration: configuration)
         {
@@ -54,6 +67,30 @@ enum SecurityPack {
             note:
                 "CWE-401/CWE-226: break the cycle, and move cleanup that must happen (wiping secrets, invalidating sessions, closing handles) to a reachable teardown path"
         )
+    }
+
+    /// Sensitive objects the type keeps, by declared type name (SDK types are
+    /// matched by name: no index is needed). A URL session counts only when
+    /// the type creates one with a delegate; a web view also counts when the
+    /// type registers a script message handler.
+    private static func sensitiveHeld(by type: TypeFacts) -> [String] {
+        let declared = Set(
+            type.storedProperties.filter { $0.strength == .strong }.flatMap(\.referencedTypeNames)
+        )
+        var held: [String] = []
+        if declared.contains("WKWebView") || type.apiCalls.contains(where: { $0.kind == .scriptMessageHandlerAdd }) {
+            held.append("a WKWebView")
+        }
+        if declared.contains("LAContext") {
+            held.append("an LAContext")
+        }
+        if declared.contains("ASWebAuthenticationSession") {
+            held.append("an ASWebAuthenticationSession")
+        }
+        if type.apiCalls.contains(where: { $0.kind == .urlSessionWithDelegate }) {
+            held.append("a URLSession with a delegate")
+        }
+        return held
     }
 
     /// In report order.

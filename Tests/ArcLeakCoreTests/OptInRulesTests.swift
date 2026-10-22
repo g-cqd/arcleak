@@ -114,4 +114,48 @@ import Testing
         #expect(cleanup.message.contains("deinit of 'KeyVault' wipes memory"))
         #expect(cleanup.message.contains("stored-closure-strong-self"))
     }
+
+    private let webSource = """
+        import WebKit
+
+        final class LoginController {
+            let webView = WKWebView()
+            var onDone: (() -> Void)?
+
+            func arm() {
+                onDone = { self.finish() }
+            }
+
+            func finish() {}
+        }
+
+        final class PlainController {
+            var onDone: (() -> Void)?
+
+            func arm() {
+                onDone = { self.finish() }
+            }
+
+            func finish() {}
+        }
+        """
+
+    @Test("sec-session-in-cycle tags cycle findings on a type holding a web view, and adds no finding")
+    func secSessionTag() throws {
+        let plain = Analyzer().analyze(source: webSource, path: "Login.swift").findings
+        #expect(plain.map(\.rule) == [.storedClosureStrongSelf, .storedClosureStrongSelf])
+        #expect(plain.allSatisfy { $0.note?.contains("sec-session-in-cycle") != true })
+
+        let configuration = Configuration(rules: ["sec-session-in-cycle": .init(enabled: true)])
+        let tagged = Analyzer(configuration: configuration)
+            .analyze(source: webSource, path: "Login.swift").findings
+        #expect(tagged.map(\.rule) == [.storedClosureStrongSelf, .storedClosureStrongSelf])
+        let login = try #require(tagged.first { $0.line == 8 })
+        let tag = "security (sec-session-in-cycle, CWE-401): this cycle keeps a WKWebView alive"
+        #expect(login.note?.contains(tag) == true)
+        let other = try #require(tagged.first { $0.line == 18 })
+        #expect(other.note?.contains("sec-session-in-cycle") != true)
+        // The note is not part of the fingerprint: baselines keep matching.
+        #expect(login.fingerprint == plain.first { $0.line == 8 }?.fingerprint)
+    }
 }
