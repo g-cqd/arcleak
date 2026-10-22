@@ -437,7 +437,7 @@ capturing `self` strongly) is flagged; the same call with `[weak self]` is not.
 | `dispatch-source-cycle` | error | dispatch source stored on `self` whose handler captures `self` strongly, no reachable `cancel()` |
 | `unowned-outlives-owner` | warning | `[unowned self]` in an anchor-held closure — traps if `self` deallocates first |
 | `webview-script-handler-cycle` | warning† | `userContentController.add(self, name:)` (or `add(_:contentWorld:name:)`) with no reachable `removeScriptMessageHandler(forName:)` or `removeAllScriptMessageHandlers()`; the deinit-only **error** needs a strong stored web view, configuration or content controller on the type (without one, a deinit-only removal is silent and a missing removal is an "observed" warning) |
-| `kvo-observation-self-cycle` | warning | `self.<obs> = <x>.observe(\.keyPath) { … self … }` where `<x>` is `self` or a member of `self` and the change handler captures `self` strongly |
+| `kvo-observation-self-cycle` | warning | `self.<obs> = <x>.observe(\.keyPath) { … self … }` (any observed object `<x>`) whose change handler captures `self` strongly, with no reachable `invalidate()` in the type |
 | `dead-weak-capture` | warning, opt-in | `[weak self]` whose body never uses `self` |
 | `delegate-strong-property` | warning, opt-in | strong stored property named/typed like a delegate |
 | `sec-session-in-cycle` | opt-in tag | security (CWE-401): adds a note to each cycle finding on a type that keeps a `WKWebView`, `LAContext`, `ASWebAuthenticationSession` or a `URLSession` with a delegate; no finding of its own |
