@@ -5,10 +5,10 @@
 ///
 /// One level down, `self.toolbar.onTap = { self.… }` (or `.append`) closes the
 /// same loop through a child `self` owns: self → toolbar → onTap → self. The
-/// child must be a strong stored property of this type (extraction drops weak
-/// or unowned children, locals, and children typed as a struct or enum of the
-/// same file). Warning, not error: a child may clear its callback after
-/// firing, which the source of `self` cannot show.
+/// child must be a strong stored property of this type, of any type: a struct
+/// child is stored inline in `self` (extraction drops weak or unowned
+/// children, locals and computed properties). Warning, not error: a child may
+/// clear its callback after firing, which the source of `self` cannot show.
 struct StoredClosureStrongSelfRule: Rule {
     static let emits: [RuleID] = [.storedClosureStrongSelf]
 
