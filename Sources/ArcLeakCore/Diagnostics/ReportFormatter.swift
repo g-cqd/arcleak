@@ -154,6 +154,12 @@ public enum ReportFormatter {
         let id: String
         let shortDescription: SarifText
         let help: SarifText
+        /// `tags` for the security pack's rules (nil, so omitted, otherwise).
+        let properties: SarifRuleProperties?
+    }
+
+    private struct SarifRuleProperties: Encodable {
+        let tags: [String]
     }
 
     private struct SarifText: Encodable {
@@ -271,7 +277,8 @@ public enum ReportFormatter {
                             SarifRuleDescriptor(
                                 id: $0.rawValue,
                                 shortDescription: SarifText(text: $0.summary),
-                                help: SarifText(text: $0.explanation)
+                                help: SarifText(text: $0.explanation),
+                                properties: $0.securityTags.map(SarifRuleProperties.init(tags:))
                             )
                         }
                     )),
