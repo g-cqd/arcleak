@@ -35,6 +35,7 @@ public enum RuleEngine {
         UnownedOutlivesOwnerRule.self,
         DeadWeakCaptureRule.self,
         DelegateStrongPropertyRule.self,
+        WebViewScriptHandlerRule.self,
     ]
 
     private static let corpusRules: [any CorpusRule.Type] = [

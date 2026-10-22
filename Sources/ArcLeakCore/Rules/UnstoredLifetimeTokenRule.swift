@@ -99,7 +99,7 @@ struct UnstoredLifetimeTokenRule: Rule {
         case .kvoObserve: "the NSKeyValueObservation"
         case .periodicTimeObserver: "the time-observer token"
         case .timerScheduledBlock, .timerScheduledTarget, .displayLinkTarget,
-            .urlSessionWithDelegate, .dispatchSourceHandler:
+            .urlSessionWithDelegate, .dispatchSourceHandler, .scriptMessageHandlerAdd:
             "the token"
         case .userTokenProducer(let name), .userSinkWrapper(let name):
             name
@@ -117,7 +117,7 @@ struct UnstoredLifetimeTokenRule: Rule {
         case .periodicTimeObserver:
             "the observer cannot be removed and callbacks may stop or leak"
         case .timerScheduledBlock, .timerScheduledTarget, .displayLinkTarget,
-            .urlSessionWithDelegate, .dispatchSourceHandler:
+            .urlSessionWithDelegate, .dispatchSourceHandler, .scriptMessageHandlerAdd:
             "the work it owns stops immediately"
         case .userTokenProducer:
             "the work it owns stops immediately (user contract)"

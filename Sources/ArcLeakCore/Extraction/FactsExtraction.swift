@@ -752,6 +752,13 @@ final class FactsExtractor: SyntaxVisitor {
             case "addPeriodicTimeObserver":
                 kind = .periodicTimeObserver
                 closureLabels = ["using"]
+            case _
+            where ["add", "addScriptMessageHandler"].contains(callee) && labels.contains("name")
+                && Self.isUserContentController(member.base):
+                kind = .scriptMessageHandlerAdd
+                if let handler = node.arguments.first, handler.label == nil {
+                    targetIsSelf = isSelf(handler.expression)
+                }
             case "setEventHandler", "setCancelHandler", "setRegistrationHandler":
                 kind = .dispatchSourceHandler
                 closureLabels = ["handler"]
@@ -836,6 +843,17 @@ final class FactsExtractor: SyntaxVisitor {
             selfCaptureViaNestedListOnly: nestedListOnly,
             consumption: classifyConsumption(of: node)
         )
+    }
+
+    /// `webView.configuration.userContentController`, or any receiver whose
+    /// last name component ends in `ContentController` (a local or property
+    /// holding a `WKUserContentController`).
+    private static func isUserContentController(_ base: ExprSyntax?) -> Bool {
+        let name: String? =
+            base?.as(MemberAccessExprSyntax.self)?.declName.baseName.text
+            ?? base?.as(DeclReferenceExprSyntax.self)?.baseName.text
+        guard let name else { return false }
+        return name.lowercased().hasSuffix("contentcontroller")
     }
 
     /// Operators that force completion regardless of what feeds them.
