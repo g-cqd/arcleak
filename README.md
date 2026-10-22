@@ -374,6 +374,21 @@ all must be present to match), `tokenName` (optional diagnostic name), and
   `.sink`. Because the real upstream is hidden inside the wrapper, completion is
   unknown, so the finding is a `warning` with an explicit "completion could not
   be determined" note rather than an over-claimed `error`.
+- **`disposeBag`** — an RxSwift-style subscription whose closure is analyzed
+  for strong-`self` capture and whose Disposable goes into a bag on `self`
+  through a chained `.disposed(by:)` or `addDisposableTo(_:)`, or is assigned to
+  a member of `self`. Reports `combine-sink-self-cycle` as a `warning`; silent
+  for finite sources (`Single`, `Completable`, `Maybe`, `just`, `take(1)`,
+  `first()`, `subscribe(onSuccess:)`). Built in for `subscribe`, `bind` and
+  `drive`.
+- **`signalDisposable`** — a SwiftSignalKit-style subscription whose
+  Disposable is passed to `self.<disposable>.set(_:)` or `.add(_:)`, or assigned
+  to a member of `self`. Same report and finiteness rules. Built in for
+  `start(next:)` (declare it with `"requiredLabels": ["next"]` for other
+  callees of that shape).
+
+A dropped reactive Disposable does not end its subscription, so the two
+reactive templates feed only the cycle rule, never the premature-release rules.
 
 With the contract above, `becomeInactiveTask = React.to(.willResignActive) { _ in
 self.disconnect() }` (the `AnyCancellable` stored on `self`, the closure
@@ -410,7 +425,7 @@ capturing `self` strongly) is flagged; the same call with `[weak self]` is not.
 | id | default | detects |
 |---|---|---|
 | `stored-closure-strong-self` | error‡ | closure stored on `self` (property, `lazy` initializer, member collection) capturing `self` strongly; also one level down, on a child `self` owns through a strong stored property (`self.toolbar.onTap = { self… }`, `.append`) |
-| `combine-sink-self-cycle` | error | strong-`self` `sink` whose `AnyCancellable` is stored on `self` — including `self` captured only to feed a nested closure's `[weak self]` |
+| `combine-sink-self-cycle` | error | strong-`self` `sink` whose `AnyCancellable` is stored on `self` — including `self` captured only to feed a nested closure's `[weak self]`; also, as a warning, RxSwift `subscribe(onNext:)`/`bind`/`drive` + `.disposed(by:)` into a bag on `self`, and SwiftSignalKit `start(next:)` kept in a disposable on `self` (finite sources stay silent) |
 | `combine-assign-self-cycle` | error | `assign(to:on: self)` with the cancellable stored on `self` |
 | `timer-retains-self` | warning† | repeating `Timer`/`CADisplayLink` retaining `self` with no reachable `invalidate()` |
 | `notification-observer-leak` | warning† | strong-`self` block observer; the center holds block and token until removal |

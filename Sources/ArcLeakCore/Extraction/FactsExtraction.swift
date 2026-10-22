@@ -594,12 +594,10 @@ final class FactsExtractor: SyntaxVisitor {
     /// their closure argument analyzed for a strong-`self` cycle exactly like
     /// `.sink` (`React.to { self.… }` stored on `self`).
     private func matchUserContract(_ node: FunctionCallExprSyntax) -> APICallFact? {
-        guard !userContracts.isEmpty,
-            let member = node.calledExpression.as(MemberAccessExprSyntax.self)
-        else { return nil }
+        guard let member = node.calledExpression.as(MemberAccessExprSyntax.self) else { return nil }
         let callee = member.declName.baseName.text
         let labels = node.arguments.compactMap { $0.label?.text }
-        for contract in userContracts where contract.callee == callee {
+        for contract in userContracts + Self.builtInContracts where contract.callee == callee {
             if let base = contract.base,
                 member.base?.as(DeclReferenceExprSyntax.self)?.baseName.text != base
             {
@@ -634,10 +632,97 @@ final class FactsExtractor: SyntaxVisitor {
                     selfCaptureViaNestedListOnly: nestedListOnly,
                     consumption: classifyConsumption(of: node)
                 )
+            case .disposeBag, .signalDisposable:
+                // Only a Disposable that `self` keeps matters: a reactive
+                // subscription is not ended by dropping its Disposable, so
+                // nothing else here is a finding.
+                let consumption = classifyReactiveConsumption(of: node)
+                guard consumption.storesIntoSelf else { return nil }
+                return APICallFact(
+                    kind: .reactiveSubscription(name),
+                    position: position(of: node),
+                    repeats: nil,
+                    targetIsSelf: false,
+                    upstreamFiniteness: reactiveFiniteness(of: node, labels: labels),
+                    closureSelfCapture: capture,
+                    selfCaptureViaNestedListOnly: nestedListOnly,
+                    consumption: consumption
+                )
             }
         }
         return nil
     }
+
+    /// Reactive subscriptions matched with no configuration: RxSwift's
+    /// `subscribe`/`bind`/`drive` and SwiftSignalKit's `start(next:)`. User
+    /// contracts are tried first, so a user can redeclare any of these names.
+    private static let builtInContracts: [Configuration.UserContract] = [
+        .init(callee: "subscribe", tokenName: "the subscription's Disposable", template: .disposeBag),
+        .init(callee: "bind", tokenName: "the subscription's Disposable", template: .disposeBag),
+        .init(callee: "drive", tokenName: "the subscription's Disposable", template: .disposeBag),
+        .init(
+            callee: "start",
+            requiredLabels: ["next"],
+            tokenName: "the signal's Disposable",
+            template: .signalDisposable
+        ),
+    ]
+
+    /// Where a reactive Disposable goes: a chained `.disposed(by: bag)` or
+    /// `.addDisposableTo(bag)` stores it in `bag`; an argument of
+    /// `self.<disposable>.set(_:)` / `.add(_:)` stores it in that member;
+    /// otherwise the ordinary classification (assignment, local, discard).
+    private func classifyReactiveConsumption(of node: FunctionCallExprSyntax) -> ResultConsumption {
+        if let member = node.parent?.as(MemberAccessExprSyntax.self),
+            member.base?.id == node.id,
+            let chained = member.parent?.as(FunctionCallExprSyntax.self),
+            chained.calledExpression.id == member.id,
+            let bag = chained.arguments.first
+        {
+            let name = member.declName.baseName.text
+            if (name == "disposed" && bag.label?.text == "by") || (name == "addDisposableTo" && bag.label == nil) {
+                return .chainedStoreIn(memberOfSelf: memberOfSelfName(bag.expression) != nil)
+            }
+        }
+        if let argument = node.parent?.as(LabeledExprSyntax.self),
+            argument.label == nil,
+            let call = argument.parent?.parent?.as(FunctionCallExprSyntax.self),
+            let setter = call.calledExpression.as(MemberAccessExprSyntax.self),
+            ["set", "add"].contains(setter.declName.baseName.text),
+            let base = setter.base,
+            let holder = memberOfSelfName(base)
+        {
+            return .storedToSelfMember(holder)
+        }
+        return classifyConsumption(of: node)
+    }
+
+    /// Sources and operators that complete: RxSwift's `Single`, `Completable`
+    /// and `Maybe` (and their `as…` conversions), `just`, `empty`, `first()`,
+    /// `take(1)` in the receiver, or a `subscribe(onSuccess:)` that only a
+    /// `Single` or `Maybe` offers. A completed subscription releases its
+    /// closures, so the cycle is transient.
+    private func reactiveFiniteness(
+        of node: FunctionCallExprSyntax,
+        labels: [String]
+    ) -> APICallFact.UpstreamFiniteness {
+        if labels.contains("onSuccess") { return .finite }
+        guard let receiver = node.calledExpression.as(MemberAccessExprSyntax.self)?.base else {
+            return .unknown
+        }
+        let tokens = receiver.tokens(viewMode: .sourceAccurate).map(\.text)
+        for (index, token) in tokens.enumerated() {
+            if Self.finiteReactiveMarkers.contains(token) { return .finite }
+            if token == "take", tokens.dropFirst(index + 1).prefix(3).elementsEqual(["(", "1", ")"]) {
+                return .finite
+            }
+        }
+        return .unknown
+    }
+
+    private static let finiteReactiveMarkers: Set<String> = [
+        "Single", "Completable", "Maybe", "asSingle", "asCompletable", "asMaybe", "just", "empty", "first",
+    ]
 
     /// Strongest `self` capture across every closure a wrapper call carries —
     /// trailing, additional-trailing, and closure-literal arguments — plus
