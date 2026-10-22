@@ -632,8 +632,16 @@ final class FactsExtractor: SyntaxVisitor {
             case .disposeBag, .signalDisposable:
                 // Only a Disposable that `self` keeps matters: a reactive
                 // subscription is not ended by dropping its Disposable, so
-                // nothing else here is a finding.
+                // nothing else here is a finding. A bag subscription counts
+                // only through `.disposed(by: self.<bag>)` or
+                // `addDisposableTo(self.<bag>)`: `subscribe`, `bind` and
+                // `drive` are common names, and a token that a home-grown bus
+                // returns and `self` assigns to a member is not provably a
+                // Disposable that keeps the closure.
                 let consumption = classifyReactiveConsumption(of: node)
+                if contract.template == .disposeBag, consumption != .chainedStoreIn(memberOfSelf: true) {
+                    return nil
+                }
                 guard consumption.storesIntoSelf else { return nil }
                 return APICallFact(
                     kind: .reactiveSubscription(name),

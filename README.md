@@ -376,11 +376,12 @@ all must be present to match), `tokenName` (optional diagnostic name), and
   be determined" note rather than an over-claimed `error`.
 - **`disposeBag`** — an RxSwift-style subscription whose closure is analyzed
   for strong-`self` capture and whose Disposable goes into a bag on `self`
-  through a chained `.disposed(by:)` or `addDisposableTo(_:)`, or is assigned to
-  a member of `self`. Reports `combine-sink-self-cycle` as a `warning`; silent
-  for finite sources (`Single`, `Completable`, `Maybe`, `just`, `take(1)`,
-  `first()`, `subscribe(onSuccess:)`). Built in for `subscribe`, `bind` and
-  `drive`.
+  through a chained `.disposed(by:)` or `addDisposableTo(_:)`. Reports
+  `combine-sink-self-cycle` as a `warning`; silent for finite sources
+  (`Single`, `Completable`, `Maybe`, `just`, `take(1)`, `first()`,
+  `subscribe(onSuccess:)`). Built in for `subscribe`, `bind` and `drive`. A
+  result assigned to a member of `self` does not count: those names are also
+  used by home-grown event buses, whose tokens need not keep the closure.
 - **`signalDisposable`** — a SwiftSignalKit-style subscription whose
   Disposable is passed to `self.<disposable>.set(_:)` or `.add(_:)`, or assigned
   to a member of `self`. Same report and finiteness rules. Built in for
