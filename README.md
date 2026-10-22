@@ -17,15 +17,23 @@ Three families of memory bugs:
   that dies at scope end, silently stopping the work they own.
 
 What arcleak deliberately does **not** flag: transient escapes (completion
-handlers, finite `Task`s — deferred deallocation, not leaks), non-escaping
+handlers, finite `Task`s — deferred deallocation, not leaks — except a `Task`
+stored on `self` and cancelled only in `deinit`), non-escaping
 closures, value-type `self` (SwiftUI bodies), the same-lifetime
 `[unowned self]` pattern, sinks over provably finite pipelines, SwiftData
 `@Model` relationships (macro-managed storage), and tokens that are a
 function's return value. A clean-fixture corpus gates false positives in CI.
 
-Every retention contract the rules encode is runtime-proven: the leak oracle
-(`Scripts/run-leak-oracle.sh`) reconstructs each one and verifies it with
-`leaks -atExit` and deinit canaries on every macOS CI run.
+The retention contracts of the original anchor and cycle rules (stored
+closures, Combine `sink` and `assign`, timers, notification observers,
+`URLSession` delegates, dispatch sources, tasks, mutual strong properties)
+are runtime-proven: the leak oracle (`Scripts/run-leak-oracle.sh`)
+reconstructs each one and verifies it with `leaks -atExit` and deinit
+canaries on every macOS CI run. The oracle does not cover
+`webview-script-handler-cycle`, `kvo-observation-self-cycle`, the RxSwift and
+SwiftSignalKit subscriptions of `combine-sink-self-cycle`, or closures stored
+on an owned child: those rest on documented or observed behaviour and on
+public fixes, cited in each rule's explanation (`arcleak rules <id>`).
 
 ## Requirements
 
@@ -441,8 +449,8 @@ capturing `self` strongly) is flagged; the same call with `[weak self]` is not.
 | `kvo-observation-self-cycle` | warning | `self.<obs> = <x>.observe(\.keyPath) { … self … }` (any observed object `<x>`) whose change handler captures `self` strongly, with no reachable `invalidate()` in the type |
 | `dead-weak-capture` | warning, opt-in | `[weak self]` whose body never uses `self` |
 | `delegate-strong-property` | warning, opt-in | strong stored property named/typed like a delegate |
-| `sec-session-in-cycle` | opt-in tag | security (CWE-401): adds a note to each cycle finding on a type that keeps a `WKWebView`, `LAContext`, `ASWebAuthenticationSession` or a `URLSession` with a delegate; no finding of its own |
-| `sec-cleanup-in-unreachable-deinit` | note, opt-in | security (CWE-401, CWE-226): a `deinit` that wipes bytes, invalidates a session, closes a handle or cancels work, in a type kept alive by a cycle reported on that type |
+| `sec-session-in-cycle` | opt-in tag | security (CWE-401): adds a note to each cycle finding on a type that keeps a `WKWebView`, `LAContext`, `ASWebAuthenticationSession` or a `URLSession` with a delegate; no finding of its own. `@al:disable` has no effect on it, since it emits no findings to suppress: turn it off in `.arcleak.json` |
+| `sec-cleanup-in-unreachable-deinit` | note, opt-in | security (CWE-401, CWE-226): a `deinit` that wipes bytes, invalidates a session, closes a handle or cancels work, in a type that a cycle or anchor finding on that type may keep alive |
 
 Security pack: the `sec-` rules ship disabled and are enabled one by one in
 `.arcleak.json`, like the other opt-in rules (`{"rules":
