@@ -429,7 +429,7 @@ capturing `self` strongly) is flagged; the same call with `[weak self]` is not.
 | `combine-assign-self-cycle` | error | `assign(to:on: self)` with the cancellable stored on `self` |
 | `timer-retains-self` | warning† | repeating `Timer`/`CADisplayLink` retaining `self` with no reachable `invalidate()` |
 | `notification-observer-leak` | warning† | strong-`self` block observer; the center holds block and token until removal |
-| `task-nonterminating-self` | warning† | `while true`/`for await` `Task` capturing `self` strongly |
+| `task-nonterminating-self` | warning† | `while true`/`for await` `Task` capturing `self` strongly; also a `Task` stored on `self` whose body awaits, captures `self` strongly and is cancelled only in `deinit` (warning) |
 | `unstored-lifetime-token` | warning | lifetime token discarded — from framework APIs or same-file functions whose return type is a token |
 | `token-stored-in-local` | warning | token bound to storage that dies at scope end, or to a local captured by an escaping closure (never removed → unbounded growth) |
 | `mutual-strong-properties` | warning | cross-file ownership-graph cycle: strong stored properties whose types point at each other, reported with the retention path |
@@ -444,8 +444,9 @@ Bound method references (`handler = self.method`, `sink(receiveValue:
 handle)`) and self-referencing local functions passed as values feed the same
 capture pipeline as closures.
 
-† upgraded to **error** when the only release call sits in `deinit` (or the
-task handle is stored on `self`) — the release is unreachable by construction.
+† upgraded to **error** when the only release call sits in `deinit` (or a
+non-terminating task's handle is stored on `self`) — the release is
+unreachable by construction.
 
 ‡ the owned-child path reports a **warning**: a child may clear its callback
 after firing, which the owner's source cannot show.

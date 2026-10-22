@@ -367,7 +367,8 @@ final class FactsExtractor: SyntaxVisitor {
                     position: spawn.position,
                     selfCapture: spawn.selfCapture,
                     hasNonterminatingBody: spawn.hasNonterminatingBody,
-                    consumption: finalize(spawn.consumption)
+                    consumption: finalize(spawn.consumption),
+                    bodyAwaits: spawn.bodyAwaits
                 )
             )
         }
@@ -1044,7 +1045,8 @@ final class FactsExtractor: SyntaxVisitor {
             position: position(of: node),
             selfCapture: analysis.selfCapture,
             hasNonterminatingBody: analysis.hasNonterminatingBody,
-            consumption: classifyConsumption(of: node)
+            consumption: classifyConsumption(of: node),
+            bodyAwaits: analysis.hasAwait
         )
     }
 
