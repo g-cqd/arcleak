@@ -1,3 +1,5 @@
+import ProjectModel
+
 /// `<…>.userContentController.add(self, name:)` — the user content controller
 /// keeps its script message handlers until they are removed, and the web
 /// view's configuration keeps the controller, so `self` lives as long as the

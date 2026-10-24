@@ -1,3 +1,5 @@
+import ProjectModel
+
 /// `.assign(to: \.…, on: self)` with the cancellable stored on `self`. Apple's
 /// documentation is explicit: "The Subscribers.Assign instance created by this
 /// operator maintains a strong reference to `object`" — with a never-completing

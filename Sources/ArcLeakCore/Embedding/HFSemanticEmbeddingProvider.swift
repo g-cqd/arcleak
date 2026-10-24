@@ -1,4 +1,5 @@
 #if canImport(CoreML)
+    import WordPiece
     import CoreML
     public import Foundation
 
