@@ -1,4 +1,5 @@
 import ArcLeakCore
+import ProjectModel
 import Testing
 
 /// Precision pins: every false-positive-prone shape is asserted twice — the

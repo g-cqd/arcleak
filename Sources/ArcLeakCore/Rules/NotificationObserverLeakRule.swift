@@ -1,3 +1,5 @@
+import ProjectModel
+
 /// Block-based `addObserver(forName:object:queue:using:)` with a strong `self`
 /// capture. Per Foundation docs the center "strongly holds the copied block
 /// until you remove the observer registration" — so the center anchors `self`.

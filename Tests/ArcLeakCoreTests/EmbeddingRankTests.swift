@@ -1,3 +1,5 @@
+import ProjectModel
+
 #if canImport(NaturalLanguage)
     import ArcLeakCore
     import Foundation

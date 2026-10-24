@@ -1,3 +1,5 @@
+import ProjectModel
+
 /// `self.handler = { self.… }` — a closure stored on the instance capturing the
 /// instance strongly is a guaranteed retain cycle (self → property → closure →
 /// self). Gated on the enclosing type being a known reference type: struct
