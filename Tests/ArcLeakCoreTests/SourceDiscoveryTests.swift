@@ -1,5 +1,6 @@
 import ArcLeakCore
 import Foundation
+import SourceCorpus
 import Testing
 
 /// The directory walk follows symlinked directories — a linked `Sources/` is a

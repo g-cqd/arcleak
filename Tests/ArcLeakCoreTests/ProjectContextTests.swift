@@ -1,5 +1,6 @@
 import ArcLeakCore
 import Foundation
+import SourceCorpus
 import Testing
 
 /// Where a type lives changes what its leak costs: previews and generated
@@ -36,7 +37,7 @@ import Testing
             try FileManager.default.createDirectory(
                 at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try Data(contents.utf8).write(to: url)
-            if SourceDiscovery.isProjectFile(url.path) {
+            if ProjectFileDiscovery.isProjectFile(url.path) {
                 projectFiles.append(url.path)
             } else {
                 swiftFiles.append(url.path)

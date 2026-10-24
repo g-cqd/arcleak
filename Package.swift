@@ -52,7 +52,7 @@ let package = Package(
         // generated files, platforms and system entry points.
         .package(
             url: "https://github.com/g-cqd/analyzerkit.git",
-            revision: "727e8ca12c0c3c0bd71d1369a3c6a71724362f75"
+            revision: "6f2ac674dfde1e5e37ecba22009a25336eb92280"
         ),
     ],
     targets: [
@@ -64,6 +64,7 @@ let package = Package(
                 .product(name: "SwiftIfConfig", package: "swift-syntax"),
                 .product(name: "AemiJSON", package: "AemiJSON"),
                 .product(name: "ProjectModel", package: "analyzerkit"),
+                .product(name: "SourceCorpus", package: "analyzerkit"),
                 .product(
                     name: "IndexStoreDB",
                     package: "indexstore-db",
@@ -76,6 +77,7 @@ let package = Package(
             name: "arcleak",
             dependencies: [
                 "ArcLeakCore",
+                .product(name: "SourceCorpus", package: "analyzerkit"),
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "SystemPackage", package: "swift-system"),
             ],
@@ -108,7 +110,7 @@ let package = Package(
         ),
         .testTarget(
             name: "ArcLeakCoreTests",
-            dependencies: ["ArcLeakCore"],
+            dependencies: ["ArcLeakCore", .product(name: "SourceCorpus", package: "analyzerkit")],
             resources: [.copy("Fixtures")],
             swiftSettings: strictSwiftSettings
         ),
