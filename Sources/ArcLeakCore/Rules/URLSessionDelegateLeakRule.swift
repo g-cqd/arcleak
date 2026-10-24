@@ -1,3 +1,5 @@
+import ProjectModel
+
 /// `URLSession(configuration:delegate: self, …)` — the docs mandate this rule
 /// verbatim: "The session object keeps a strong reference to the delegate
 /// until your app exits or explicitly invalidates the session. If you do not

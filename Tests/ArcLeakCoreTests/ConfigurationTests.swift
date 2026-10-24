@@ -1,5 +1,6 @@
 import ArcLeakCore
 import Foundation
+import ProjectModel
 import Testing
 
 @Suite struct ConfigurationTests {
