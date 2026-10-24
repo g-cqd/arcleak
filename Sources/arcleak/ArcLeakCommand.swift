@@ -1,6 +1,7 @@
 import ArcLeakCore
 public import ArgumentParser
 import ProjectModel
+import SourceCorpus
 import SystemPackage
 
 #if canImport(FoundationEssentials)
@@ -695,7 +696,7 @@ struct Analyze: AsyncParsableCommand {
                 throw ValidationError("no such file or directory: \(path)")
             }
             if type != .typeDirectory {
-                if SourceDiscovery.isProjectFile(path) {
+                if ProjectFileDiscovery.isProjectFile(path) {
                     projectFiles.insert(URL(fileURLWithPath: path).path)
                 } else {
                     files.insert(URL(fileURLWithPath: path).path)
@@ -704,7 +705,7 @@ struct Analyze: AsyncParsableCommand {
             }
             files.formUnion(SourceDiscovery.swiftFiles(under: path, isExcluded: configuration.isExcluded(path:)))
             projectFiles.formUnion(
-                SourceDiscovery.projectFiles(under: path, isExcluded: configuration.isExcluded(path:)))
+                ProjectFileDiscovery.projectFiles(under: path, isExcluded: configuration.isExcluded(path:)))
         }
         return (files.sorted(), projectFiles.sorted())
     }
