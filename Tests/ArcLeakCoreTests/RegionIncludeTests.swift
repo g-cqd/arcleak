@@ -1,5 +1,6 @@
 import ArcLeakCore
 import Foundation
+import SourceCorpus
 import Testing
 
 /// `--include`/`--exclude`: a leak or cycle withheld because it lives in
@@ -38,7 +39,7 @@ import Testing
             try FileManager.default.createDirectory(
                 at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try Data(contents.utf8).write(to: url)
-            if SourceDiscovery.isProjectFile(url.path) {
+            if ProjectFileDiscovery.isProjectFile(url.path) {
                 projectFiles.append(url.path)
             } else {
                 swiftFiles.append(url.path)

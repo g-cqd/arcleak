@@ -4,6 +4,7 @@
 // slash formatting, which is harmless only here). `public import` because the
 // hand-written `Entry` fast conformance below is public API of the public type.
 public import AemiJSON
+public import SourceCorpus
 
 #if canImport(FoundationEssentials)
     public import FoundationEssentials
