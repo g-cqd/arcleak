@@ -1,5 +1,6 @@
 import ArcLeakCore
 import Foundation
+import ProjectModel
 import Testing
 
 /// The `disposeBag` and `signalDisposable` contract templates: built in for

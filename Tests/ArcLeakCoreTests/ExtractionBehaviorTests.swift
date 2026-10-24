@@ -1,4 +1,5 @@
 import ArcLeakCore
+import ProjectModel
 import Testing
 
 /// Adversarial checks of capture semantics through the public API — every case

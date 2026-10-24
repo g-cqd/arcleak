@@ -1,4 +1,5 @@
 import ArcLeakCore
+import ProjectModel
 import SystemPackage
 
 #if canImport(FoundationEssentials)

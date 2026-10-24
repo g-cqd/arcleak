@@ -1,3 +1,5 @@
+import ProjectModel
+
 /// Repeating `Timer` / `CADisplayLink` anchored on a run loop while retaining
 /// `self` (via `target:` or a strong block capture).
 ///

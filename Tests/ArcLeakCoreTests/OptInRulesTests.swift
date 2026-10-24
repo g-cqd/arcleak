@@ -1,4 +1,5 @@
 import ArcLeakCore
+import ProjectModel
 import Testing
 
 /// The opt-in rules: disabled by default, precise when enabled.
