@@ -1,3 +1,5 @@
+public import ProjectModel
+
 /// Stable public identifiers for every diagnostic rule.
 ///
 /// These are API: they appear in config files, suppression comments, baselines,

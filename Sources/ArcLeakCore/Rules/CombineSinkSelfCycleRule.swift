@@ -1,3 +1,5 @@
+import ProjectModel
+
 /// `publisher.sink { self.… }` stored into `self`'s cancellables — closed cycle:
 /// self → cancellable set → AnyCancellable → sink closure → self. Also fires on
 /// user-declared `sinkWrapper` contracts (custom Combine wrappers like

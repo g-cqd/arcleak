@@ -1,3 +1,5 @@
+import ProjectModel
+
 /// `Task { while true { … } }` / `Task { for await … }` capturing `self`
 /// strongly. A task retains its captures until it completes; a task that never
 /// completes keeps `self` alive forever. If `self` also stores the handle, the
