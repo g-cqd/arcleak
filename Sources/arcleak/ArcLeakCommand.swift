@@ -449,7 +449,7 @@ struct Analyze: AsyncParsableCommand {
     ) async -> (any IndexReading)? {
         guard indexStore || indexStorePath != nil || indexStoreBuild else { return nil }
         let outcome = await IndexStoreResolution.resolve(
-            projectRoot: Self.projectRoot(for: files),
+            projectRoot: ProjectLayout.discover(paths: paths)?.root ?? FileManager.default.currentDirectoryPath,
             explicitStorePath: indexStorePath,
             autoBuild: indexStoreBuild,
             analyzedFiles: files,
@@ -459,24 +459,6 @@ struct Analyze: AsyncParsableCommand {
             standardError.write(Data("arcleak: \(note)\n".utf8))
         }
         return outcome.index
-    }
-
-    /// Nearest ancestor of the first analyzed file containing `Package.swift`,
-    /// else the current directory — the root for index-store discovery/build.
-    private static func projectRoot(for files: [String]) -> String {
-        let start =
-            files.first.map { URL(fileURLWithPath: $0).deletingLastPathComponent() }
-            ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-        var directory = start.standardizedFileURL
-        while directory.path != "/" {
-            if FileManager.default.fileExists(
-                atPath: directory.appendingPathComponent("Package.swift").path
-            ) {
-                return directory.path
-            }
-            directory = directory.deletingLastPathComponent()
-        }
-        return FileManager.default.currentDirectoryPath
     }
 
     /// Exit codes, so CI can tell "the gate found problems" from "the gate broke".

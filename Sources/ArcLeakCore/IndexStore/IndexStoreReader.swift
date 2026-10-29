@@ -1,6 +1,7 @@
 #if canImport(IndexStoreDB)
     public import Foundation
     import IndexStoreDB
+    import ProjectModel
 
     // MARK: - IndexStoreError
 
@@ -395,7 +396,8 @@
     /// is the probe used when none is given.
     public struct IndexStorePathFinder: Sendable {
         public static func findIndexStorePath(in projectRoot: String, derivedDataRoots: [String]? = nil) -> String? {
-            let buildDir = URL(fileURLWithPath: projectRoot).appendingPathComponent(".build")
+            guard let layout = ProjectLayout.discover(paths: [projectRoot]) else { return nil }
+            let buildDir = URL(fileURLWithPath: layout.root).appendingPathComponent(".build")
             // Only stores that record ABSOLUTE source paths are safe to query:
             // SourceKit-LSP's background index (`.build/index-build`), the classic
             // SwiftPM index (`.build/<config>/index/store`), arcleak's own
@@ -413,34 +415,13 @@
             for candidate in candidates where isPopulatedStore(candidate) {
                 return candidate.path
             }
-            return findDerivedDataStore(projectRoot: projectRoot)
-        }
-
-        private static func findDerivedDataStore(projectRoot: String) -> String? {
-            let derivedData = URL(fileURLWithPath: NSHomeDirectory())
-                .appendingPathComponent("Library/Developer/Xcode/DerivedData")
-            guard
-                let contents = try? FileManager.default.contentsOfDirectory(atPath: derivedData.path)
-            else { return nil }
-
-            let projectName = URL(fileURLWithPath: projectRoot).lastPathComponent
-            let normalized = normalizeProjectName(projectName)
-            for dir in contents.sorted()
-            where dirMatchesProject(dir, projectName: projectName, normalizedName: normalized) {
-                let dataStore =
-                    derivedData
-                    .appendingPathComponent(dir)
-                    .appendingPathComponent("Index.noindex")
-                    .appendingPathComponent("DataStore")
-                // libIndexStore is handed the store ROOT (the `-index-store-path`
-                // / `INDEX_DATA_STORE_DIR` value); it navigates the internal `vN`
-                // layout itself. Returning the versioned subdir instead makes
-                // per-file unit lookups miss (empirically a false-stale).
-                if isPopulatedStore(dataStore) {
-                    return dataStore.path
-                }
-            }
-            return nil
+            let roots =
+                derivedDataRoots ?? [
+                    URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(
+                        "Library/Developer/Xcode/DerivedData"
+                    ).path
+                ]
+            return layout.derivedDataStores(under: roots).first { isPopulatedStore(atPath: $0) }
         }
 
         /// A store is usable only if it actually holds index records — directly,
@@ -473,24 +454,5 @@
             return !(entries ?? []).isEmpty
         }
 
-        private static func normalizeProjectName(_ name: String) -> String {
-            let toReplace = CharacterSet(charactersIn: " -.")
-            var normalized = name
-            for scalar in name.unicodeScalars where toReplace.contains(scalar) {
-                normalized = normalized.replacingOccurrences(of: String(scalar), with: "_")
-            }
-            return normalized
-        }
-
-        private static func dirMatchesProject(
-            _ dir: String, projectName: String, normalizedName: String
-        ) -> Bool {
-            let components = dir.split(separator: "-", maxSplits: 1)
-            guard let first = components.first else { return false }
-            let name = String(first)
-            if name == projectName || name == normalizedName { return true }
-            if let decoded = name.removingPercentEncoding, decoded == projectName { return true }
-            return dir.contains(projectName) || dir.contains(normalizedName)
-        }
     }
 #endif
