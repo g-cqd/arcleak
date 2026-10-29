@@ -394,7 +394,7 @@
     /// DerivedData). An explicit `--index-store-path` always wins upstream; this
     /// is the probe used when none is given.
     public struct IndexStorePathFinder: Sendable {
-        public static func findIndexStorePath(in projectRoot: String) -> String? {
+        public static func findIndexStorePath(in projectRoot: String, derivedDataRoots: [String]? = nil) -> String? {
             let buildDir = URL(fileURLWithPath: projectRoot).appendingPathComponent(".build")
             // Only stores that record ABSOLUTE source paths are safe to query:
             // SourceKit-LSP's background index (`.build/index-build`), the classic
