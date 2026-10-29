@@ -1,0 +1,636 @@
+{
+  "analyzedFileCount" : 61,
+  "cacheHits" : 0,
+  "cacheMisses" : 60,
+  "degradedFiles" : [
+    {
+      "detail" : "not valid UTF-8",
+      "path" : "Goldens\/Corpus\/Bad.swift"
+    }
+  ],
+  "findings" : [
+    {
+      "column" : 9,
+      "fingerprint" : "d29a86241310b50e",
+      "fingerprintPath" : "Fixtures\/Corpus\/MutualPair\/OrderService.swift",
+      "line" : 5,
+      "message" : "potential retain cycle across types: OrderService → PaymentService → OrderService",
+      "note" : "strong links: OrderService.payments → PaymentService (Fixtures\/Corpus\/MutualPair\/OrderService.swift:5); PaymentService.orders → OrderService (Fixtures\/Corpus\/MutualPair\/PaymentService.swift:3) — make one direction weak (shorter-lived side) or unowned (same-or-longer lifetime); type-level analysis: verify which side owns the other",
+      "path" : "Fixtures\/Corpus\/MutualPair\/OrderService.swift",
+      "related" : [
+        {
+          "column" : 9,
+          "line" : 3,
+          "path" : "Fixtures\/Corpus\/MutualPair\/PaymentService.swift"
+        }
+      ],
+      "rule" : "mutual-strong-properties",
+      "severity" : "warning"
+    },
+    {
+      "column" : 9,
+      "fingerprint" : "5f5152d3c997ef1f",
+      "fingerprintPath" : "Fixtures\/Corpus\/Triangle\/Alpha.swift",
+      "line" : 5,
+      "message" : "potential retain cycle across types: Alpha → Beta → Gamma → Alpha",
+      "note" : "strong links: Alpha.beta → Beta (Fixtures\/Corpus\/Triangle\/Alpha.swift:5); Beta.gamma → Gamma (Fixtures\/Corpus\/Triangle\/Beta.swift:3); Gamma.alpha → Alpha (Fixtures\/Corpus\/Triangle\/Gamma.swift:3) — make one direction weak (shorter-lived side) or unowned (same-or-longer lifetime); type-level analysis: verify which side owns the other",
+      "path" : "Fixtures\/Corpus\/Triangle\/Alpha.swift",
+      "related" : [
+        {
+          "column" : 9,
+          "line" : 3,
+          "path" : "Fixtures\/Corpus\/Triangle\/Beta.swift"
+        },
+        {
+          "column" : 9,
+          "line" : 3,
+          "path" : "Fixtures\/Corpus\/Triangle\/Gamma.swift"
+        }
+      ],
+      "rule" : "mutual-strong-properties",
+      "severity" : "warning"
+    },
+    {
+      "column" : 20,
+      "fingerprint" : "18320ec9b8f0e988",
+      "fingerprintPath" : "Fixtures\/Leaks\/ActorAndNested.swift",
+      "line" : 8,
+      "message" : "closure stored in 'onCommit' captures self strongly — retain cycle: self → onCommit → self",
+      "note" : "capture with [weak self] and unwrap, or [unowned self] only if the closure can never outlive self (Swift book: same-lifetime rule)",
+      "path" : "Fixtures\/Leaks\/ActorAndNested.swift",
+      "rule" : "stored-closure-strong-self",
+      "severity" : "error"
+    },
+    {
+      "column" : 23,
+      "fingerprint" : "587678f2de9e7316",
+      "fingerprintPath" : "Fixtures\/Leaks\/ActorAndNested.swift",
+      "line" : 25,
+      "message" : "closure stored in 'handler' captures self strongly — retain cycle: self → handler → self",
+      "note" : "capture with [weak self] and unwrap, or [unowned self] only if the closure can never outlive self (Swift book: same-lifetime rule)",
+      "path" : "Fixtures\/Leaks\/ActorAndNested.swift",
+      "rule" : "stored-closure-strong-self",
+      "severity" : "error"
+    },
+    {
+      "column" : 20,
+      "fingerprint" : "90d2816b00bc91bc",
+      "fingerprintPath" : "Fixtures\/Leaks\/ActorAndNested.swift",
+      "line" : 37,
+      "message" : "closure stored in 'onChange' captures self strongly — retain cycle: self → onChange → self",
+      "note" : "capture with [weak self] and unwrap, or [unowned self] only if the closure can never outlive self (Swift book: same-lifetime rule)",
+      "path" : "Fixtures\/Leaks\/ActorAndNested.swift",
+      "rule" : "stored-closure-strong-self",
+      "severity" : "error"
+    },
+    {
+      "column" : 9,
+      "fingerprint" : "9715d53e86f15a00",
+      "fingerprintPath" : "Fixtures\/Leaks\/CombineAssignStored.swift",
+      "line" : 13,
+      "message" : "retain cycle: assign(to:on: self) retains self strongly while self stores the cancellable (self → cancellable → Assign → self)",
+      "note" : "assign to a @Published projection with assign(to: &$property) (no cancellable, no strong object reference), or use sink with [weak self]",
+      "path" : "Fixtures\/Leaks\/CombineAssignStored.swift",
+      "rule" : "combine-assign-self-cycle",
+      "severity" : "error"
+    },
+    {
+      "column" : 9,
+      "fingerprint" : "d82aec916f998de4",
+      "fingerprintPath" : "Fixtures\/Leaks\/CombineSinkStored.swift",
+      "line" : 11,
+      "message" : "retain cycle: sink closure captures self strongly and its AnyCancellable is stored on self (self → cancellable → closure → self)",
+      "note" : "capture [weak self] in the sink closure; the upstream never completes, so only explicit cancel() can break the cycle — deinit cannot",
+      "path" : "Fixtures\/Leaks\/CombineSinkStored.swift",
+      "rule" : "combine-sink-self-cycle",
+      "severity" : "error"
+    },
+    {
+      "column" : 13,
+      "fingerprint" : "525999c1fabdb23d",
+      "fingerprintPath" : "Fixtures\/Leaks\/DiscardedTokens.swift",
+      "line" : 9,
+      "message" : "the AnyCancellable is discarded — AnyCancellable cancels on deinit, so the subscription ends before any value arrives",
+      "note" : "store it in a property of the owner (e.g. store(in:) into an instance Set<AnyCancellable>) for as long as the work should live",
+      "path" : "Fixtures\/Leaks\/DiscardedTokens.swift",
+      "rule" : "unstored-lifetime-token",
+      "severity" : "warning"
+    },
+    {
+      "column" : 21,
+      "fingerprint" : "f0d74b9f58ffce47",
+      "fingerprintPath" : "Fixtures\/Leaks\/DiscardedTokens.swift",
+      "line" : 13,
+      "message" : "the AnyCancellable is stored in local 'token' and dies at scope end — AnyCancellable cancels on deinit, so the subscription ends before any value arrives",
+      "note" : "move it to instance storage; a local cannot own work that outlives the call",
+      "path" : "Fixtures\/Leaks\/DiscardedTokens.swift",
+      "rule" : "token-stored-in-local",
+      "severity" : "warning"
+    },
+    {
+      "column" : 9,
+      "fingerprint" : "d2001843c636b114",
+      "fingerprintPath" : "Fixtures\/Leaks\/DiscardedTokens.swift",
+      "line" : 18,
+      "message" : "the AnyCancellable is stored into a local collection via store(in:) and dies at scope end — AnyCancellable cancels on deinit, so the subscription ends before any value arrives",
+      "note" : "store(in:) into a collection owned by the instance instead",
+      "path" : "Fixtures\/Leaks\/DiscardedTokens.swift",
+      "rule" : "token-stored-in-local",
+      "severity" : "warning"
+    },
+    {
+      "column" : 27,
+      "fingerprint" : "5ac64ec9d5f98713",
+      "fingerprintPath" : "Fixtures\/Leaks\/DiscardedTokens.swift",
+      "line" : 23,
+      "message" : "the NSKeyValueObservation is stored in local 'observation' and dies at scope end — the observation invalidates immediately and no changes are delivered",
+      "note" : "move it to instance storage; a local cannot own work that outlives the call",
+      "path" : "Fixtures\/Leaks\/DiscardedTokens.swift",
+      "rule" : "token-stored-in-local",
+      "severity" : "warning"
+    },
+    {
+      "column" : 9,
+      "fingerprint" : "5ea705d07d9328d6",
+      "fingerprintPath" : "Fixtures\/Leaks\/DispatchSourceCycle.swift",
+      "line" : 11,
+      "message" : "retain cycle: dispatch source stored on self holds a handler that captures self strongly (self → source → handler → self)",
+      "note" : "no cancel() found in this type — capture [weak self] in the handler or cancel the source from a reachable path",
+      "path" : "Fixtures\/Leaks\/DispatchSourceCycle.swift",
+      "rule" : "dispatch-source-cycle",
+      "severity" : "error"
+    },
+    {
+      "column" : 13,
+      "fingerprint" : "1295d1e0f8a86458",
+      "fingerprintPath" : "Fixtures\/Leaks\/EscapingLocalBag.swift",
+      "line" : 12,
+      "message" : "the AnyCancellable is stored via local 'cancellables', which an escaping closure captured — the subscription lives exactly as long as the closure, and nothing removes it from the collection",
+      "note" : "every invocation adds an entry that is never removed (unbounded growth if the closure lives on); store into instance storage with explicit removal, or cancel after the work completes",
+      "path" : "Fixtures\/Leaks\/EscapingLocalBag.swift",
+      "rule" : "token-stored-in-local",
+      "severity" : "warning"
+    },
+    {
+      "column" : 27,
+      "fingerprint" : "5338a57d5e730b62",
+      "fingerprintPath" : "Fixtures\/Leaks\/KVOObservationSelf.swift",
+      "line" : 18,
+      "message" : "retain cycle: the KVO change handler captures self strongly and the NSKeyValueObservation is stored on self (self → observation → handler → self)",
+      "note" : "the observation invalidates only when deinited, which the cycle prevents; capture [weak self] in the change handler, or invalidate() and release (set to nil) the observation from a reachable path",
+      "path" : "Fixtures\/Leaks\/KVOObservationSelf.swift",
+      "rule" : "kvo-observation-self-cycle",
+      "severity" : "warning"
+    },
+    {
+      "column" : 36,
+      "fingerprint" : "c576190028db766c",
+      "fingerprintPath" : "Fixtures\/Leaks\/KVOObservationSelf.swift",
+      "line" : 21,
+      "message" : "retain cycle: the KVO change handler captures self strongly and the NSKeyValueObservation is stored on self (self → observation → handler → self)",
+      "note" : "the observation invalidates only when deinited, which the cycle prevents; capture [weak self] in the change handler, or invalidate() and release (set to nil) the observation from a reachable path",
+      "path" : "Fixtures\/Leaks\/KVOObservationSelf.swift",
+      "rule" : "kvo-observation-self-cycle",
+      "severity" : "warning"
+    },
+    {
+      "column" : 28,
+      "fingerprint" : "be649d75942a1daf",
+      "fingerprintPath" : "Fixtures\/Leaks\/KVOObservationSelf.swift",
+      "line" : 25,
+      "message" : "retain cycle: the KVO change handler captures self strongly and the NSKeyValueObservation is stored on self (self → observation → handler → self)",
+      "note" : "the observation invalidates only when deinited, which the cycle prevents; capture [weak self] in the change handler, or invalidate() and release (set to nil) the observation from a reachable path",
+      "path" : "Fixtures\/Leaks\/KVOObservationSelf.swift",
+      "rule" : "kvo-observation-self-cycle",
+      "severity" : "warning"
+    },
+    {
+      "column" : 37,
+      "fingerprint" : "4d7df829542251e4",
+      "fingerprintPath" : "Fixtures\/Leaks\/LazyStoredClosure.swift",
+      "line" : 7,
+      "message" : "closure stored in 'asHTML' captures self strongly — retain cycle: self → asHTML → self",
+      "note" : "capture with [weak self] and unwrap, or [unowned self] only if the closure can never outlive self (Swift book: same-lifetime rule)",
+      "path" : "Fixtures\/Leaks\/LazyStoredClosure.swift",
+      "rule" : "stored-closure-strong-self",
+      "severity" : "error"
+    },
+    {
+      "column" : 19,
+      "fingerprint" : "e6d8e6494689e86f",
+      "fingerprintPath" : "Fixtures\/Leaks\/MethodReferenceCaptures.swift",
+      "line" : 13,
+      "message" : "bound method reference stored in 'handler' captures self strongly — retain cycle: self → handler → self",
+      "note" : "method references have no capture-list syntax; wrap in a closure: { [weak self] in self?.method($0) }",
+      "path" : "Fixtures\/Leaks\/MethodReferenceCaptures.swift",
+      "rule" : "stored-closure-strong-self",
+      "severity" : "error"
+    },
+    {
+      "column" : 9,
+      "fingerprint" : "b10e356f69a2232",
+      "fingerprintPath" : "Fixtures\/Leaks\/MethodReferenceCaptures.swift",
+      "line" : 17,
+      "message" : "retain cycle: sink closure captures self strongly and its AnyCancellable is stored on self (self → cancellable → closure → self)",
+      "note" : "capture [weak self] in the sink closure; the upstream never completes, so only explicit cancel() can break the cycle — deinit cannot",
+      "path" : "Fixtures\/Leaks\/MethodReferenceCaptures.swift",
+      "rule" : "combine-sink-self-cycle",
+      "severity" : "error"
+    },
+    {
+      "column" : 9,
+      "fingerprint" : "3c2634de45f64f01",
+      "fingerprintPath" : "Fixtures\/Leaks\/MethodReferenceCaptures.swift",
+      "line" : 36,
+      "message" : "retain cycle: sink closure captures self strongly and its AnyCancellable is stored on self (self → cancellable → closure → self)",
+      "note" : "capture [weak self] in the sink closure; the upstream never completes, so only explicit cancel() can break the cycle — deinit cannot",
+      "path" : "Fixtures\/Leaks\/MethodReferenceCaptures.swift",
+      "rule" : "combine-sink-self-cycle",
+      "severity" : "error"
+    },
+    {
+      "column" : 18,
+      "fingerprint" : "ae99f5d623bec4a2",
+      "fingerprintPath" : "Fixtures\/Leaks\/NestedClosureTrap.swift",
+      "line" : 9,
+      "message" : "closure stored in 'stored' captures self strongly — retain cycle: self → stored → self",
+      "note" : "capture with [weak self] and unwrap, or [unowned self] only if the closure can never outlive self (Swift book: same-lifetime rule)",
+      "path" : "Fixtures\/Leaks\/NestedClosureTrap.swift",
+      "rule" : "stored-closure-strong-self",
+      "severity" : "error"
+    },
+    {
+      "column" : 9,
+      "fingerprint" : "f0c0559566c0a6d0",
+      "fingerprintPath" : "Fixtures\/Leaks\/NestedWeakTaskSink.swift",
+      "line" : 15,
+      "message" : "retain cycle: the sink closure captures self strongly — its only `self` sits in a nested closure's capture list, and forming that nested [weak self] box forces the sink closure itself to capture self strongly (self → cancellable → closure → self)",
+      "note" : "the nested [weak self] does not protect the outer closure; capture [weak self] in the sink closure; the upstream never completes, so only explicit cancel() can break the cycle — deinit cannot",
+      "path" : "Fixtures\/Leaks\/NestedWeakTaskSink.swift",
+      "rule" : "combine-sink-self-cycle",
+      "severity" : "error"
+    },
+    {
+      "column" : 9,
+      "fingerprint" : "a6d379dea227961d",
+      "fingerprintPath" : "Fixtures\/Leaks\/NestedWeakTaskSink.swift",
+      "line" : 29,
+      "message" : "retain cycle: the sink closure captures self strongly — its only `self` sits in a nested closure's capture list, and forming that nested [weak self] box forces the sink closure itself to capture self strongly (self → cancellable → closure → self)",
+      "note" : "the nested [weak self] does not protect the outer closure; capture [weak self] in the sink closure; the upstream never completes, so only explicit cancel() can break the cycle — deinit cannot",
+      "path" : "Fixtures\/Leaks\/NestedWeakTaskSink.swift",
+      "rule" : "combine-sink-self-cycle",
+      "severity" : "error"
+    },
+    {
+      "column" : 17,
+      "fingerprint" : "e37d25b95e2a202e",
+      "fingerprintPath" : "Fixtures\/Leaks\/NotificationBlockDeinitOnly.swift",
+      "line" : 11,
+      "message" : "leak: block observer captures self strongly and the notification center strongly holds the block until removal",
+      "note" : "removeObserver only appears in deinit — the center's strong hold on the block (which holds self) means deinit never runs; remove from a reachable path or capture [weak self]",
+      "path" : "Fixtures\/Leaks\/NotificationBlockDeinitOnly.swift",
+      "rule" : "notification-observer-leak",
+      "severity" : "error"
+    },
+    {
+      "column" : 25,
+      "fingerprint" : "5f1521cedf9f82e9",
+      "fingerprintPath" : "Fixtures\/Leaks\/OwnedChildClosure.swift",
+      "line" : 24,
+      "message" : "closure stored in 'toolbar.onTap' captures self strongly — retain cycle through an owned child: self → toolbar → onTap → self",
+      "note" : "self keeps 'toolbar' in a strong stored property and 'toolbar' keeps the closure; capture [weak self], or clear 'toolbar.onTap' when it is done",
+      "path" : "Fixtures\/Leaks\/OwnedChildClosure.swift",
+      "rule" : "stored-closure-strong-self",
+      "severity" : "warning"
+    },
+    {
+      "column" : 30,
+      "fingerprint" : "5f7a3f2c78a40616",
+      "fingerprintPath" : "Fixtures\/Leaks\/OwnedChildClosure.swift",
+      "line" : 27,
+      "message" : "closure stored in 'footer.onTap' captures self strongly — retain cycle through an owned child: self → footer → onTap → self",
+      "note" : "self keeps 'footer' in a strong stored property and 'footer' keeps the closure; capture [weak self], or clear 'footer.onTap' when it is done",
+      "path" : "Fixtures\/Leaks\/OwnedChildClosure.swift",
+      "rule" : "stored-closure-strong-self",
+      "severity" : "warning"
+    },
+    {
+      "column" : 37,
+      "fingerprint" : "84c882429d38ec3e",
+      "fingerprintPath" : "Fixtures\/Leaks\/OwnedChildClosure.swift",
+      "line" : 28,
+      "message" : "closure stored in 'toolbar.actions' captures self strongly — retain cycle through an owned child: self → toolbar → actions → self",
+      "note" : "self keeps 'toolbar' in a strong stored property and 'toolbar' keeps the closure; capture [weak self], or clear 'toolbar.actions' when it is done",
+      "path" : "Fixtures\/Leaks\/OwnedChildClosure.swift",
+      "rule" : "stored-closure-strong-self",
+      "severity" : "warning"
+    },
+    {
+      "column" : 25,
+      "fingerprint" : "edba308adf1949c",
+      "fingerprintPath" : "Fixtures\/Leaks\/OwnedChildClosure.swift",
+      "line" : 31,
+      "message" : "bound method reference stored in 'toolbar.onTap' captures self strongly — retain cycle through an owned child: self → toolbar → onTap → self",
+      "note" : "self keeps 'toolbar' in a strong stored property and 'toolbar' keeps the closure; capture [weak self], or clear 'toolbar.onTap' when it is done",
+      "path" : "Fixtures\/Leaks\/OwnedChildClosure.swift",
+      "rule" : "stored-closure-strong-self",
+      "severity" : "warning"
+    },
+    {
+      "column" : 23,
+      "fingerprint" : "1a9b2abb99817966",
+      "fingerprintPath" : "Fixtures\/Leaks\/OwnedChildClosure.swift",
+      "line" : 32,
+      "message" : "closure stored in 'style.onTap' captures self strongly — retain cycle through an owned child: self → style → onTap → self",
+      "note" : "self keeps 'style' in a strong stored property and 'style' keeps the closure; capture [weak self], or clear 'style.onTap' when it is done",
+      "path" : "Fixtures\/Leaks\/OwnedChildClosure.swift",
+      "rule" : "stored-closure-strong-self",
+      "severity" : "warning"
+    },
+    {
+      "column" : 9,
+      "fingerprint" : "b7fbbc32de97b3c7",
+      "fingerprintPath" : "Fixtures\/Leaks\/RxDisposeBagSelf.swift",
+      "line" : 16,
+      "message" : "retain cycle: subscription closure captures self strongly and the subscription's Disposable is stored on self (self → disposable → closure → self)",
+      "note" : "capture [weak self]; upstream completion could not be determined — the cycle persists until the source completes or the subscription is disposed",
+      "path" : "Fixtures\/Leaks\/RxDisposeBagSelf.swift",
+      "rule" : "combine-sink-self-cycle",
+      "severity" : "warning"
+    },
+    {
+      "column" : 9,
+      "fingerprint" : "d5153cff62b2768",
+      "fingerprintPath" : "Fixtures\/Leaks\/RxDisposeBagSelf.swift",
+      "line" : 19,
+      "message" : "retain cycle: subscription closure captures self strongly and the subscription's Disposable is stored on self (self → disposable → closure → self)",
+      "note" : "capture [weak self]; upstream completion could not be determined — the cycle persists until the source completes or the subscription is disposed",
+      "path" : "Fixtures\/Leaks\/RxDisposeBagSelf.swift",
+      "rule" : "combine-sink-self-cycle",
+      "severity" : "warning"
+    },
+    {
+      "column" : 9,
+      "fingerprint" : "6c3548b6728a4488",
+      "fingerprintPath" : "Fixtures\/Leaks\/RxDisposeBagSelf.swift",
+      "line" : 20,
+      "message" : "retain cycle: subscription closure captures self strongly and the subscription's Disposable is stored on self (self → disposable → closure → self)",
+      "note" : "capture [weak self]; upstream completion could not be determined — the cycle persists until the source completes or the subscription is disposed",
+      "path" : "Fixtures\/Leaks\/RxDisposeBagSelf.swift",
+      "rule" : "combine-sink-self-cycle",
+      "severity" : "warning"
+    },
+    {
+      "column" : 9,
+      "fingerprint" : "1291518003fc129f",
+      "fingerprintPath" : "Fixtures\/Leaks\/RxDisposeBagSelf.swift",
+      "line" : 34,
+      "message" : "retain cycle: subscription closure captures self strongly and the subscription's Disposable is stored on self (self → disposable → closure → self)",
+      "note" : "capture [weak self]; upstream completion could not be determined — the cycle persists until the source completes or the subscription is disposed",
+      "path" : "Fixtures\/Leaks\/RxDisposeBagSelf.swift",
+      "rule" : "combine-sink-self-cycle",
+      "severity" : "warning"
+    },
+    {
+      "column" : 20,
+      "fingerprint" : "36ff254f29cd7e7b",
+      "fingerprintPath" : "Fixtures\/Leaks\/SecCleanupInUnreachableDeinit.swift",
+      "line" : 14,
+      "message" : "closure stored in 'onChange' captures self strongly — retain cycle: self → onChange → self",
+      "note" : "capture with [weak self] and unwrap, or [unowned self] only if the closure can never outlive self (Swift book: same-lifetime rule)",
+      "path" : "Fixtures\/Leaks\/SecCleanupInUnreachableDeinit.swift",
+      "rule" : "stored-closure-strong-self",
+      "severity" : "error"
+    },
+    {
+      "column" : 35,
+      "fingerprint" : "6967f932d114e493",
+      "fingerprintPath" : "Fixtures\/Leaks\/SignalDisposableSelf.swift",
+      "line" : 19,
+      "message" : "retain cycle: subscription closure captures self strongly and the signal's Disposable is stored on self (self → disposable → closure → self)",
+      "note" : "capture [weak self]; upstream completion could not be determined — the cycle persists until the source completes or the subscription is disposed",
+      "path" : "Fixtures\/Leaks\/SignalDisposableSelf.swift",
+      "rule" : "combine-sink-self-cycle",
+      "severity" : "warning"
+    },
+    {
+      "column" : 25,
+      "fingerprint" : "f2b9df2029fd1dba",
+      "fingerprintPath" : "Fixtures\/Leaks\/SignalDisposableSelf.swift",
+      "line" : 22,
+      "message" : "retain cycle: subscription closure captures self strongly and the signal's Disposable is stored on self (self → disposable → closure → self)",
+      "note" : "capture [weak self]; upstream completion could not be determined — the cycle persists until the source completes or the subscription is disposed",
+      "path" : "Fixtures\/Leaks\/SignalDisposableSelf.swift",
+      "rule" : "combine-sink-self-cycle",
+      "severity" : "warning"
+    },
+    {
+      "column" : 27,
+      "fingerprint" : "b9b31ab03546fc0f",
+      "fingerprintPath" : "Fixtures\/Leaks\/SignalDisposableSelf.swift",
+      "line" : 23,
+      "message" : "retain cycle: subscription closure captures self strongly and the signal's Disposable is stored on self (self → disposable → closure → self)",
+      "note" : "capture [weak self]; upstream completion could not be determined — the cycle persists until the source completes or the subscription is disposed",
+      "path" : "Fixtures\/Leaks\/SignalDisposableSelf.swift",
+      "rule" : "combine-sink-self-cycle",
+      "severity" : "warning"
+    },
+    {
+      "column" : 20,
+      "fingerprint" : "814f3909d44aeeac",
+      "fingerprintPath" : "Fixtures\/Leaks\/StoredClosureCycle.swift",
+      "line" : 9,
+      "message" : "closure stored in 'onChange' captures self strongly — retain cycle: self → onChange → self",
+      "note" : "capture with [weak self] and unwrap, or [unowned self] only if the closure can never outlive self (Swift book: same-lifetime rule)",
+      "path" : "Fixtures\/Leaks\/StoredClosureCycle.swift",
+      "rule" : "stored-closure-strong-self",
+      "severity" : "error"
+    },
+    {
+      "column" : 25,
+      "fingerprint" : "6a7cb3422fdfd69",
+      "fingerprintPath" : "Fixtures\/Leaks\/StoredClosureCycle.swift",
+      "line" : 23,
+      "message" : "closure stored in 'handlers' captures self strongly — retain cycle: self → handlers → self",
+      "note" : "capture with [weak self] and unwrap, or [unowned self] only if the closure can never outlive self (Swift book: same-lifetime rule)",
+      "path" : "Fixtures\/Leaks\/StoredClosureCycle.swift",
+      "rule" : "stored-closure-strong-self",
+      "severity" : "error"
+    },
+    {
+      "column" : 18,
+      "fingerprint" : "ea4f11d0b5476e77",
+      "fingerprintPath" : "Fixtures\/Leaks\/StoredTaskDeinitCancel.swift",
+      "line" : 10,
+      "message" : "Task stored on self captures self strongly and is cancelled only in deinit — self lives until every await in the task returns",
+      "note" : "deinit cannot run while the task holds self, so its cancel() never fires; if an await never returns, self leaks — capture [weak self] or cancel from a reachable path (viewDidDisappear\/stop())",
+      "path" : "Fixtures\/Leaks\/StoredTaskDeinitCancel.swift",
+      "rule" : "task-nonterminating-self",
+      "severity" : "warning"
+    },
+    {
+      "column" : 21,
+      "fingerprint" : "70e7b7b2a8de2561",
+      "fingerprintPath" : "Fixtures\/Leaks\/StoredTaskDeinitCancel.swift",
+      "line" : 27,
+      "message" : "Task stored on self captures self strongly and is cancelled only in deinit — self lives until every await in the task returns",
+      "note" : "deinit cannot run while the task holds self, so its cancel() never fires; if an await never returns, self leaks — capture [weak self] or cancel from a reachable path (viewDidDisappear\/stop())",
+      "path" : "Fixtures\/Leaks\/StoredTaskDeinitCancel.swift",
+      "rule" : "task-nonterminating-self",
+      "severity" : "warning"
+    },
+    {
+      "column" : 16,
+      "fingerprint" : "5854c0425facced6",
+      "fingerprintPath" : "Fixtures\/Leaks\/TaskInfiniteStrong.swift",
+      "line" : 9,
+      "message" : "potentially non-terminating Task captures self strongly implicitly (Task bodies capture self without writing it)",
+      "note" : "self stores the task handle while the task retains self — cancel() in deinit can never run; capture [weak self] (exit when self is nil) or cancel from a reachable path",
+      "path" : "Fixtures\/Leaks\/TaskInfiniteStrong.swift",
+      "rule" : "task-nonterminating-self",
+      "severity" : "error"
+    },
+    {
+      "column" : 9,
+      "fingerprint" : "6d809ddbc563cd83",
+      "fingerprintPath" : "Fixtures\/Leaks\/TaskInfiniteStrong.swift",
+      "line" : 27,
+      "message" : "potentially non-terminating Task captures self strongly",
+      "note" : "the task retains self until it completes — which it may never do; capture [weak self] and exit when self is nil, or make cancellation reachable",
+      "path" : "Fixtures\/Leaks\/TaskInfiniteStrong.swift",
+      "rule" : "task-nonterminating-self",
+      "severity" : "warning"
+    },
+    {
+      "column" : 17,
+      "fingerprint" : "1adb8348ccf5fb6b",
+      "fingerprintPath" : "Fixtures\/Leaks\/TimerBlockDeinitOnly.swift",
+      "line" : 11,
+      "message" : "leak: the repeating timer's block captures self strongly until invalidate(), and the run loop retains the timer",
+      "note" : "invalidate() only appears in deinit — deinit can never run while the run loop keeps self alive, so this leak is definite; invalidate from a reachable path (e.g. viewDidDisappear\/stop())",
+      "path" : "Fixtures\/Leaks\/TimerBlockDeinitOnly.swift",
+      "rule" : "timer-retains-self",
+      "severity" : "error"
+    },
+    {
+      "column" : 9,
+      "fingerprint" : "56b26f4f3d87631b",
+      "fingerprintPath" : "Fixtures\/Leaks\/TimerTargetNoInvalidate.swift",
+      "line" : 10,
+      "message" : "leak: the timer retains self (target:) until invalidate(), and the run loop retains the timer",
+      "note" : "run loop → timer → self keeps self alive; no invalidate() found in this type — add one on a reachable path, or capture [weak self]",
+      "path" : "Fixtures\/Leaks\/TimerTargetNoInvalidate.swift",
+      "rule" : "timer-retains-self",
+      "severity" : "warning"
+    },
+    {
+      "column" : 19,
+      "fingerprint" : "b012e9ff34dd06fa",
+      "fingerprintPath" : "Fixtures\/Leaks\/URLSessionDelegateLeak.swift",
+      "line" : 12,
+      "message" : "leak: URLSession keeps a strong reference to its delegate (self) until the session is explicitly invalidated",
+      "note" : "session invalidation only appears in deinit — the session's strong hold on its delegate (self) means deinit never runs; invalidate from a reachable path",
+      "path" : "Fixtures\/Leaks\/URLSessionDelegateLeak.swift",
+      "rule" : "urlsession-delegate-leak",
+      "severity" : "error"
+    },
+    {
+      "column" : 9,
+      "fingerprint" : "18626ef77a75dd46",
+      "fingerprintPath" : "Fixtures\/Leaks\/UnownedAnchored.swift",
+      "line" : 10,
+      "message" : "crash risk: [unowned self] in a closure held by an external anchor — if self deallocates before the closure is released, the next access traps",
+      "note" : "use [weak self] here; unowned is only safe when the closure can never outlive self (Swift book: same-or-longer lifetime rule)",
+      "path" : "Fixtures\/Leaks\/UnownedAnchored.swift",
+      "rule" : "unowned-outlives-owner",
+      "severity" : "warning"
+    },
+    {
+      "column" : 9,
+      "fingerprint" : "b70ea9d16d8e4d5d",
+      "fingerprintPath" : "Fixtures\/Leaks\/WebViewScriptHandler.swift",
+      "line" : 15,
+      "message" : "leak: the user content controller keeps its script message handler (self) until it is removed — web view → configuration → controller → self",
+      "note" : "the handler is removed only in deinit — the controller's hold on self means deinit never runs; remove it from a reachable teardown path or register a weak proxy",
+      "path" : "Fixtures\/Leaks\/WebViewScriptHandler.swift",
+      "rule" : "webview-script-handler-cycle",
+      "severity" : "error"
+    },
+    {
+      "column" : 9,
+      "fingerprint" : "26cf935a43bc5b63",
+      "fingerprintPath" : "Fixtures\/Leaks\/WebViewScriptHandler.swift",
+      "line" : 31,
+      "message" : "observed: the user content controller keeps its script message handler (self) until it is removed — when this controller belongs to the web view this type keeps, web view → configuration → controller → self",
+      "note" : "no removeScriptMessageHandler(forName:) or removeAllScriptMessageHandlers() found in this type; this controller is not reached from a web view, configuration or content controller this type keeps (it is a parameter or a local), so no cycle is proven — remove the handler when the page is done or register a weak proxy",
+      "path" : "Fixtures\/Leaks\/WebViewScriptHandler.swift",
+      "rule" : "webview-script-handler-cycle",
+      "severity" : "warning"
+    },
+    {
+      "column" : 9,
+      "fingerprint" : "c686f26bfaa9a5c1",
+      "fingerprintPath" : "Fixtures\/Leaks\/WebViewScriptHandler.swift",
+      "line" : 42,
+      "message" : "leak: the user content controller keeps its script message handler (self) until it is removed — web view → configuration → controller → self",
+      "note" : "no removeScriptMessageHandler(forName:) or removeAllScriptMessageHandlers() found in this type; remove the handler from a reachable teardown path or register a weak proxy",
+      "path" : "Fixtures\/Leaks\/WebViewScriptHandler.swift",
+      "rule" : "webview-script-handler-cycle",
+      "severity" : "warning"
+    },
+    {
+      "column" : 9,
+      "fingerprint" : "2f51caea835ceca4",
+      "fingerprintPath" : "Fixtures\/Leaks\/WebViewScriptHandler.swift",
+      "line" : 54,
+      "message" : "leak: the user content controller keeps its script message handler (self) until it is removed — web view → configuration → controller → self",
+      "note" : "the handler is removed only in deinit — the controller's hold on self means deinit never runs; remove it from a reachable teardown path or register a weak proxy",
+      "path" : "Fixtures\/Leaks\/WebViewScriptHandler.swift",
+      "rule" : "webview-script-handler-cycle",
+      "severity" : "error"
+    },
+    {
+      "column" : 9,
+      "fingerprint" : "4c4bbb3de4768e16",
+      "fingerprintPath" : "Fixtures\/Leaks\/WebViewScriptHandler.swift",
+      "line" : 68,
+      "message" : "observed: the user content controller keeps its script message handler (self) until it is removed — self lives as long as the web view",
+      "note" : "no removeScriptMessageHandler(forName:) or removeAllScriptMessageHandlers() found in this type; this type keeps no web view, configuration or content controller, so no cycle is proven — remove the handler when the page is done or register a weak proxy",
+      "path" : "Fixtures\/Leaks\/WebViewScriptHandler.swift",
+      "rule" : "webview-script-handler-cycle",
+      "severity" : "warning"
+    },
+    {
+      "column" : 9,
+      "fingerprint" : "fcafa72ee104081c",
+      "fingerprintPath" : "Fixtures\/Leaks\/WebViewScriptHandler.swift",
+      "line" : 83,
+      "message" : "observed: the user content controller keeps its script message handler (self) until it is removed — when this controller belongs to the web view this type keeps, web view → configuration → controller → self",
+      "note" : "the handler is removed only in deinit, and this controller is not reached from a web view, configuration or content controller this type keeps (it is a parameter or a local), so no cycle is proven; when it belongs to the owned web view, deinit never runs — remove the handler from a reachable teardown path or register a weak proxy",
+      "path" : "Fixtures\/Leaks\/WebViewScriptHandler.swift",
+      "rule" : "webview-script-handler-cycle",
+      "severity" : "warning"
+    }
+  ],
+  "outOfScope" : [
+
+  ],
+  "schemaVersion" : 1,
+  "suppressed" : [
+    {
+      "finding" : {
+        "column" : 18,
+        "fingerprint" : "e217788a4f93b6e6",
+        "fingerprintPath" : "Fixtures\/Clean\/DeliberateSuppression.swift",
+        "line" : 9,
+        "message" : "closure stored in 'onTick' captures self strongly — retain cycle: self → onTick → self",
+        "note" : "capture with [weak self] and unwrap, or [unowned self] only if the closure can never outlive self (Swift book: same-lifetime rule)",
+        "path" : "Fixtures\/Clean\/DeliberateSuppression.swift",
+        "rule" : "stored-closure-strong-self",
+        "severity" : "error"
+      },
+      "reason" : "owner tears this down in shutdown(); lifetime is intentional"
+    }
+  ],
+  "wasCancelled" : false
+}
