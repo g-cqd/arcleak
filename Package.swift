@@ -52,7 +52,7 @@ let package = Package(
         // generated files, platforms and system entry points.
         .package(
             url: "https://github.com/g-cqd/analyzerkit.git",
-            revision: "191f42626514259ff9cbdaa097adea9d584da672"
+            revision: "e98a332c42bc717f9ca1ac36df7f2586af1cf3bd"
         ),
     ],
     targets: [
@@ -65,6 +65,7 @@ let package = Package(
                 .product(name: "AemiJSON", package: "AemiJSON"),
                 .product(name: "ProjectModel", package: "analyzerkit"),
                 .product(name: "IndexStoreSupport", package: "analyzerkit", condition: .when(platforms: [.macOS])),
+                .product(name: "AnalyzerConfiguration", package: "analyzerkit"),
                 .product(name: "SourceCorpus", package: "analyzerkit"),
                 .product(name: "Suppression", package: "analyzerkit"),
                 .product(name: "ReportSupport", package: "analyzerkit"),
