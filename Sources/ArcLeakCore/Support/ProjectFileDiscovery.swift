@@ -6,7 +6,9 @@ import SourceCorpus
 /// ``SourceDiscovery``'s; only what counts as a project file is arcleak's.
 public enum ProjectFileDiscovery {
     /// The project files under `directory` that `isExcluded` keeps, sorted.
-    public static func projectFiles(under directory: String, isExcluded: (String) -> Bool) -> [String] {
+    public static func projectFiles(
+        under directory: String, isExcluded: @escaping @Sendable (String) -> Bool
+    ) -> [String] {
         SourceDiscovery.files(under: directory, isExcluded: isExcluded, where: isProjectFile)
     }
 
