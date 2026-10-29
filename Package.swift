@@ -52,7 +52,7 @@ let package = Package(
         // generated files, platforms and system entry points.
         .package(
             url: "https://github.com/g-cqd/analyzerkit.git",
-            revision: "0de4a5e8f3483c1d6ad92a8ba26073e3d04bee9f"
+            revision: "191f42626514259ff9cbdaa097adea9d584da672"
         ),
     ],
     targets: [
@@ -81,6 +81,7 @@ let package = Package(
             name: "arcleak",
             dependencies: [
                 "ArcLeakCore",
+                .product(name: "AnalyzerCLI", package: "analyzerkit"),
                 .product(name: "SourceCorpus", package: "analyzerkit"),
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "SystemPackage", package: "swift-system"),
