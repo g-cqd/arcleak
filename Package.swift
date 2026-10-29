@@ -52,7 +52,7 @@ let package = Package(
         // generated files, platforms and system entry points.
         .package(
             url: "https://github.com/g-cqd/analyzerkit.git",
-            revision: "11a71afdb31ad89d22cfa6ccc3a25038af6792b0"
+            revision: "fe58b7ee557ac93b00a11e481aa2415c653895c1"
         ),
     ],
     targets: [
@@ -64,6 +64,7 @@ let package = Package(
                 .product(name: "SwiftIfConfig", package: "swift-syntax"),
                 .product(name: "AemiJSON", package: "AemiJSON"),
                 .product(name: "ProjectModel", package: "analyzerkit"),
+                .product(name: "IndexStoreSupport", package: "analyzerkit", condition: .when(platforms: [.macOS])),
                 .product(name: "SourceCorpus", package: "analyzerkit"),
                 .product(name: "ReportSupport", package: "analyzerkit"),
                 .product(name: "WordPiece", package: "analyzerkit"),
