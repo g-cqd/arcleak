@@ -684,6 +684,7 @@ struct Analyze: AsyncParsableCommand {
     ) throws -> (swiftFiles: [String], projectFiles: [String]) {
         var files: Set<String> = []
         var projectFiles: Set<String> = []
+        let exclusion = configuration.pathFilter
         for path in paths {
             guard
                 // Resolved first — attributesOfItem does not traverse a final
@@ -703,9 +704,8 @@ struct Analyze: AsyncParsableCommand {
                 }
                 continue
             }
-            files.formUnion(SourceDiscovery.swiftFiles(under: path, isExcluded: configuration.isExcluded(path:)))
-            projectFiles.formUnion(
-                ProjectFileDiscovery.projectFiles(under: path, isExcluded: configuration.isExcluded(path:)))
+            files.formUnion(SourceDiscovery.swiftFiles(under: path, isExcluded: exclusion.excludes))
+            projectFiles.formUnion(ProjectFileDiscovery.projectFiles(under: path, isExcluded: exclusion.excludes))
         }
         return (files.sorted(), projectFiles.sorted())
     }

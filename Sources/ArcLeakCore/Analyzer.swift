@@ -54,8 +54,8 @@ public struct Analyzer: Sendable {
         // fingerprint, and the corpus must not contain the same file twice
         // under two spellings (it would give the ownership graph two nodes for
         // one type). Exclusion is checked on the canonical form.
-        let included = SourcePath.canonicalized(files)
-            .filter { !configuration.isExcluded(path: $0) }
+        let exclusion = configuration.pathFilter
+        let included = SourcePath.canonicalized(files).filter { !exclusion.excludes($0) }
         // `snapshot` serves cache hits (all historical entries); the persisted
         // cache is this run's entries plus the snapshot's for files this run
         // did not analyze and that still exist — see the persist step below.
