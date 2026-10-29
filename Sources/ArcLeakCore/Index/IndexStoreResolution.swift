@@ -84,6 +84,19 @@ public enum IndexStoreResolution {
                 )
             }
 
+            // Opening a directory that holds no index records makes libIndexStore create a `v5/` in it and the
+            // reader an `IndexDatabase/` beside it, and every file then looks stale. Refuse it instead, and say what
+            // to pass (analyzerkit roadmap 0035, probe A6).
+            guard IndexStorePathFinder.isPopulatedStore(atPath: storePath) else {
+                return Outcome(
+                    index: nil,
+                    note:
+                        "\(storePath) is not an index store (no records in it, or in a vN directory below it); "
+                        + "pass the store directory itself, e.g. <DerivedData>/Index.noindex/DataStore; "
+                        + "proceeding with corpus-only analysis"
+                )
+            }
+
             let resolver: IndexStoreTypeResolver
             do {
                 resolver = try await IndexStoreTypeResolver.open(storePath: storePath, defines: defines)
