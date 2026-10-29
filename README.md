@@ -132,7 +132,7 @@ JSON goes to stdout and stderr is free-form text, so do not merge them with `2>&
 | `--only <path>`, `--only-from <file>` | report only these files; repeatable, or one path per line (`-` reads stdin). See [Report scope](#report-scope) |
 | `--relative-to <dir>` | print paths relative to `<dir>`; see [Fingerprints](#fingerprints-are-portable-by-default) |
 | `--baseline <file>`, `--write-baseline <file>` | drop accepted findings; write the current findings as a baseline, then exit `0` |
-| `--config <file>` | configuration file; default `./.arcleak.json` when present |
+| `--config <file>` | configuration file; default: see [Configuration](#configuration-arcleakjson) |
 | `--cache-path <file>`, `--no-cache` | facts-cache file; disable the cache. See [Facts cache](#facts-cache-and-parallel-jobs) |
 | `--strict` | warnings fail the gate too; notes never do |
 | `--include <regions>`, `--exclude <regions>` | `preview`, `debug`, `test`, `mock`, `generated`, `script` or `all`: analyze as first-class code, or keep out of scope |
@@ -349,7 +349,9 @@ collide.
 }
 ```
 
-Read from `--config` or `./.arcleak.json`. Unknown rule ids are a hard error.
+Configuration is read from one directory: the current one if it holds `.swift-analyzers.json` or `.arcleak.json`, else the nearest directory holding one, up to the repository root. `.swift-analyzers.json` is shared by arcleak, deadwood, dolly and fcheck: its top level holds `exclude`, `includeRegions`, `excludeRegions`, `defines` and `platforms`, and a `"arcleak"` section holds arcleak's own keys. The shared top level, the section and `.arcleak.json` apply in that order: `exclude` lists add up, objects merge key by key, other values replace. An unknown key, or a key given twice, exits `78` and names the file and the key. `--config FILE` reads that one file instead, in the shared format when it is named `.swift-analyzers.json`.
+
+Unknown rule ids are a hard error.
 The definite-leak upgrade (cleanup only reachable from an unreachable
 `deinit`) reports as `error` regardless of configured severity; use a
 directive if it is truly intentional.
@@ -602,10 +604,10 @@ reporting nothing.
 |---|---|
 | `0` | the gate passed: no error-severity finding, so warnings and notes alone pass; with `--strict`, no warning or error. Also after `--write-baseline` and `--fix` |
 | `1` | the gate failed on findings: an error-severity finding, or with `--strict` any warning or error — and nothing else |
-| `64` | usage error: a bad argument, a path that does not exist, an unreadable `--only-from` file, or `--write-baseline` combined with `--only`/`--only-from` |
+| `64` | usage error: a bad argument, a path that does not exist, no Swift file under the paths, an unreadable `--only-from` file, or `--write-baseline` combined with `--only`/`--only-from` |
 | `70` | nothing was analyzed: every file was skipped, and the report on stdout says which and why; or the run failed or was cancelled, and stdout is empty |
-| `74` | a file could not be written: a `--fix` result (files written before it keep their fixes), or the `--stamp` of a run that passed |
-| `78` | invalid configuration, or a missing, malformed or unwritable baseline |
+| `74` | a file could not be written: a `--fix` result (files written before it keep their fixes), the `--stamp` of a run that passed, or a `--write-baseline` file |
+| `78` | invalid configuration (including an unknown or repeated key), or a missing or malformed baseline |
 
 `1` means findings *only*, so a step that posts a review comment on `1` will
 not fire on a typo in the config file. Warnings are always reported, but only
