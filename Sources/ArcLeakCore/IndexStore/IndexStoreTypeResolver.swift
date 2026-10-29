@@ -99,20 +99,33 @@
                     return nil
                 }
             }
-            // Class/actor confirmed. Parse the declaring source (if readable) for
-            // its outgoing strong edges; otherwise resolve class-ness only.
-            return parseDeclaringType(named: name, file: definition.file)
-                ?? ExternalTypeFacts(isReferenceType: true)
+            // Class/actor confirmed. Parse the declaring source for its outgoing strong edges. Without Swift
+            // source (an SDK type) the index's kind is all there is; a Swift source that no longer declares the
+            // type means the record is out of date, and nothing is inferred from it.
+            switch parseDeclaringType(named: name, file: definition.file) {
+            case .declared(let facts): return facts
+            case .gone: return nil
+            case .noSwiftSource: return ExternalTypeFacts(isReferenceType: true)
+            }
         }
 
-        private func parseDeclaringType(named name: String, file: String) -> ExternalTypeFacts? {
-            guard file.hasSuffix(".swift"),
-                let data = try? BoundedFileReader.read(path: file, cap: Self.sourceByteCap),
+        /// What the declaring file of an index definition says about the type now.
+        private enum DeclaringSource {
+            case declared(ExternalTypeFacts)
+            /// The file is Swift source but cannot be read or no longer declares the type.
+            case gone
+            /// The definition is not in Swift source (an SDK or C header), so only the index can say.
+            case noSwiftSource
+        }
+
+        private func parseDeclaringType(named name: String, file: String) -> DeclaringSource {
+            guard file.hasSuffix(".swift") else { return .noSwiftSource }
+            guard let data = try? BoundedFileReader.read(path: file, cap: Self.sourceByteCap),
                 let source = String(data: data, encoding: .utf8)
-            else { return nil }
+            else { return .gone }
 
             let facts = FactsExtraction.extract(path: file, source: source, defines: defines)
-            guard let type = facts.types.first(where: { $0.name == name }) else { return nil }
+            guard let type = facts.types.first(where: { $0.name == name }) else { return .gone }
 
             let isModel = type.attributeNames.contains("Model")
             var strongReferences: [ExternalStrongReference] = []
@@ -129,13 +142,14 @@
                     )
                 }
             }
-            return ExternalTypeFacts(
-                isReferenceType: type.isReferenceType ?? true,
-                weakMemberNames: weakMembers,
-                inheritedTypeNames: type.inheritedTypeNames,
-                strongReferences: strongReferences,
-                declaringPath: file
-            )
+            return .declared(
+                ExternalTypeFacts(
+                    isReferenceType: type.isReferenceType ?? true,
+                    weakMemberNames: weakMembers,
+                    inheritedTypeNames: type.inheritedTypeNames,
+                    strongReferences: strongReferences,
+                    declaringPath: file
+                ))
         }
     }
 #endif
