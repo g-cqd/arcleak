@@ -97,11 +97,13 @@ public struct Analyzer: Sendable {
                 if scheduled >= width {
                     if let done = await group.next() { collected.append(done) }
                 }
+                // The index waits for the whole corpus (below): only then is it known which types the corpus
+                // declares, and those the index must not answer for.
                 group.addTask { [configuration] in
                     Self.makeOutcome(
                         path: path,
                         snapshot: snapshot,
-                        index: index,
+                        index: nil,
                         configuration: configuration,
                         platforms: platforms,
                         systemEntryPoints: project.systemEntryPoints,
@@ -116,11 +118,22 @@ public struct Analyzer: Sendable {
             return collected
         }
 
+        let corpusIndex = index.map {
+            CorpusFirstIndex(base: $0, declared: CorpusFirstIndex.declaredTypeNames(in: outcomes.compactMap(\.facts)))
+        }
         var corpus: [FileFacts] = []
         var raw: [Finding] = []
         var degraded: [AnalysisReport.DegradedFile] = []
         var hits = 0
-        for outcome in outcomes {
+        for var outcome in outcomes {
+            if let corpusIndex, let facts = outcome.facts, facts.extendsUnknownType {
+                // A file that extends a type the corpus does not declare: what the index knows of that type may
+                // reach rules the per-file pass ran without it.
+                let effective = facts.upgraded(with: corpusIndex)
+                outcome.effectiveFacts = effective
+                outcome.findings = RuleEngine.check(
+                    file: effective, configuration: configuration, systemEntryPoints: project.systemEntryPoints)
+            }
             if let facts = outcome.facts {
                 corpus.append(outcome.effectiveFacts ?? facts)
                 if let fingerprint = outcome.fingerprint {
@@ -136,7 +149,7 @@ public struct Analyzer: Sendable {
         corpus.sort { $0.path < $1.path }
         raw.append(
             contentsOf: RuleEngine.checkCorpus(
-                corpus: corpus, configuration: configuration, index: index
+                corpus: corpus, configuration: configuration, index: corpusIndex
             )
         )
 
@@ -211,13 +224,16 @@ public struct Analyzer: Sendable {
             platforms: Set(configuration.platforms ?? []),
             contracts: configuration.contracts ?? []
         )
-        if let index {
-            facts = facts.upgraded(with: index)
+        let corpusIndex = index.map {
+            CorpusFirstIndex(base: $0, declared: CorpusFirstIndex.declaredTypeNames(in: [facts]))
+        }
+        if let corpusIndex {
+            facts = facts.upgraded(with: corpusIndex)
         }
         var raw = RuleEngine.check(file: facts, configuration: configuration)
         raw.append(
             contentsOf: RuleEngine.checkCorpus(
-                corpus: [facts], configuration: configuration, index: index
+                corpus: [facts], configuration: configuration, index: corpusIndex
             )
         )
         let report = Self.assemble(raw: raw, corpus: [facts], regionSelection: regionSelection)
