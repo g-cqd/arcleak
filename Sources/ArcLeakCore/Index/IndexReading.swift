@@ -78,3 +78,30 @@ extension FileFacts {
         return upgraded
     }
 }
+
+/// An index that answers nothing about a type the corpus declares: what the analyzed code says about its own types wins
+/// over a same-named type of another module (analyzerkit roadmap 0035, probe A2). The index only ever adds facts about
+/// types the corpus does not declare.
+struct CorpusFirstIndex: IndexReading {
+    let base: any IndexReading
+    /// Every type the corpus declares (class, actor, struct or enum), whatever file declares it.
+    let declared: Set<String>
+
+    func externalTypeFacts(name: String) -> ExternalTypeFacts? {
+        declared.contains(name) ? nil : base.externalTypeFacts(name: name)
+    }
+
+    /// The names of the types declared, not merely extended, in `corpus`.
+    static func declaredTypeNames(in corpus: some Sequence<FileFacts>) -> Set<String> {
+        var names: Set<String> = []
+        for file in corpus {
+            for type in file.types where type.isReferenceType != nil { names.insert(type.name) }
+        }
+        return names
+    }
+}
+
+extension FileFacts {
+    /// Whether the file extends a type its own facts leave unknown, which only an index can tell.
+    var extendsUnknownType: Bool { types.contains { $0.isReferenceType == nil } }
+}
