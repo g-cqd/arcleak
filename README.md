@@ -207,15 +207,24 @@ cross-module `mutual-strong-properties` cycle:
 arcleak analyze Sources --index-store                       # discover the store (.build/…, DerivedData)
 arcleak analyze Sources --index-store-path .build/index/store   # explicit store
 arcleak analyze Sources --index-store-build                 # `swift build` one first if missing
+arcleak analyze Sources --index-store --verbose             # explain dylib selection on stderr
 ```
 
 It is **opt-in, macOS-only, and always fails open**. With no index, on Linux,
 or when the store is stale relative to the analyzed sources, arcleak prints a
 one-line note and runs the corpus-only analysis unchanged — byte-identical to
 the default. Resolution is conservative: an edge is added only when the index
-**confirms** a type is a class/actor, never on a guess. The dylib
-(`libIndexStore.dylib`) is loaded from your active toolchain (a regular file
-owned by root or you, not world-writable).
+**confirms** a type is a class/actor, never on a guess.
+
+Toolchain discovery is shared with deadwood: `DEVELOPER_DIR`, then
+`xcode-select -p`, `xcrun --find swift`, user-installed toolchains under
+`~/Library/Developer/Toolchains`, then Command Line Tools. The first trusted
+`libIndexStore.dylib` wins. Links resolve before checking: a regular file owned
+by root or you, with neither it nor its immediate containing directory writable
+by group or other. `--verbose` explains selection and preceding rejections on
+stderr; it does not alter the report or prove index coverage. DerivedData is
+matched to Xcode container paths in `info.plist`, not the checkout folder name,
+so separate worktrees do not borrow each other's stores.
 
 ## Experimental: `--experimental-embedding-rank` (macOS-only)
 
