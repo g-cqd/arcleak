@@ -1,3 +1,4 @@
+import AnalyzerCLI
 import ArcLeakCore
 public import ArgumentParser
 import ProjectModel
@@ -249,7 +250,7 @@ struct Analyze: AsyncParsableCommand {
         if report.wasCancelled {
             standardError.write(
                 Data("arcleak: run cancelled before the corpus was complete; no findings reported\n".utf8))
-            throw ExitCode(ExitStatus.internalFailure)
+            throw ExitCode(ExitStatus.internalFailure.rawValue)
         }
 
         // A corpus where EVERY file degraded analyzed nothing; exiting 0 would be
@@ -271,11 +272,11 @@ struct Analyze: AsyncParsableCommand {
                 Data(
                     "arcleak: every file in the corpus was skipped (unreadable, non-UTF8, or over the size cap); nothing was analyzed\n"
                         .utf8))
-            throw ExitCode(ExitStatus.internalFailure)
+            throw ExitCode(ExitStatus.internalFailure.rawValue)
         }
 
         if let writeBaseline {
-            try baselineOrExit { try Baseline(findings: report.findings).write(path: writeBaseline) }
+            try outputOrExit { try Baseline(findings: report.findings).write(path: writeBaseline) }
             standardError.write(
                 Data("arcleak: wrote baseline with \(report.findings.count) fingerprint(s) to \(writeBaseline)\n".utf8)
             )
@@ -360,8 +361,7 @@ struct Analyze: AsyncParsableCommand {
             return
         }
         // Notes inform; they never fail a run, not even a strict one.
-        let failed =
-            strict ? report.findings.contains { $0.severity > .note } : report.maxSeverity == .error
+        let failed = RunOutcome.fails(report.findings.map(\.severity), strict: strict)
         if !failed, let stamp {
             try? FileManager.default.createDirectory(
                 at: URL(fileURLWithPath: stamp).deletingLastPathComponent(),
@@ -373,11 +373,11 @@ struct Analyze: AsyncParsableCommand {
                 try Data().write(to: URL(fileURLWithPath: stamp))
             } catch {
                 standardError.write(Data("arcleak: could not write the stamp \(stamp): \(error)\n".utf8))
-                throw ExitCode(ExitStatus.ioFailure)
+                throw ExitCode(ExitStatus.outputFailure.rawValue)
             }
         }
         if failed {
-            throw ExitCode(1)
+            throw ExitCode(ExitStatus.findings.rawValue)
         }
     }
 
@@ -478,24 +478,28 @@ struct Analyze: AsyncParsableCommand {
     /// configuration or baseline. `70` prints the report when every file was
     /// skipped, and nothing when the run was cancelled, so a caller tells the
     /// two apart by whether stdout is empty.
-    enum ExitStatus {
-        static let findings: Int32 = 1
-        static let internalFailure: Int32 = 70
-        static let ioFailure: Int32 = 74
-        static let badConfiguration: Int32 = 78
-    }
 
     /// A malformed config is a broken gate, not a finding — exit 78 so CI can
     /// tell the two apart instead of reporting a typo as analysis output.
 
     /// A missing or corrupt baseline is a broken gate, not a finding — exit 78
     /// so CI cannot mistake it for "findings found" (exit 1).
+    /// An output the run was asked to write and could not is exit 74, not a configuration error (ADR-0018).
+    private func outputOrExit<T>(_ body: () throws -> T) throws -> T {
+        do {
+            return try body()
+        } catch {
+            standardError.write(Data("arcleak: \(error)\n".utf8))
+            throw ExitCode(ExitStatus.outputFailure.rawValue)
+        }
+    }
+
     private func baselineOrExit<T>(_ body: () throws -> T) throws -> T {
         do {
             return try body()
         } catch {
             standardError.write(Data("arcleak: \(error)\n".utf8))
-            throw ExitCode(ExitStatus.badConfiguration)
+            throw ExitCode(ExitStatus.badConfiguration.rawValue)
         }
     }
 
@@ -506,7 +510,7 @@ struct Analyze: AsyncParsableCommand {
             throw error
         } catch {
             standardError.write(Data("arcleak: \(error)\n".utf8))
-            throw ExitCode(ExitStatus.badConfiguration)
+            throw ExitCode(ExitStatus.badConfiguration.rawValue)
         }
     }
 
@@ -563,7 +567,7 @@ struct Analyze: AsyncParsableCommand {
                             """.utf8
                         )
                     )
-                    throw ExitCode(ExitStatus.ioFailure)
+                    throw ExitCode(ExitStatus.outputFailure.rawValue)
                 }
             }
         }
