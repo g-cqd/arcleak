@@ -1,5 +1,6 @@
 public import ProjectModel
 import SourceCorpus
+import SwiftParser
 
 #if canImport(FoundationEssentials)
     public import FoundationEssentials
@@ -99,16 +100,20 @@ public struct Analyzer: Sendable {
                 }
                 // The index waits for the whole corpus (below): only then is it known which types the corpus
                 // declares, and those the index must not answer for.
+                // Extraction recurses once per level of the syntax tree: it runs on a large stack (roadmap 0041).
+                let entryPoints = project.systemEntryPoints
                 group.addTask { [configuration] in
-                    Self.makeOutcome(
-                        path: path,
-                        snapshot: snapshot,
-                        index: nil,
-                        configuration: configuration,
-                        platforms: platforms,
-                        systemEntryPoints: project.systemEntryPoints,
-                        definesSalt: definesSalt
-                    )
+                    await LargeStack.run {
+                        Self.makeOutcome(
+                            path: path,
+                            snapshot: snapshot,
+                            index: nil,
+                            configuration: configuration,
+                            platforms: platforms,
+                            systemEntryPoints: entryPoints,
+                            definesSalt: definesSalt
+                        )
+                    }
                 }
                 scheduled += 1
             }
@@ -128,11 +133,16 @@ public struct Analyzer: Sendable {
         for var outcome in outcomes {
             if let corpusIndex, let facts = outcome.facts, facts.extendsUnknownType {
                 // A file that extends a type the corpus does not declare: what the index knows of that type may
-                // reach rules the per-file pass ran without it.
-                let effective = facts.upgraded(with: corpusIndex)
+                // reach rules the per-file pass ran without it. The index parses declaring files: large stack.
+                let entryPoints = project.systemEntryPoints
+                let (effective, findings) = await LargeStack.run { [configuration] in
+                    let effective = facts.upgraded(with: corpusIndex)
+                    let findings = RuleEngine.check(
+                        file: effective, configuration: configuration, systemEntryPoints: entryPoints)
+                    return (effective, findings)
+                }
                 outcome.effectiveFacts = effective
-                outcome.findings = RuleEngine.check(
-                    file: effective, configuration: configuration, systemEntryPoints: project.systemEntryPoints)
+                outcome.findings = findings
             }
             if let facts = outcome.facts {
                 corpus.append(outcome.effectiveFacts ?? facts)
@@ -147,11 +157,11 @@ public struct Analyzer: Sendable {
             }
         }
         corpus.sort { $0.path < $1.path }
+        let corpusFacts = corpus
         raw.append(
-            contentsOf: RuleEngine.checkCorpus(
-                corpus: corpus, configuration: configuration, index: corpusIndex
-            )
-        )
+            contentsOf: await LargeStack.run { [configuration] in
+                RuleEngine.checkCorpus(corpus: corpusFacts, configuration: configuration, index: corpusIndex)
+            })
 
         // A cancelled run analysed only part of the corpus, and
         // `mutual-strong-properties` draws its conclusion from the whole of it.
@@ -331,9 +341,16 @@ public struct Analyzer: Sendable {
                     degraded: AnalysisReport.DegradedFile(path: path, detail: "not valid UTF-8")
                 )
             }
+            let tree = Parser.parse(source: source)
+            // Every walk of the tree recurses once per level; past the limit the file is listed, not walked.
+            guard !SyntaxDepth.exceeds(tree) else {
+                return FileOutcome(
+                    degraded: AnalysisReport.DegradedFile(
+                        path: path, detail: "nested deeper than \(SyntaxDepth.defaultLimit) levels; not analysed"))
+            }
             facts = FactsExtraction.extract(
                 path: path,
-                source: source,
+                tree: tree,
                 defines: configuration.activeDefines,
                 platforms: platforms,
                 contracts: configuration.contracts ?? []

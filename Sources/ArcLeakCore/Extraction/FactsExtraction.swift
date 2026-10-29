@@ -13,7 +13,20 @@ public enum FactsExtraction {
         platforms: Set<String> = [],
         contracts: [Configuration.UserContract] = []
     ) -> FileFacts {
-        let tree = Parser.parse(source: source)
+        extract(
+            path: path, tree: Parser.parse(source: source), defines: defines, platforms: platforms, contracts: contracts
+        )
+    }
+
+    /// As ``extract(path:source:defines:platforms:contracts:)``, from a tree already parsed: the caller checks its
+    /// depth first (`SyntaxDepth`), since every walk below recurses once per level.
+    static func extract(
+        path: String,
+        tree: SourceFileSyntax,
+        defines: Set<String> = [],
+        platforms: Set<String> = [],
+        contracts: [Configuration.UserContract] = []
+    ) -> FileFacts {
         let converter = SourceLocationConverter(fileName: path, tree: tree)
         let buildConfiguration = buildConfiguration(defines: defines, platforms: platforms)
 
