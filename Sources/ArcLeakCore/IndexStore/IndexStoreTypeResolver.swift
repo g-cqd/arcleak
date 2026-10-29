@@ -1,5 +1,7 @@
 #if canImport(IndexStoreDB)
     import Foundation
+    import ProjectModel
+    import SwiftParser
 
     /// Index-store-backed ``IndexReading``: resolves types declared *outside* the
     /// analyzed corpus. IndexStoreDB supplies the symbol KIND (class/actor →
@@ -124,7 +126,9 @@
                 let source = String(data: data, encoding: .utf8)
             else { return .gone }
 
-            let facts = FactsExtraction.extract(path: file, source: source, defines: defines)
+            let tree = Parser.parse(source: source)
+            guard !SyntaxDepth.exceeds(tree) else { return .gone }
+            let facts = FactsExtraction.extract(path: file, tree: tree, defines: defines)
             guard let type = facts.types.first(where: { $0.name == name }) else { return .gone }
 
             let isModel = type.attributeNames.contains("Model")
