@@ -447,6 +447,11 @@
         /// or under its newest `vN` subdir. An empty `vN/units` (a build that
         /// emitted nothing to this path) does not count, so a populated sibling
         /// store wins discovery.
+        /// Whether `path` holds index records, directly or in a `vN` directory below it.
+        static func isPopulatedStore(atPath path: String) -> Bool {
+            isPopulatedStore(URL(fileURLWithPath: path))
+        }
+
         private static func isPopulatedStore(_ url: URL) -> Bool {
             guard (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else {
                 return false
