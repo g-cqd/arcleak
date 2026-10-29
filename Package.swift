@@ -118,6 +118,7 @@ let package = Package(
                 "ArcLeakCore", .product(name: "SourceCorpus", package: "analyzerkit"),
                 .product(name: "WordPiece", package: "analyzerkit"),
             ],
+            exclude: ["Goldens"],
             resources: [.copy("Fixtures")],
             swiftSettings: strictSwiftSettings
         ),
