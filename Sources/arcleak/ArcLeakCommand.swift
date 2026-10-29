@@ -108,6 +108,9 @@ struct Analyze: AsyncParsableCommand {
     @Flag(name: .long, help: "Disable the incremental facts cache.")
     var noCache = false
 
+    @Flag(name: .long, help: "Explain index-store toolchain selection and rejected candidates on stderr.")
+    var verbose = false
+
     @Option(
         name: .customLong("define"),
         help: "Custom #if condition to treat as set (repeatable; the compiler's -D)."
@@ -448,6 +451,11 @@ struct Analyze: AsyncParsableCommand {
         configuration: Configuration
     ) async -> (any IndexReading)? {
         guard indexStore || indexStorePath != nil || indexStoreBuild else { return nil }
+        if verbose {
+            for diagnostic in IndexToolchainDiagnostics.resolve() {
+                standardError.write(Data(("arcleak: " + diagnostic + "\n").utf8))
+            }
+        }
         let outcome = await IndexStoreResolution.resolve(
             projectRoot: ProjectLayout.discover(paths: paths)?.root ?? FileManager.default.currentDirectoryPath,
             explicitStorePath: indexStorePath,

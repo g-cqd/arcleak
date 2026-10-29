@@ -1,6 +1,7 @@
 #if canImport(IndexStoreDB)
     public import Foundation
     import IndexStoreDB
+    import IndexStoreSupport
     import ProjectModel
 
     // MARK: - IndexStoreError
@@ -154,9 +155,8 @@
         /// The underlying IndexStoreDB database.
         private let db: IndexStoreDB
 
-        /// Open a reader, resolving `libIndexStore.dylib` synchronously from the
-        /// static/user toolchain candidate paths. Use ``open(indexStorePath:allowsDirectoryCreation:)``
-        /// for the async path that additionally consults `xcrun`.
+        /// Open a reader using analyzerkit's shared toolchain resolution and trust policy. Explicit dylib
+        /// paths are checked by the same policy before any database or library work.
         public init(
             indexStorePath: String,
             libIndexStorePath: String? = nil,
@@ -166,7 +166,9 @@
 
             let libPath: String
             if let provided = libIndexStorePath {
-                libPath = provided
+                let assessment = IndexStoreSupport.BinaryTrustChecker.assess(provided)
+                guard assessment.isTrusted else { throw IndexStoreError.dylibNotFound }
+                libPath = assessment.path
             } else if let resolved = Self.resolveLibraryPathSync() {
                 libPath = resolved
             } else {
@@ -235,71 +237,13 @@
 
         // MARK: dylib discovery
 
-        /// Synchronous candidate paths (no subprocess): system toolchains and
-        /// the user's `~/Library/Developer/Toolchains` snapshots.
+        /// Same policy for synchronous and asynchronous callers: analyzerkit's ordered, audited resolution.
         static func resolveLibraryPathSync() -> String? {
-            for candidate in staticCandidatePaths() where isTrustedDylib(at: candidate) {
-                return candidate
-            }
-            return nil
+            ToolchainResolution.resolve().libraryPath
         }
 
-        /// Full async resolution. `xcrun --find swift` is consulted first so the
-        /// dylib reflects the toolchain that `swift build` resolves to on `PATH`
-        /// (which is also what the auto-build path invokes), then the static and
-        /// user-toolchain candidates.
         public static func findLibIndexStore() async -> String? {
-            if let fromXcrun = await xcrunDerivedDylib(), isTrustedDylib(at: fromXcrun) {
-                return fromXcrun
-            }
-            return resolveLibraryPathSync()
-        }
-
-        private static func xcrunDerivedDylib() async -> String? {
-            guard
-                let result = try? await ProcessExecutor.run(
-                    executable: URL(fileURLWithPath: "/usr/bin/xcrun"),
-                    arguments: ["--find", "swift"]
-                ),
-                result.succeeded
-            else { return nil }
-            let swiftPath = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !swiftPath.isEmpty else { return nil }
-            return URL(fileURLWithPath: swiftPath)
-                .deletingLastPathComponent()  // bin
-                .deletingLastPathComponent()  // usr
-                .appendingPathComponent("lib")
-                .appendingPathComponent("libIndexStore.dylib")
-                .path
-        }
-
-        private static func staticCandidatePaths() -> [String] {
-            var paths = [
-                "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/libIndexStore.dylib",
-                "/Library/Developer/Toolchains/swift-latest.xctoolchain/usr/lib/libIndexStore.dylib",
-                "/Library/Developer/CommandLineTools/usr/lib/libIndexStore.dylib",
-            ]
-            // User-installed toolchains (swiftly snapshots, downloaded
-            // toolchains) live here and are user-owned — the common case for a
-            // dev CLI. Newest snapshot first.
-            let userToolchains = URL(fileURLWithPath: NSHomeDirectory())
-                .appendingPathComponent("Library/Developer/Toolchains")
-            if let entries = try? FileManager.default.contentsOfDirectory(atPath: userToolchains.path) {
-                for entry in entries.sorted(by: >) where entry.hasSuffix(".xctoolchain") {
-                    paths.append(
-                        userToolchains.appendingPathComponent(entry)
-                            .appendingPathComponent("usr/lib/libIndexStore.dylib").path
-                    )
-                }
-            }
-            return paths
-        }
-
-        /// A candidate is trusted after symlink resolution (so `swift-latest` is
-        /// followed to its real target before the ownership/permission check).
-        private static func isTrustedDylib(at path: String) -> Bool {
-            let resolved = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
-            return BinaryTrustChecker.isTrusted(at: resolved)
+            resolveLibraryPathSync()
         }
 
         // MARK: queries
