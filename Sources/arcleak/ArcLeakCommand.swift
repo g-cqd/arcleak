@@ -115,7 +115,8 @@ struct Analyze: AsyncParsableCommand {
             throw ValidationError(ArcLeakError.noInputs.description)
         }
 
-        let index = await resolveIndex(files: files, configuration: configuration)
+        let resolved = await resolveIndex(files: files, configuration: configuration)
+        let index = resolved?.index
 
         let reportScope = try resolveReportScope()
         // A non-empty scope that intersects zero corpus files is almost always a
@@ -233,7 +234,16 @@ struct Analyze: AsyncParsableCommand {
             }
         #endif
 
-        var extraNotes: [RunNote] = []
+        // The store's coverage (ADR-0005, ADR-0017): its notes with the report's paths, and the files it does not cover.
+        func shown(_ path: String) -> String {
+            output.relativeTo.map { RepositoryRoot.relativize(path, to: SourcePath.canonical($0)) } ?? path
+        }
+        var extraNotes: [RunNote] = (resolved?.runNotes ?? []).map { note in
+            RunNote(
+                code: note.code, severity: note.severity, message: note.message, paths: note.paths.map(shown),
+                verbose: output.verbose)
+        }
+        let indexSkipped = (resolved?.skippedFiles ?? []).map { SkippedFile(path: shown($0.path), reason: $0.reason) }
         if let path = output.reportNewSince {
             // Counted after --baseline, so the note states what the report shows.
             let count = report.findings.count(where: { promoted.contains($0.fingerprint) })
@@ -270,6 +280,7 @@ struct Analyze: AsyncParsableCommand {
 
         let text = ReportFormatter.format(
             report, as: OutputFormat(output.format), relativeTo: output.relativeTo, runNotes: extraNotes,
+            skippedFiles: indexSkipped,
             verbose: output.verbose, timings: output.timings)
         if !text.isEmpty {
             print(text)
@@ -383,7 +394,7 @@ struct Analyze: AsyncParsableCommand {
     private func resolveIndex(
         files: [String],
         configuration: Configuration
-    ) async -> (any IndexReading)? {
+    ) async -> IndexStoreResolution.Outcome? {
         guard index.requested else { return nil }
         if output.verbose {
             for diagnostic in await IndexToolchainDiagnostics.resolve() {
@@ -401,7 +412,7 @@ struct Analyze: AsyncParsableCommand {
         if let note = outcome.note {
             standardError.write(Data("arcleak: \(note)\n".utf8))
         }
-        return outcome.index
+        return outcome
     }
 
     /// Exit codes, so CI can tell "the gate found problems" from "the gate broke".

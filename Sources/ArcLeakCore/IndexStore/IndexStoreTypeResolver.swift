@@ -1,6 +1,6 @@
 #if canImport(IndexStoreDB)
     import Foundation
-    import IndexStoreSupport
+    public import IndexStoreSupport
     import ProjectModel
     import SwiftParser
 
@@ -44,17 +44,8 @@
         /// The store's root, canonical.
         public var storePath: String { reader.indexStorePath }
 
-        /// Analyzed files the index has never seen, whose modification time is newer than the index's latest unit for
-        /// them, or that cannot be read: the session's coverage (analyzerkit `IndexCoverage`) of the files it was
-        /// opened with. A non-empty result means the store is stale relative to the corpus, and the caller goes
-        /// corpus-only rather than resolve against a store that could be wrong.
-        ///
-        /// It is also the safety gate for stores of RELATIVE unit paths: absolute analyzed paths never match relative
-        /// units, so such a store reports every file stale before any symbol query runs, which would abort an
-        /// asserts build of libIndexStore.
-        public var staleAnalyzedFiles: [String] {
-            reader.session.coverage.files.filter { $0.coverage != .indexed }.map(\.path)
-        }
+        /// How the store covered the analyzed files when it was opened (analyzerkit `IndexCoverage`).
+        public var coverage: IndexCoverage { reader.session.coverage }
 
         public func externalTypeFacts(name: String) -> ExternalTypeFacts? {
             memoLock.lock()
@@ -72,24 +63,31 @@
             return resolved
         }
 
+        /// What the index says of a type the corpus does not declare, decided per definition (ADR-0005 item 3):
+        /// - every type definition of the name counts; when they disagree (a struct in one module, a class in another)
+        ///   nothing is answered (A3);
+        /// - a definition whose declaring Swift file changed since the build, or was never built, is not used (A4); an SDK
+        ///   header is the index's word alone;
+        /// - a class is read from its declaring file now, and a file that no longer declares it answers nothing; several
+        ///   classes of one name answer that it is a class, with no edges, since which one is meant is not known.
         private func resolve(name: String) -> ExternalTypeFacts? {
-            guard let definition = reader.definition(ofSymbolNamed: name) else {
-                return nil  // the index doesn't know this name — degrade to silence
+            let definitions = reader.typeDefinitions(ofSymbolNamed: name)
+            guard !definitions.isEmpty else { return nil }  // the index doesn't know this name — degrade to silence
+            let freshness = reader.session.freshness
+            for definition in definitions where definition.file.hasSuffix(".swift") {
+                guard freshness.isCurrent(definition.file) else { return nil }
             }
-            guard definition.kind.indicatesReferenceType else {
-                switch definition.kind {
-                case .struct, .enum:
-                    // A confirmed value type keeps the reference-type gate closed.
-                    return ExternalTypeFacts(isReferenceType: false)
-                default:
-                    // protocol / typealias / etc. — not a concrete reference type
-                    // and not a value type; upgrade nothing.
-                    return nil
-                }
+            let kinds = Set(definitions.map(\.kind))
+            if kinds.allSatisfy({ $0 == .struct || $0 == .enum }) {
+                return ExternalTypeFacts(isReferenceType: false)  // a confirmed value type keeps the gate closed
             }
-            // Class/actor confirmed. Parse the declaring source for its outgoing strong edges. Without Swift
-            // source (an SDK type) the index's kind is all there is; a Swift source that no longer declares the
-            // type means the record is out of date, and nothing is inferred from it.
+            // A protocol or typealias is neither; a mix of kinds is a disagreement.
+            guard kinds == [.class] else { return nil }
+            guard Set(definitions.map(\.usr)).count == 1, Set(definitions.map(\.file)).count == 1,
+                let definition = definitions.first
+            else { return ExternalTypeFacts(isReferenceType: true) }
+            // Parse the declaring source for its outgoing strong edges. Without Swift source (an SDK type) the index's
+            // kind is all there is; a Swift source that no longer declares the type means the record is out of date.
             switch parseDeclaringType(named: name, file: definition.file) {
             case .declared(let facts): return facts
             case .gone: return nil

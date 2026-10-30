@@ -1,3 +1,5 @@
+public import ReportSupport
+
 #if canImport(IndexStoreDB)
     import Foundation
     import IndexStoreSupport
@@ -7,8 +9,10 @@
 /// Front door the CLI uses to (optionally) obtain an index-backed type
 /// resolver. Always safe to call and NEVER throws: on a platform without
 /// IndexStoreDB, or when no store can be found / built / opened, or when the
-/// store is stale relative to the corpus, it returns a nil index and a
-/// human-readable note explaining the fallback. The index is a pure supplement;
+/// store indexes none of the analyzed files, it returns a nil index and a
+/// human-readable note explaining the fallback. Freshness is decided per
+/// definition, not per run (ADR-0005): files the store does not cover are
+/// listed, and the index answers for the rest. The index is a pure supplement;
 /// a nil index means today's corpus-only analysis, byte-identical.
 public enum IndexStoreResolution {
     public struct Outcome: Sendable {
@@ -18,10 +22,19 @@ public enum IndexStoreResolution {
         /// A note to surface to the user (fallback reason, or the active store
         /// path). Nil when there is nothing to say.
         public let note: String?
+        /// What the report says of the store's coverage of the analyzed files (ADR-0017): one note per class of file it
+        /// does not cover, or one that it was not used. Every path is listed; the report shortens them unless verbose.
+        public let runNotes: [RunNote]
+        /// The analyzed files the store does not cover, as the report lists them.
+        public let skippedFiles: [SkippedFile]
 
-        public init(index: (any IndexReading)?, note: String?) {
+        public init(
+            index: (any IndexReading)?, note: String?, runNotes: [RunNote] = [], skippedFiles: [SkippedFile] = []
+        ) {
             self.index = index
             self.note = note
+            self.runNotes = runNotes
+            self.skippedFiles = skippedFiles
         }
     }
 
@@ -112,9 +125,12 @@ public enum IndexStoreResolution {
                     storePath: storePath, cacheRoot: cacheRoot, analyzedFiles: analyzedFiles, defines: defines)
             } catch .notAStore(let reason) {
                 return Outcome(index: nil, note: "\(reason); proceeding with corpus-only analysis")
-            } catch .coversNoAnalyzedFile(let store, let count) {
-                // No analyzed file is indexed: every one is stale, as the gate below would say.
-                return Outcome(index: nil, note: Self.staleNote(store: store, count: count, freshlyBuilt: freshlyBuilt))
+            } catch .coversNoAnalyzedFile(let store, let count, let coverage) {
+                // The run-wide gate's one job (ADR-0005 item 2): no analyzed file is indexed, so the store does not
+                // describe these files; this also keeps a store of relative unit paths from any symbol query.
+                return Outcome(
+                    index: nil, note: Self.staleNote(store: store, count: count, freshlyBuilt: freshlyBuilt),
+                    runNotes: coverage.runNotes(store: store, verbose: true), skippedFiles: coverage.skippedFiles)
             } catch {
                 return Outcome(
                     index: nil,
@@ -124,17 +140,18 @@ public enum IndexStoreResolution {
                 )
             }
 
-            // The staleness contract: a store older than an analyzed source could resolve to wrong facts, so the whole
-            // run goes corpus-only with a notice, never silently wrong (run-wide, as before analyzerkit's per-file
-            // coverage).
-            let stale = resolver.staleAnalyzedFiles
-            if !stale.isEmpty {
-                return Outcome(
-                    index: nil,
-                    note: Self.staleNote(store: resolver.storePath, count: stale.count, freshlyBuilt: freshlyBuilt))
-            }
-
-            return Outcome(index: resolver, note: "index store active: \(resolver.storePath)")
+            // Files the store does not cover are listed, and the index answers for the others: a type's answer depends
+            // on the freshness of the file that declares it, which the resolver checks (ADR-0005).
+            let coverage = resolver.coverage
+            let indexed = coverage.paths(.indexed).count
+            let missing = coverage.paths(.notIndexed).count
+            let changed = coverage.paths(.changedSinceBuild).count
+            let note =
+                "index active for \(indexed) of \(coverage.files.count) files; \(missing) not in the index, \(changed) "
+                + "changed since the build: \(resolver.storePath)"
+            return Outcome(
+                index: resolver, note: note, runNotes: coverage.runNotes(store: resolver.storePath, verbose: true),
+                skippedFiles: coverage.skippedFiles)
         }
 
         private static func staleNote(store: String, count: Int, freshlyBuilt: Bool) -> String {

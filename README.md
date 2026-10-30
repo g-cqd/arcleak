@@ -212,10 +212,19 @@ arcleak analyze Sources --index-store --verbose             # explain dylib sele
 ```
 
 It is **opt-in, macOS-only, and always fails open**. With no index, on Linux,
-or when the store is stale relative to the analyzed sources, arcleak prints a
+or when the store indexes none of the analyzed files, arcleak prints a
 one-line note and runs the corpus-only analysis unchanged — byte-identical to
-the default. Resolution is conservative: an edge is added only when the index
-**confirms** a type is a class/actor, never on a guess.
+the default. Otherwise the index is used, and the note says how far it covers
+the analyzed files: `index active for 2809 of 2838 files; 11 not in the index,
+18 changed since the build`. The JSON report lists those files under
+`skippedFiles` and as `runNotes`.
+
+Resolution is conservative and decided per definition: an edge is added only
+when the index **confirms** a type is a class/actor, never on a guess. A type
+the corpus declares is never looked up. When the index records several
+definitions of a name that disagree (a struct in one module, a class in
+another), it answers nothing. A definition whose declaring file changed since
+the build, or no longer declares the type, is not used.
 
 Toolchain discovery is shared with deadwood: `DEVELOPER_DIR`, then
 `xcode-select -p`, `xcrun --find swift`, user-installed toolchains under
@@ -233,9 +242,7 @@ system's `.build/out`), then DerivedData. `--index-store-path` takes the store,
 a `vN` directory in it, `Index.noindex`, a DerivedData build root or a SwiftPM
 build directory; anything else is refused before it is opened, so nothing is
 created in it. The IndexStoreDB database lives under the cache root
-(`<root>/index/<hash>`, `--cache-path` moves it), never beside the store. A
-store that indexes none of the analyzed files, or is stale for any of them,
-leaves the run corpus-only.
+(`<root>/index/<hash>`, `--cache-path` moves it), never beside the store.
 
 ## Experimental: `--experimental-embedding-rank` (macOS-only)
 
@@ -449,8 +456,8 @@ capturing `self` strongly) is flagged; the same call with `[weak self]` is not.
 - **Cross-module types — enable `--index-store` (macOS).** For retain cycles
   that close through types declared in other modules or the SDK, `--index-store`
   resolves their class-ness from the build index (see above). It is opt-in and
-  **fails open**: with no index, on Linux, or against a stale store it runs the
-  corpus-only analysis unchanged.
+  **fails open**: with no index, on Linux, or against a store that describes
+  none of the analyzed files it runs the corpus-only analysis unchanged.
 - **True-negative discipline.** arcleak reports nothing it cannot prove, so
   **silence means "no provable cycle in what I can see," not "no cycles."** A
   wrapper it does not know, a cycle that closes through an unresolved module, or

@@ -27,14 +27,15 @@ public enum ReportFormatter {
     ///   - timings: carry the phases' times in the JSON report.
     public static func format(
         _ report: AnalysisReport, as format: OutputFormat, relativeTo root: String? = nil,
-        runNotes: [RunNote] = [], verbose: Bool = false, timings: Bool = false
+        runNotes: [RunNote] = [], skippedFiles: [SkippedFile] = [], verbose: Bool = false, timings: Bool = false
     ) -> String {
         switch format {
         case .xcode: xcode(report)
         case .json:
             encode(
                 envelope(
-                    report, root: root.map(SourcePath.canonical), extra: runNotes, verbose: verbose, timings: timings))
+                    report, root: root.map(SourcePath.canonical), extra: runNotes, extraSkipped: skippedFiles,
+                    verbose: verbose, timings: timings))
         case .sarif: sarif(report, root: root.map(SourcePath.canonical))
         }
     }
@@ -78,8 +79,8 @@ public enum ReportFormatter {
 
     /// The JSON report: the analysis report's fields and the keys every analyzer's report carries (ADR-0017).
     private static func envelope(
-        _ report: AnalysisReport, root: String? = nil, extra: [RunNote] = [], verbose: Bool = false,
-        timings: Bool = false
+        _ report: AnalysisReport, root: String? = nil, extra: [RunNote] = [], extraSkipped: [SkippedFile] = [],
+        verbose: Bool = false, timings: Bool = false
     ) -> ReportEnvelope<AnalysisReport> {
         var seen: Set<String> = []
         let skipped = report.degradedFiles.compactMap { file in
@@ -92,7 +93,8 @@ public enum ReportFormatter {
                 verbose: verbose)
         }
         return ReportEnvelope(
-            report, tool: ToolInfo.name, version: ToolInfo.version, runNotes: notes + extra, skippedFiles: skipped,
+            report, tool: ToolInfo.name, version: ToolInfo.version, runNotes: notes + extra,
+            skippedFiles: skipped + extraSkipped.filter { seen.insert($0.path).inserted },
             timings: timings ? report.timings : nil)
     }
 
