@@ -40,7 +40,7 @@
                     cache.path,
                 ], in: root)
 
-            #expect(run.standardError.contains("index store active"), "\(run.standardError)")
+            #expect(run.standardError.contains("index active for 1 of 1 files"), "\(run.standardError)")
             #expect(!FileManager.default.fileExists(atPath: root.appending(path: "IndexDatabase").path))
             let databases = (try? FileManager.default.contentsOfDirectory(atPath: cache.appending(path: "index").path))
             #expect(databases?.count == 1, "\(databases ?? [])")
@@ -56,7 +56,7 @@
                     "--cache-path", root.appending(path: "cache").path,
                 ], in: root)
 
-            #expect(run.standardError.contains("index store active"), "\(run.standardError)")
+            #expect(run.standardError.contains("index active for 1 of 1 files"), "\(run.standardError)")
             #expect(String(decoding: run.standardOutput, as: UTF8.self).contains("mutual-strong-properties"))
         }
 
@@ -68,7 +68,7 @@
             let run = try BuiltTool.run(
                 ["analyze", hub.path, "--index-store", "--cache-path", root.appending(path: "cache").path], in: root)
 
-            #expect(run.standardError.contains("index store active"), "\(run.standardError)")
+            #expect(run.standardError.contains("index active for 1 of 1 files"), "\(run.standardError)")
         }
     }
 #endif

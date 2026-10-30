@@ -14,8 +14,8 @@
         case notAStore(reason: String)
         /// The library or the database could not be opened.
         case failedToOpen(reason: String)
-        /// The store opened but indexes none of the `analyzedCount` analyzed files.
-        case coversNoAnalyzedFile(store: String, analyzedCount: Int)
+        /// The store opened but indexes none of the `analyzedCount` analyzed files; `coverage` says how each was found.
+        case coversNoAnalyzedFile(store: String, analyzedCount: Int, coverage: IndexCoverage)
         /// `libIndexStore.dylib` could not be located at any trusted path.
         case dylibNotFound
 
@@ -23,7 +23,7 @@
             switch self {
             case .notAStore(let reason): reason
             case .failedToOpen(let reason): reason
-            case .coversNoAnalyzedFile(let store, let count):
+            case .coversNoAnalyzedFile(let store, let count, _):
                 "index store at \(store) indexes none of \(count) analyzed file(s)"
             case .dylibNotFound: "no trusted libIndexStore.dylib was found"
             }
@@ -193,7 +193,8 @@
         ) throws(IndexStoreError) -> IndexStoreReader {
             switch IndexStoreSession.open(path, cacheRoot: cacheRoot, library: library, analyzedFiles: analyzedFiles) {
             case .usable(let session): return IndexStoreReader(session: session)
-            case .notUsable(let store, _): throw .coversNoAnalyzedFile(store: store, analyzedCount: analyzedFiles.count)
+            case .notUsable(let store, let coverage):
+                throw .coversNoAnalyzedFile(store: store, analyzedCount: analyzedFiles.count, coverage: coverage)
             case .notAStore(let reason): throw .notAStore(reason: reason)
             case .failed(let reason): throw .failedToOpen(reason: reason)
             }
@@ -208,13 +209,21 @@
 
         // MARK: queries
 
-        /// Definition kind + declaring file for the first canonical definition
-        /// occurrence of `name`, or `nil` when the index doesn't know it.
-        public func definition(ofSymbolNamed name: String) -> (kind: IndexedSymbolKind, file: String)? {
-            for occurrence in findOccurrences(ofSymbolNamed: name) where occurrence.roles.isDefinitionLike {
-                return (occurrence.symbol.kind, occurrence.file)
+        /// Every type definition the index records for `name` (class, actor, struct, enum, protocol, typealias), one per
+        /// symbol and declaring file, sorted, so no caller depends on the order the index lists them in (A3).
+        public func typeDefinitions(ofSymbolNamed name: String) -> [(
+            usr: String, kind: IndexedSymbolKind, file: String
+        )] {
+            let typeKinds: Set<IndexedSymbolKind> = [.class, .struct, .enum, .protocol, .typealias]
+            var seen: Set<String> = []
+            var definitions: [(usr: String, kind: IndexedSymbolKind, file: String)] = []
+            for occurrence in findOccurrences(ofSymbolNamed: name)
+            where occurrence.roles.isDefinitionLike && typeKinds.contains(occurrence.symbol.kind)
+                && seen.insert(occurrence.symbol.usr + "\u{0}" + occurrence.file).inserted
+            {
+                definitions.append((occurrence.symbol.usr, occurrence.symbol.kind, occurrence.file))
             }
-            return nil
+            return definitions.sorted { ($0.usr, $0.file) < ($1.usr, $1.file) }
         }
 
         /// All canonical occurrences of a symbol with the given (anchored) name.
