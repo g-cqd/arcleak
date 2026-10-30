@@ -1,3 +1,9 @@
+#if canImport(IndexStoreDB)
+    import Foundation
+    import IndexStoreSupport
+    import ProjectModel
+#endif
+
 /// Front door the CLI uses to (optionally) obtain an index-backed type
 /// resolver. Always safe to call and NEVER throws: on a platform without
 /// IndexStoreDB, or when no store can be found / built / opened, or when the
@@ -28,7 +34,8 @@ public enum IndexStoreResolution {
         explicitStorePath: String?,
         autoBuild: Bool,
         analyzedFiles: [String],
-        defines: Set<String>
+        defines: Set<String>,
+        cacheRoot: String
     ) async -> Outcome {
         #if canImport(IndexStoreDB)
             return await resolveWithIndexStore(
@@ -36,7 +43,8 @@ public enum IndexStoreResolution {
                 explicitStorePath: explicitStorePath,
                 autoBuild: autoBuild,
                 analyzedFiles: analyzedFiles,
-                defines: defines
+                defines: defines,
+                cacheRoot: cacheRoot
             )
         #else
             return Outcome(
@@ -47,19 +55,31 @@ public enum IndexStoreResolution {
     }
 
     #if canImport(IndexStoreDB)
+        /// The store a project has: SwiftPM's under its `.build`, then the newest DerivedData store of its containers
+        /// (analyzerkit `IndexStoreLocation`).
+        static func discover(projectRoot: String, derivedDataRoots: [String]? = nil) -> String? {
+            guard let layout = ProjectLayout.discover(paths: [projectRoot]) else { return nil }
+            let roots =
+                derivedDataRoots ?? [
+                    (ProcessInfo.processInfo.environment["HOME"] ?? NSHomeDirectory())
+                        + "/Library/Developer/Xcode/DerivedData"
+                ]
+            return IndexStoreLocation.discover(layout: layout, derivedDataRoots: roots)
+        }
+
         private static func resolveWithIndexStore(
             projectRoot: String,
             explicitStorePath: String?,
             autoBuild: Bool,
             analyzedFiles: [String],
-            defines: Set<String>
+            defines: Set<String>,
+            cacheRoot: String
         ) async -> Outcome {
-            var storePath = explicitStorePath ?? IndexStorePathFinder.findIndexStorePath(in: projectRoot)
+            var storePath = explicitStorePath ?? discover(projectRoot: projectRoot)
             var freshlyBuilt = false
 
             if storePath == nil, autoBuild {
-                let manager = IndexStoreFallbackManager(configuration: .withAutoBuild)
-                let result = await manager.autoBuild(projectRoot: projectRoot)
+                let result = await IndexStoreAutoBuild.run(projectRoot: projectRoot)
                 guard result.success, let built = result.indexStorePath else {
                     return Outcome(
                         index: nil,
@@ -84,22 +104,17 @@ public enum IndexStoreResolution {
                 )
             }
 
-            // Opening a directory that holds no index records makes libIndexStore create a `v5/` in it and the
-            // reader an `IndexDatabase/` beside it, and every file then looks stale. Refuse it instead, and say what
-            // to pass (analyzerkit roadmap 0035, probe A6).
-            guard IndexStorePathFinder.isPopulatedStore(atPath: storePath) else {
-                return Outcome(
-                    index: nil,
-                    note:
-                        "\(storePath) is not an index store (no records in it, or in a vN directory below it); "
-                        + "pass the store directory itself, e.g. <DerivedData>/Index.noindex/DataStore; "
-                        + "proceeding with corpus-only analysis"
-                )
-            }
-
+            // A path that is not a store is refused before anything opens it: libIndexStore would create a `v5/` in
+            // it (analyzerkit roadmap 0035, probe A6). The database lives under the cache root, never beside the store.
             let resolver: IndexStoreTypeResolver
             do {
-                resolver = try await IndexStoreTypeResolver.open(storePath: storePath, defines: defines)
+                resolver = try await IndexStoreTypeResolver.open(
+                    storePath: storePath, cacheRoot: cacheRoot, analyzedFiles: analyzedFiles, defines: defines)
+            } catch .notAStore(let reason) {
+                return Outcome(index: nil, note: "\(reason); proceeding with corpus-only analysis")
+            } catch .coversNoAnalyzedFile(let store, let count) {
+                // No analyzed file is indexed: every one is stale, as the gate below would say.
+                return Outcome(index: nil, note: Self.staleNote(store: store, count: count, freshlyBuilt: freshlyBuilt))
             } catch {
                 return Outcome(
                     index: nil,
@@ -109,27 +124,25 @@ public enum IndexStoreResolution {
                 )
             }
 
-            // Staleness contract AND crash-safety gate. A store older than an
-            // analyzed source could resolve to wrong facts — downgrade to
-            // corpus-only with a notice, never silently wrong. This also runs
-            // unconditionally (even for a just-built store) because it is the
-            // guard that keeps a relative-unit-path store from ever reaching a
-            // symbol query: absolute analyzed paths don't match relative units,
-            // so such a store reports fully stale and is downgraded here, before
-            // any query can abort libIndexStore.
-            let stale = resolver.staleFiles(among: analyzedFiles)
+            // The staleness contract: a store older than an analyzed source could resolve to wrong facts, so the whole
+            // run goes corpus-only with a notice, never silently wrong (run-wide, as before analyzerkit's per-file
+            // coverage).
+            let stale = resolver.staleAnalyzedFiles
             if !stale.isEmpty {
-                let reason =
-                    freshlyBuilt
-                    ? "the auto-built index does not cover \(stale.count) analyzed file(s)"
-                    : "index store at \(storePath) is stale for \(stale.count) analyzed file(s)"
                 return Outcome(
                     index: nil,
-                    note: "\(reason); proceeding with corpus-only analysis"
-                )
+                    note: Self.staleNote(store: resolver.storePath, count: stale.count, freshlyBuilt: freshlyBuilt))
             }
 
-            return Outcome(index: resolver, note: "index store active: \(storePath)")
+            return Outcome(index: resolver, note: "index store active: \(resolver.storePath)")
+        }
+
+        private static func staleNote(store: String, count: Int, freshlyBuilt: Bool) -> String {
+            let reason =
+                freshlyBuilt
+                ? "the auto-built index does not cover \(count) analyzed file(s)"
+                : "index store at \(store) is stale for \(count) analyzed file(s)"
+            return "\(reason); proceeding with corpus-only analysis"
         }
 
         private static func firstLine(_ text: String) -> String {

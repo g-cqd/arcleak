@@ -33,8 +33,8 @@
                 try file("DD/" + name + "/info.plist", data: plist)
             }
             let expected = root.appending(path: "DD/unrelated-new/Index.noindex/DataStore").path
-            let found = IndexStorePathFinder.findIndexStorePath(
-                in: root.appending(path: "worktree/API/Sources").path,
+            let found = IndexStoreResolution.discover(
+                projectRoot: root.appending(path: "worktree/API/Sources").path,
                 derivedDataRoots: [root.appending(path: "DD").path])
             #expect(found == expected)
 

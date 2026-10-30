@@ -395,7 +395,8 @@ struct Analyze: AsyncParsableCommand {
             explicitStorePath: index.indexStorePath,
             autoBuild: index.indexStoreBuild,
             analyzedFiles: files,
-            defines: configuration.activeDefines
+            defines: configuration.activeDefines,
+            cacheRoot: cacheRoot()
         )
         if let note = outcome.note {
             standardError.write(Data("arcleak: \(note)\n".utf8))
@@ -595,14 +596,19 @@ struct Analyze: AsyncParsableCommand {
     /// nil under `--no-cache`.
     private func cacheLocation() -> CacheLocation? {
         if cache.noCache { return nil }
-        let environment = ProcessInfo.processInfo.environment
-        let root =
-            cache.cachePath.map { SourcePath.absolute($0) }
-            ?? CacheLocation.defaultRoot(
-                tool: ToolInfo.name, environment: environment, home: environment["HOME"] ?? "/tmp")
+        let root = cacheRoot()
         let workspace =
             ProjectLayout.discover(paths: input.paths)?.root ?? SourcePath.absolute(input.paths.first ?? ".")
         return CacheLocation(root: root, workspace: workspace)
+    }
+
+    /// `--cache-path`, or the tool's directory in the user cache directory. The index database lives under it too
+    /// (analyzerkit ADR-0004), `--no-cache` or not: it is IndexStoreDB's, not the facts cache.
+    private func cacheRoot() -> String {
+        let environment = ProcessInfo.processInfo.environment
+        return cache.cachePath.map { SourcePath.absolute($0) }
+            ?? CacheLocation.defaultRoot(
+                tool: ToolInfo.name, environment: environment, home: environment["HOME"] ?? "/tmp")
     }
 
     /// `--rules`: only the rules named run; an unknown name is a usage error.
