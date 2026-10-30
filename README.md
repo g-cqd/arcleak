@@ -206,7 +206,7 @@ cross-module `mutual-strong-properties` cycle:
 
 ```sh
 arcleak analyze Sources --index-store                       # discover the store (.build/…, DerivedData)
-arcleak analyze Sources --index-store-path .build/index/store   # explicit store
+arcleak analyze Sources --index-store-path .build/debug       # explicit store, or a build directory above it
 arcleak analyze Sources --index-store-build                 # `swift build` one first if missing
 arcleak analyze Sources --index-store --verbose             # explain dylib selection on stderr
 ```
@@ -226,6 +226,16 @@ by group or other. `--verbose` explains selection and preceding rejections on
 stderr; it does not alter the report or prove index coverage. DerivedData is
 matched to Xcode container paths in `info.plist`, not the checkout folder name,
 so separate worktrees do not borrow each other's stores.
+
+Stores are found and opened through analyzerkit's `IndexStoreSupport`: SwiftPM's
+under `.build` (the background index, each configuration, the Swift Build
+system's `.build/out`), then DerivedData. `--index-store-path` takes the store,
+a `vN` directory in it, `Index.noindex`, a DerivedData build root or a SwiftPM
+build directory; anything else is refused before it is opened, so nothing is
+created in it. The IndexStoreDB database lives under the cache root
+(`<root>/index/<hash>`, `--cache-path` moves it), never beside the store. A
+store that indexes none of the analyzed files, or is stale for any of them,
+leaves the run corpus-only.
 
 ## Experimental: `--experimental-embedding-rank` (macOS-only)
 

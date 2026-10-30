@@ -58,23 +58,4 @@ import Testing
             Analyzer().analyze(source: source, path: "ext.swift", index: index).findings.isEmpty
         )
     }
-
-    @Test("Store discovery finds .build/index-build and reports staleness")
-    func locatorAndStaleness() throws {
-        let root = FileManager.default.temporaryDirectory
-            .appending(path: "arcleak-index-\(UUID().uuidString)")
-        let store = root.appending(path: ".build/index-build")
-        try FileManager.default.createDirectory(at: store, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-
-        let discovered = try #require(IndexStoreLocator.discover(projectRoot: root))
-        #expect(discovered.url.path.hasSuffix(".build/index-build"))
-
-        let future = discovered.modificationDate.addingTimeInterval(3600)
-        #expect(discovered.isStale(comparedTo: future))
-        let past = discovered.modificationDate.addingTimeInterval(-3600)
-        #expect(!discovered.isStale(comparedTo: past))
-
-        #expect(IndexStoreLocator.discover(projectRoot: root.appending(path: "missing")) == nil)
-    }
 }

@@ -1,7 +1,7 @@
 #if canImport(IndexStoreDB)
     public import Foundation
     import IndexStoreDB
-    import IndexStoreSupport
+    public import IndexStoreSupport
     import ProjectModel
 
     // MARK: - IndexStoreError
@@ -9,12 +9,25 @@
     /// Errors that can occur when opening or reading the index store. Every
     /// failure surface is collapsed here so callers never inspect Foundation /
     /// IndexStoreDB internals.
-    public enum IndexStoreError: Error, Sendable {
-        case indexStoreNotFound(path: String)
-        case failedToOpenDatabase(underlying: String)
-        case databaseDirectoryMissing(String)
+    public enum IndexStoreError: Error, Sendable, CustomStringConvertible {
+        /// The path is not a store; `reason` says what to pass (analyzerkit `IndexStoreLocation`).
+        case notAStore(reason: String)
+        /// The library or the database could not be opened.
+        case failedToOpen(reason: String)
+        /// The store opened but indexes none of the `analyzedCount` analyzed files.
+        case coversNoAnalyzedFile(store: String, analyzedCount: Int)
         /// `libIndexStore.dylib` could not be located at any trusted path.
         case dylibNotFound
+
+        public var description: String {
+            switch self {
+            case .notAStore(let reason): reason
+            case .failedToOpen(let reason): reason
+            case .coversNoAnalyzedFile(let store, let count):
+                "index store at \(store) indexes none of \(count) analyzed file(s)"
+            case .dylibNotFound: "no trusted libIndexStore.dylib was found"
+            }
+        }
     }
 
     // MARK: - IndexedSymbol
@@ -149,90 +162,41 @@
     /// concurrent reads but is not itself `Sendable`. This type is read-only:
     /// `db` is set once in `init` and never mutated.
     public final class IndexStoreReader: @unchecked Sendable {
-        /// The path to the index store.
+        /// The store's root, canonical.
         public let indexStorePath: String
+        /// The session the reader queries: the store opened by analyzerkit (ADR-0004), its database under the cache
+        /// root, and how it covered the analyzed files.
+        public let session: IndexStoreSession
 
         /// The underlying IndexStoreDB database.
-        private let db: IndexStoreDB
+        private var db: IndexStoreDB { session.database }
 
-        /// Open a reader using analyzerkit's shared toolchain resolution and trust policy. Explicit dylib
-        /// paths are checked by the same policy before any database or library work.
-        public init(
-            indexStorePath: String,
-            libIndexStorePath: String? = nil,
-            allowsDirectoryCreation: Bool = true
-        ) throws(IndexStoreError) {
-            self.indexStorePath = indexStorePath
-
-            let libPath: String
-            if let provided = libIndexStorePath {
-                let assessment = IndexStoreSupport.BinaryTrustChecker.assess(provided)
-                guard assessment.isTrusted else { throw IndexStoreError.dylibNotFound }
-                libPath = assessment.path
-            } else {
-                // Resolution is async (it runs xcode-select and xcrun through analyzerkit's BoundedProcess); a caller
-                // without a library goes through ``open(indexStorePath:allowsDirectoryCreation:)``.
-                throw IndexStoreError.dylibNotFound
-            }
-
-            // libIndexStore aborts on a relative store path
-            // ("passed relative path without working-dir"), so absolutize it
-            // against the current directory before handing it over — a relative
-            // `--index-store-path` must degrade gracefully, never crash.
-            let absolute =
-                (indexStorePath as NSString).isAbsolutePath
-                ? indexStorePath
-                : FileManager.default.currentDirectoryPath + "/" + indexStorePath
-            let storePath = URL(fileURLWithPath: absolute).standardizedFileURL
-            let databasePath = storePath.deletingLastPathComponent()
-                .appendingPathComponent("IndexDatabase")
-
-            if allowsDirectoryCreation {
-                do {
-                    try FileManager.default.createDirectory(
-                        at: databasePath, withIntermediateDirectories: true
-                    )
-                } catch {
-                    throw IndexStoreError.failedToOpenDatabase(underlying: error.localizedDescription)
-                }
-            } else {
-                var isDirectory: ObjCBool = false
-                // `isDirectory:` is an ObjCBool out-parameter; the inout pointer
-                // is explicitly `unsafe` under strict memory safety.
-                let exists = unsafe FileManager.default.fileExists(
-                    atPath: databasePath.path, isDirectory: &isDirectory
-                )
-                if !exists || !isDirectory.boolValue {
-                    throw IndexStoreError.databaseDirectoryMissing(databasePath.path)
-                }
-            }
-
-            do {
-                db = try IndexStoreDB(
-                    storePath: storePath.path,
-                    databasePath: databasePath.path,
-                    library: IndexStoreLibrary(dylibPath: libPath),
-                    waitUntilDoneInitializing: true
-                )
-            } catch {
-                throw IndexStoreError.failedToOpenDatabase(underlying: error.localizedDescription)
-            }
+        public init(session: IndexStoreSession) {
+            self.session = session
+            indexStorePath = session.store
         }
 
-        /// Async factory: resolves the dylib via the full candidate list
-        /// (including an `xcrun --find swift` fallback) and opens the reader.
+        /// Opens the store `path` names (``IndexStoreLocation``), its database under `cacheRoot`, with the trusted
+        /// `libIndexStore` that analyzerkit's toolchain resolution selects; a store that indexes none of
+        /// `analyzedFiles` is refused before any query (ADR-0005).
         public static func open(
-            indexStorePath: String,
-            allowsDirectoryCreation: Bool = true
+            indexStorePath path: String, cacheRoot: String, analyzedFiles: [String]
         ) async throws(IndexStoreError) -> IndexStoreReader {
-            guard let lib = await findLibIndexStore() else {
-                throw IndexStoreError.dylibNotFound
+            guard let library = await findLibIndexStore() else { throw .dylibNotFound }
+            return try open(indexStorePath: path, cacheRoot: cacheRoot, library: library, analyzedFiles: analyzedFiles)
+        }
+
+        /// ``open(indexStorePath:cacheRoot:analyzedFiles:)`` with an explicit library, checked by the same trust policy
+        /// before anything is opened.
+        public static func open(
+            indexStorePath path: String, cacheRoot: String, library: String, analyzedFiles: [String]
+        ) throws(IndexStoreError) -> IndexStoreReader {
+            switch IndexStoreSession.open(path, cacheRoot: cacheRoot, library: library, analyzedFiles: analyzedFiles) {
+            case .usable(let session): return IndexStoreReader(session: session)
+            case .notUsable(let store, _): throw .coversNoAnalyzedFile(store: store, analyzedCount: analyzedFiles.count)
+            case .notAStore(let reason): throw .notAStore(reason: reason)
+            case .failed(let reason): throw .failedToOpen(reason: reason)
             }
-            return try IndexStoreReader(
-                indexStorePath: indexStorePath,
-                libIndexStorePath: lib,
-                allowsDirectoryCreation: allowsDirectoryCreation
-            )
         }
 
         // MARK: dylib discovery
@@ -327,72 +291,5 @@
             if roles.contains(.implicit) { result.insert(.implicit) }
             return result
         }
-    }
-
-    // MARK: - IndexStorePathFinder
-
-    /// Finds an index-store directory in a project (SwiftPM `.build`, then Xcode
-    /// DerivedData). An explicit `--index-store-path` always wins upstream; this
-    /// is the probe used when none is given.
-    public struct IndexStorePathFinder: Sendable {
-        public static func findIndexStorePath(in projectRoot: String, derivedDataRoots: [String]? = nil) -> String? {
-            guard let layout = ProjectLayout.discover(paths: [projectRoot]) else { return nil }
-            let buildDir = URL(fileURLWithPath: layout.root).appendingPathComponent(".build")
-            // Only stores that record ABSOLUTE source paths are safe to query:
-            // SourceKit-LSP's background index (`.build/index-build`), the classic
-            // SwiftPM index (`.build/<config>/index/store`), arcleak's own
-            // auto-build target (`.build/index/store`), and Xcode DerivedData all
-            // qualify. The current Swift Build system's `.build/out` store records
-            // RELATIVE unit paths, which abort an asserts build of libIndexStore
-            // on query — it is deliberately NOT discovered. Only a POPULATED store
-            // counts, so an empty override target loses to a populated sibling.
-            let candidates = [
-                buildDir.appendingPathComponent("index-build/index/store"),
-                buildDir.appendingPathComponent("debug/index/store"),
-                buildDir.appendingPathComponent("release/index/store"),
-                buildDir.appendingPathComponent("index/store"),
-            ]
-            for candidate in candidates where isPopulatedStore(candidate) {
-                return candidate.path
-            }
-            let roots =
-                derivedDataRoots ?? [
-                    URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(
-                        "Library/Developer/Xcode/DerivedData"
-                    ).path
-                ]
-            return layout.derivedDataStores(under: roots).first { isPopulatedStore(atPath: $0) }
-        }
-
-        /// A store is usable only if it actually holds index records — directly,
-        /// or under its newest `vN` subdir. An empty `vN/units` (a build that
-        /// emitted nothing to this path) does not count, so a populated sibling
-        /// store wins discovery.
-        /// Whether `path` holds index records, directly or in a `vN` directory below it.
-        static func isPopulatedStore(atPath path: String) -> Bool {
-            isPopulatedStore(URL(fileURLWithPath: path))
-        }
-
-        private static func isPopulatedStore(_ url: URL) -> Bool {
-            guard (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else {
-                return false
-            }
-            if hasRecords(in: url) { return true }
-            guard let entries = try? FileManager.default.contentsOfDirectory(atPath: url.path) else {
-                return false
-            }
-            for entry in entries where entry.hasPrefix("v") && entry.dropFirst().allSatisfy(\.isNumber) {
-                if hasRecords(in: url.appendingPathComponent(entry)) { return true }
-            }
-            return false
-        }
-
-        /// Whether `url/records` exists and is non-empty.
-        private static func hasRecords(in url: URL) -> Bool {
-            let records = url.appendingPathComponent("records")
-            let entries = try? FileManager.default.contentsOfDirectory(atPath: records.path)
-            return !(entries ?? []).isEmpty
-        }
-
     }
 #endif
