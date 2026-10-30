@@ -50,7 +50,9 @@ import Testing
     /// The facts as text, sets sorted, so two equal facts read the same whatever order their sets iterate in.
     static func canonical(_ facts: FileFacts) -> String {
         var lines = [
-            facts.path, "\(facts.directives)", "\(facts.regionSpans)", "\(facts.isTestCode) \(facts.isGenerated)",
+            facts.path,
+            "\(facts.directives.map { "\($0.rules.map(\.rawValue).sorted()) \($0.kind) \($0.line) \($0.reason ?? "-")" })",
+            "\(facts.regionSpans)", "\(facts.isTestCode) \(facts.isGenerated)",
         ]
         for type in facts.types {
             lines += [
