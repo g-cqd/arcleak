@@ -44,7 +44,8 @@
 
             let resolver: IndexStoreTypeResolver
             do {
-                resolver = try await IndexStoreTypeResolver.open(storePath: store.path)
+                resolver = try await IndexStoreTypeResolver.open(
+                    storePath: store.path, cacheRoot: dir.appending(path: "cache").path, analyzedFiles: [hub.path])
             } catch {
                 return  // this dylib can't read the store — skip
             }

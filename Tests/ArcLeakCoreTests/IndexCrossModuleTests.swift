@@ -118,7 +118,8 @@ import Testing
             explicitStorePath: nil,
             autoBuild: false,
             analyzedFiles: [],
-            defines: []
+            defines: [],
+            cacheRoot: root.appending(path: "cache").path
         )
         #expect(outcome.index == nil)
         #expect(outcome.note != nil)

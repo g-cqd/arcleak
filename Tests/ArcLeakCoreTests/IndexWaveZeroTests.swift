@@ -67,7 +67,10 @@ import Testing
 
             // While the class is where the index says, the extension's capture is a cycle: the control.
             let before = await Analyzer().analyze(
-                files: [ext.path], index: try await IndexStoreTypeResolver.open(storePath: store.path))
+                files: [ext.path],
+                index: try await IndexStoreTypeResolver.open(
+                    storePath: store.path, cacheRoot: directory.appending(path: "cache").path,
+                    analyzedFiles: [ext.path]))
             #expect(before.findings.map(\.rule) == [.storedClosureStrongSelf])
 
             // Then the type leaves that file and becomes a struct in a file the index has never seen.
@@ -75,7 +78,10 @@ import Testing
             try "struct Plugin {\n    var handler: (() -> Void)?\n    func fire() {}\n}\n"
                 .write(to: directory.appending(path: "ext/New.swift"), atomically: true, encoding: .utf8)
             let after = await Analyzer().analyze(
-                files: [ext.path], index: try await IndexStoreTypeResolver.open(storePath: store.path))
+                files: [ext.path],
+                index: try await IndexStoreTypeResolver.open(
+                    storePath: store.path, cacheRoot: directory.appending(path: "cache").path,
+                    analyzedFiles: [ext.path]))
             #expect(after.findings.isEmpty, "\(after.findings.map(\.rule)) from a declaration that is gone")
         }
 
@@ -86,12 +92,14 @@ import Testing
             try FileManager.default.createDirectory(at: given, withIntermediateDirectories: true)
             let outcome = await IndexStoreResolution.resolve(
                 projectRoot: directory.path, explicitStorePath: given.path, autoBuild: false,
-                analyzedFiles: [], defines: [])
+                analyzedFiles: [], defines: [], cacheRoot: directory.appending(path: "cache").path)
             #expect(outcome.index == nil)
             #expect(outcome.note?.contains("not an index store") == true, "\(outcome.note ?? "no note")")
             let created =
                 try FileManager.default.contentsOfDirectory(atPath: given.path)
-                + FileManager.default.contentsOfDirectory(atPath: directory.path).filter { $0 != "DerivedData" }
+                + FileManager.default.contentsOfDirectory(atPath: directory.path).filter {
+                    $0 != "DerivedData" && $0 != "cache"
+                }
             #expect(created.isEmpty, "created \(created)")
         }
     #endif

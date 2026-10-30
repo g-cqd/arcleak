@@ -1,5 +1,6 @@
 #if canImport(IndexStoreDB)
     import Foundation
+    import IndexStoreSupport
     import ProjectModel
     import SwiftParser
 
@@ -28,46 +29,31 @@
             self.defines = defines
         }
 
-        /// Open a resolver at `storePath`, discovering `libIndexStore.dylib`
-        /// asynchronously (see ``IndexStoreReader/open(indexStorePath:allowsDirectoryCreation:)``).
+        /// Opens a resolver on the store `storePath` names, its database under `cacheRoot` (see
+        /// ``IndexStoreReader/open(indexStorePath:cacheRoot:analyzedFiles:)``).
         public static func open(
-            storePath: String,
-            defines: Set<String> = []
+            storePath: String, cacheRoot: String, analyzedFiles: [String], defines: Set<String> = []
         ) async throws(IndexStoreError) -> IndexStoreTypeResolver {
-            let reader = try await IndexStoreReader.open(indexStorePath: storePath)
+            // Symbolic links resolved, as the units record them.
+            let resolved = analyzedFiles.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
+            let reader = try await IndexStoreReader.open(
+                indexStorePath: storePath, cacheRoot: cacheRoot, analyzedFiles: resolved)
             return IndexStoreTypeResolver(reader: reader, defines: defines)
         }
 
-        /// Analyzed files the index has never seen (by absolute path), or whose
-        /// on-disk mtime is newer than the index's latest unit for them. A
-        /// non-empty result means the store is stale relative to the corpus — the
-        /// caller downgrades to corpus-only, never resolving against a store that
-        /// could be wrong.
+        /// The store's root, canonical.
+        public var storePath: String { reader.indexStorePath }
+
+        /// Analyzed files the index has never seen, whose modification time is newer than the index's latest unit for
+        /// them, or that cannot be read: the session's coverage (analyzerkit `IndexCoverage`) of the files it was
+        /// opened with. A non-empty result means the store is stale relative to the corpus, and the caller goes
+        /// corpus-only rather than resolve against a store that could be wrong.
         ///
-        /// Paths are resolved to absolute+canonical form first. This is also the
-        /// safety gate for stores that record RELATIVE unit paths (the current
-        /// Swift Build system's `.build/out`): absolute analyzed paths never
-        /// match relative units, so such a store reports every file stale and is
-        /// downgraded *before* any symbol query runs — that query aborts an
-        /// asserts/`report_fatal_error` build of libIndexStore on a relative path.
-        public func staleFiles(among files: [String]) -> [String] {
-            var stale: [String] = []
-            for file in files {
-                let absolute = URL(fileURLWithPath: file).resolvingSymlinksInPath().path
-                guard
-                    let attributes = try? FileManager.default.attributesOfItem(atPath: absolute),
-                    let sourceDate = attributes[.modificationDate] as? Date
-                else {
-                    stale.append(file)
-                    continue
-                }
-                guard let unitDate = reader.latestUnitDate(forFile: absolute) else {
-                    stale.append(file)
-                    continue
-                }
-                if sourceDate > unitDate { stale.append(file) }
-            }
-            return stale
+        /// It is also the safety gate for stores of RELATIVE unit paths: absolute analyzed paths never match relative
+        /// units, so such a store reports every file stale before any symbol query runs, which would abort an
+        /// asserts build of libIndexStore.
+        public var staleAnalyzedFiles: [String] {
+            reader.session.coverage.files.filter { $0.coverage != .indexed }.map(\.path)
         }
 
         public func externalTypeFacts(name: String) -> ExternalTypeFacts? {
