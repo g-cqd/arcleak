@@ -129,7 +129,7 @@ import Testing
     /// touches — including the associated-value enums that ride the generic
     /// Codable bridge (`APICallFact.Kind`, `SelfCaptureKind`, `ResultConsumption`)
     /// and the ones a live corpus rarely produces (`APICallFact`).
-    private func richFacts(path: String) -> FileFacts {
+    static func richFacts(path: String) -> FileFacts {
         var type = TypeFacts(name: "Model", isReferenceType: true)
         type.memberNames = ["a", "b", "handler"]
         type.inheritedTypeNames = ["NSObject", "ObservableObject"]
@@ -192,7 +192,7 @@ import Testing
 
     /// What the cache stores goes through AemiJSON, as `CorpusScanner` writes and reads it: byte-stable and lossless.
     @Test func realisticPayloadRoundTripsByteStableAndLossless() throws {
-        let stored = ExtractedFacts(facts: richFacts(path: "/x/Sample.swift"))
+        let stored = ExtractedFacts(facts: Self.richFacts(path: "/x/Sample.swift"))
         let first = try AemiJSON.JSONEncoder().encodeToBytes(stored)
         let loaded = try AemiJSON.JSONDecoder().decode(ExtractedFacts.self, from: first)
         #expect(try AemiJSON.JSONEncoder().encodeToBytes(loaded) == first)
