@@ -76,6 +76,7 @@ public struct Analyzer: Sendable {
 
         // Regions come from the project first (ADR-0024). The cache keeps only what the content says of a file's
         // region; the project's part changes without the file changing, so it is joined on every run.
+        let started = ContinuousClock.now
         let classification =
             ProjectLayout.discover(paths: included).map(ProjectClassification.load) ?? .conventionsOnly
         let scan: CorpusScan<ExtractedFacts>
@@ -92,6 +93,7 @@ public struct Analyzer: Sendable {
             cancelled.wasCancelled = true
             return cancelled
         }
+        let scanned = ContinuousClock.now
 
         // The per-file rules run on every run, from cached facts or fresh ones; a sliding window of `width` keeps
         // peak memory bounded. Rules recurse once per level of a syntax tree they hold: large stack (roadmap 0041).
@@ -180,6 +182,9 @@ public struct Analyzer: Sendable {
         report.cacheMisses = corpus.count - hits
         report.cacheLoadFailure = scan.cacheLoadFailure
         report.classificationIssues = classification.issues(for: included)
+        report.timings = [
+            "scan": Self.seconds(scanned - started), "rules": Self.seconds(ContinuousClock.now - scanned),
+        ]
         return report
     }
 
@@ -270,6 +275,10 @@ public struct Analyzer: Sendable {
         var cacheHit = false
         var findings: [Finding] = []
         var degraded: AnalysisReport.DegradedFile?
+    }
+
+    private static func seconds(_ duration: Duration) -> Double {
+        Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
     }
 
     /// One file's extraction as the cache stores it: the facts, or why the file was not analysed (over the size cap,
