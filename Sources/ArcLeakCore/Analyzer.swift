@@ -1,11 +1,12 @@
+public import CorpusScan
 public import ProjectModel
 import SourceCorpus
 import SwiftParser
 
 #if canImport(FoundationEssentials)
-    public import FoundationEssentials
+    import FoundationEssentials
 #else
-    public import Foundation
+    import Foundation
 #endif
 
 /// Front door of the library. Three phases:
@@ -30,10 +31,9 @@ public struct Analyzer: Sendable {
 
     /// Analyzes explicit file paths. Input order does not affect output.
     ///
-    /// With `cacheURL`, per-file facts are reused when this build wrote them
-    /// and the file's content fingerprint matches (parsing dominates runtime;
-    /// rules always re-run, so findings can never go stale relative to rules or
-    /// configuration).
+    /// With `cache`, per-file facts are reused through analyzerkit's `CorpusScanner` (ADR-0011) when this build
+    /// wrote them and the file's content and the `#if` configuration match (parsing dominates runtime; rules always
+    /// re-run, so findings can never go stale relative to rules or configuration).
     /// - Parameter reportScope: narrows the *report* to a set of files; nil reports everything.
     ///   The corpus is always analyzed whole: `mutual-strong-properties` walks an ownership graph
     ///   built from every type, so dropping the files a cycle passes through would erase the cycle.
@@ -46,7 +46,7 @@ public struct Analyzer: Sendable {
     public func analyze(
         files: [String],
         projectFiles: [String] = [],
-        cacheURL: URL? = nil,
+        cache: CacheLocation? = nil,
         index: (any IndexReading)? = nil,
         reportScope: ReportScope? = nil
     ) async -> AnalysisReport {
@@ -56,11 +56,6 @@ public struct Analyzer: Sendable {
         // one type). Exclusion is checked on the canonical form.
         let exclusion = configuration.pathFilter
         let included = SourcePath.canonicalized(files).filter { !exclusion.excludes($0) }
-        // `snapshot` serves cache hits (all historical entries); the persisted
-        // cache is this run's entries plus the snapshot's for files this run
-        // did not analyze and that still exist — see the persist step below.
-        let snapshot = cacheURL.map { FactsCache.load(url: $0) } ?? FactsCache()
-        var freshCache = FactsCache()
         // Facts depend on the `#if` configuration and user contracts — salt
         // fingerprints so neither can serve stale facts. The full contract
         // identity (callee, base, template, required labels) enters the salt:
@@ -79,47 +74,46 @@ public struct Analyzer: Sendable {
             configuration.activeDefines.sorted().joined(separator: ",") + "|" + contractSalt
             + "|os=" + platforms.sorted().joined(separator: ",")
 
-        // Bounded fan-out: one blocking read + parse per file would otherwise
-        // spawn `included.count` tasks that block the (core-count-sized)
-        // cooperative pool on I/O and hold every file's Data+tree in flight at
-        // once. A sliding window caps concurrency, descriptor pressure, and
-        // peak memory. `analyze` is cancellation-aware: a cancelled host stops
-        // scheduling new files.
-        let width = max(1, ProcessInfo.processInfo.activeProcessorCount)
+        // Regions come from the project first (ADR-0024). The cache keeps only what the content says of a file's
+        // region; the project's part changes without the file changing, so it is joined on every run.
+        let classification =
+            ProjectLayout.discover(paths: included).map(ProjectClassification.load) ?? .conventionsOnly
+        let scan: CorpusScan<ExtractedFacts>
+        do {
+            scan = try await CorpusScanner.scan(
+                paths: included, cache: cache,
+                identity: CacheIdentity.current(tool: ToolInfo.name, version: ToolInfo.version), salt: definesSalt
+            ) { [configuration] path, bytes in
+                Self.extract(
+                    bytes: bytes, path: path, configuration: configuration, platforms: platforms)
+            }
+        } catch {
+            var cancelled = AnalysisReport()
+            cancelled.wasCancelled = true
+            return cancelled
+        }
 
+        // The per-file rules run on every run, from cached facts or fresh ones; a sliding window of `width` keeps
+        // peak memory bounded. Rules recurse once per level of a syntax tree they hold: large stack (roadmap 0041).
+        let width = max(1, ProcessInfo.processInfo.activeProcessorCount)
+        let entryPoints = project.systemEntryPoints
         let outcomes = await withTaskGroup(of: FileOutcome.self) { group in
             var collected: [FileOutcome] = []
-            collected.reserveCapacity(included.count)
+            collected.reserveCapacity(scan.files.count)
             var scheduled = 0
-            for path in included {
+            for file in scan.files {
                 if Task.isCancelled { break }
-                // Sliding window: keep at most `width` tasks in flight, draining
-                // one before scheduling the next.
-                if scheduled >= width {
-                    if let done = await group.next() { collected.append(done) }
-                }
-                // The index waits for the whole corpus (below): only then is it known which types the corpus
-                // declares, and those the index must not answer for.
-                // Extraction recurses once per level of the syntax tree: it runs on a large stack (roadmap 0041).
-                let entryPoints = project.systemEntryPoints
+                if scheduled >= width, let done = await group.next() { collected.append(done) }
                 group.addTask { [configuration] in
                     await LargeStack.run {
                         Self.makeOutcome(
-                            path: path,
-                            snapshot: snapshot,
-                            index: nil,
-                            configuration: configuration,
-                            platforms: platforms,
-                            systemEntryPoints: entryPoints,
-                            definesSalt: definesSalt
-                        )
+                            file: file, classification: classification, configuration: configuration,
+                            systemEntryPoints: entryPoints)
                     }
                 }
                 scheduled += 1
             }
-            for await outcome in group {
-                collected.append(outcome)
-            }
+            for await outcome in group { collected.append(outcome) }
             return collected
         }
 
@@ -146,11 +140,8 @@ public struct Analyzer: Sendable {
             }
             if let facts = outcome.facts {
                 corpus.append(outcome.effectiveFacts ?? facts)
-                if let fingerprint = outcome.fingerprint {
-                    freshCache.update(path: facts.path, fingerprint: fingerprint, facts: facts)
-                }
             }
-            if outcome.cacheHit { hits += 1 }
+            if outcome.cacheHit, outcome.facts != nil { hits += 1 }
             raw.append(contentsOf: outcome.findings)
             if let file = outcome.degraded {
                 degraded.append(file)
@@ -172,36 +163,6 @@ public struct Analyzer: Sendable {
             return cancelled
         }
 
-        if let cacheURL {
-            // One cache serves every run in the workspace, and a run over part
-            // of the corpus — a pull request's files, one file from an editor —
-            // must not evict the rest, or the next whole-corpus run starts cold.
-            // So entries of files this run did not analyze are carried over,
-            // and only those whose file is gone are pruned: the cache stays
-            // shaped to the project and never grows without bound in a shifting
-            // monorepo.
-            var persisted = freshCache
-            for (path, entry) in snapshot.entries
-            where persisted.entries[path] == nil && FileManager.default.fileExists(atPath: path) {
-                persisted.update(path: path, fingerprint: entry.fingerprint, facts: entry.facts)
-            }
-            // Skip the redundant re-persist when the on-disk cache is already
-            // exactly current: every analyzed file was a cache hit (no
-            // re-extraction) AND nothing was pruned. Re-writing then changes
-            // nothing the next run reads — entries are validated by source
-            // fingerprint, not by the cache's own bytes — so on an all-hits run
-            // it is pure encode + I/O cost, the dominant warm-run waste. Any miss
-            // or any pruned entry falls through and rewrites the cache; so does
-            // a cache that failed to load, which must be replaced even when this
-            // run parsed nothing, or every later run would report it again.
-            let alreadyCurrent =
-                snapshot.loadFailure == nil && hits == corpus.count
-                && persisted.entries.count == snapshot.entries.count
-            if !alreadyCurrent {
-                persisted.persist(url: cacheURL)
-            }
-        }
-
         var report = Self.assemble(
             raw: raw, corpus: corpus, reportScope: reportScope, regionSelection: regionSelection)
 
@@ -213,9 +174,12 @@ public struct Analyzer: Sendable {
         }
         report.analyzedFileCount = included.count
         report.degradedFiles = degraded.sorted { $0.path < $1.path }
+        // Over the files analysed, with or without a cache, as before analyzerkit's cache: a run without one misses
+        // every file, and a file that was not analysed is no hit even when the cache remembers why.
         report.cacheHits = hits
         report.cacheMisses = corpus.count - hits
-        report.cacheLoadFailure = snapshot.loadFailure
+        report.cacheLoadFailure = scan.cacheLoadFailure
+        report.classificationIssues = classification.issues(for: included)
         return report
     }
 
@@ -308,64 +272,63 @@ public struct Analyzer: Sendable {
         var degraded: AnalysisReport.DegradedFile?
     }
 
-    /// Reads, fingerprints, extracts (or reuses cached facts), and runs the
-    /// per-file rules. All parameters are `Sendable`, so this is safe to call
-    /// from a task-group child.
-    static func makeOutcome(
-        path: String,
-        snapshot: FactsCache,
-        index: (any IndexReading)?,
-        configuration: Configuration,
-        platforms: Set<String>,
-        systemEntryPoints: Set<String>,
-        definesSalt: String
-    ) -> FileOutcome {
-        let data: Data
-        do {
-            data = try read(path: path)
-        } catch {
-            return FileOutcome(
-                degraded: AnalysisReport.DegradedFile(path: path, detail: String(describing: error))
-            )
+    /// One file's extraction as the cache stores it: the facts, or why the file was not analysed (over the size cap,
+    /// not UTF-8, nested too deeply), so a cached file is never parsed again only to fail again. The facts' test and
+    /// generated flags hold what the content alone says; ``makeOutcome`` joins the project's part.
+    static func extract(
+        bytes: [UInt8], path: String, configuration: Configuration, platforms: Set<String>
+    ) -> ExtractedFacts {
+        guard bytes.count <= maxFileBytes else {
+            return ExtractedFacts(
+                degraded: ArcLeakError.fileUnreadable(path: path, underlying: "exceeds \(maxFileBytes) byte cap")
+                    .description)
         }
-        let fingerprint = FactsCache.fingerprint(of: data, salt: definesSalt)
+        // A byte-order mark is not source: columns count from after it, as SARIF's do (§3.30.2).
+        let text = bytes.starts(with: [0xEF, 0xBB, 0xBF]) ? bytes.dropFirst(3) : bytes[...]
+        guard let source = String(validating: text, as: UTF8.self) else {
+            return ExtractedFacts(degraded: "not valid UTF-8")
+        }
+        let tree = Parser.parse(source: source)
+        // Every walk of the tree recurses once per level; past the limit the file is listed, not walked.
+        guard !SyntaxDepth.exceeds(tree) else {
+            return ExtractedFacts(degraded: "nested deeper than \(SyntaxDepth.defaultLimit) levels; not analysed")
+        }
+        var facts = FactsExtraction.extract(
+            path: path, tree: tree, defines: configuration.activeDefines, platforms: platforms,
+            contracts: configuration.contracts ?? [])
+        let content = ProjectClassification.contentRegion(path: path, tree: tree)
+        facts.isTestCode = content.contains(.test)
+        facts.isGenerated = content.contains(.generated)
+        return ExtractedFacts(facts: facts)
+    }
 
-        let facts: FileFacts
-        var cacheHit = false
-        if let cached = snapshot.facts(for: path, fingerprint: fingerprint) {
-            facts = cached
-            cacheHit = true
-        } else {
-            guard let source = String(data: data, encoding: .utf8) else {
-                return FileOutcome(
-                    degraded: AnalysisReport.DegradedFile(path: path, detail: "not valid UTF-8")
-                )
-            }
-            let tree = Parser.parse(source: source)
-            // Every walk of the tree recurses once per level; past the limit the file is listed, not walked.
-            guard !SyntaxDepth.exceeds(tree) else {
-                return FileOutcome(
-                    degraded: AnalysisReport.DegradedFile(
-                        path: path, detail: "nested deeper than \(SyntaxDepth.defaultLimit) levels; not analysed"))
-            }
-            facts = FactsExtraction.extract(
-                path: path,
-                tree: tree,
-                defines: configuration.activeDefines,
-                platforms: platforms,
-                contracts: configuration.contracts ?? []
-            )
+    /// The per-file rules over one scanned file, its region joined with what its project says.
+    static func makeOutcome(
+        file: ScannedFile<ExtractedFacts>, classification: ProjectClassification, configuration: Configuration,
+        systemEntryPoints: Set<String>
+    ) -> FileOutcome {
+        if let failure = file.failure {
+            return FileOutcome(
+                degraded: AnalysisReport.DegradedFile(
+                    path: file.path,
+                    detail: ArcLeakError.fileUnreadable(path: file.path, underlying: failure).description))
         }
-        let effective = index.map { facts.upgraded(with: $0) } ?? facts
+        guard let extracted = file.facts else { return FileOutcome() }
+        guard var facts = extracted.facts else {
+            return FileOutcome(
+                degraded: AnalysisReport.DegradedFile(path: file.path, detail: extracted.degraded ?? "not analysed"))
+        }
+        var content: CodeRegion = []
+        if facts.isTestCode { content.insert(.test) }
+        if facts.isGenerated { content.insert(.generated) }
+        let region = classification.classify(file.path, content: content).region
+        facts.isTestCode = region.contains(.test)
+        facts.isGenerated = region.contains(.generated)
         let findings = RuleEngine.check(
-            file: effective, configuration: configuration, systemEntryPoints: systemEntryPoints)
+            file: facts, configuration: configuration, systemEntryPoints: systemEntryPoints)
         return FileOutcome(
-            facts: facts,
-            effectiveFacts: effective,
-            fingerprint: fingerprint,
-            cacheHit: cacheHit,
-            findings: findings
-        )
+            facts: facts, effectiveFacts: facts, fingerprint: file.fingerprint, cacheHit: file.cacheHit,
+            findings: findings)
     }
 
     /// What the project files say: the platforms the project builds for,

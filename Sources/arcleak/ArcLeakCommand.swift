@@ -2,7 +2,9 @@ import AnalyzerCLI
 import AnalyzerConfiguration
 import ArcLeakCore
 public import ArgumentParser
+import CorpusScan
 import ProjectModel
+import ReportSupport
 import SourceCorpus
 import SystemPackage
 
@@ -44,30 +46,18 @@ struct Lsp: ParsableCommand {
     }
 }
 
-extension OutputFormat: ExpressibleByArgument {}
-
 struct Analyze: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Analyze Swift files or directories (default: current directory)."
     )
 
-    @Argument(help: "Files or directories to analyze.")
-    var paths: [String] = ["."]
-
-    @Option(name: .long, help: "Output format: xcode (build-log diagnostics), json, or sarif.")
-    var format: OutputFormat = .xcode
-
-    @Option(name: .long, help: "Baseline file: findings whose fingerprints appear in it are filtered out.")
-    var baseline: String?
-
-    @Option(name: .long, help: "Write the current findings as a new baseline file, then exit 0 (accept current debt).")
-    var writeBaseline: String?
-
-    @Option(name: .long, help: "Path to .arcleak.json (default: ./.arcleak.json when present).")
-    var config: String?
-
-    @Flag(name: .long, help: "Exit non-zero on any warning or error finding; notes never fail a run.")
-    var strict = false
+    // analyzerkit's shared option groups (ADR-0019), in order; arcleak's own options after them.
+    @OptionGroup(title: OptionGroupTitle.input) var input: InputOptions
+    @OptionGroup(title: OptionGroupTitle.output) var output: OutputOptions
+    @OptionGroup(title: OptionGroupTitle.rules) var rules: RuleOptions
+    @OptionGroup(title: OptionGroupTitle.cache) var cache: CacheOptions
+    @OptionGroup(title: OptionGroupTitle.index) var index: IndexOptions
+    @OptionGroup(title: OptionGroupTitle.experimental) var experimental: ExperimentalOptions
 
     @Option(
         name: .long,
@@ -78,66 +68,6 @@ struct Analyze: AsyncParsableCommand {
         )
     )
     var stamp: String?
-
-    @Option(
-        name: .long,
-        help: ArgumentHelp(
-            "Report only findings in this file; repeatable. The whole corpus is still analyzed "
-                + "— the ownership graph spans files, so narrowing the input loses cycles. Also "
-                + "scopes --fix to the listed files."))
-    var only: [String] = []
-
-    @Option(
-        name: .customLong("only-from"),
-        help: ArgumentHelp(
-            "Read --only paths from a file, one per line ('-' reads stdin). For CI: "
-                + "`git diff --name-only ... | arcleak analyze . --only-from -`."))
-    var onlyFrom: String?
-
-    @Option(
-        name: .customLong("relative-to"),
-        help: ArgumentHelp(
-            "Report paths relative to this directory. Makes fingerprints and "
-                + "SARIF uris independent of where the repository is checked out, except the uris of "
-                + "paths that need percent-encoding, which stay absolute file:// URIs; GitHub code "
-                + "scanning also requires repo-relative uris to link findings. SARIF declares the "
-                + "directory as the uriBaseId SRCROOT. Use `--relative-to .` in CI."))
-    var relativeTo: String?
-
-    @Option(name: .long, help: "Facts-cache file. Default: ~/Library/Caches/arcleak/<key>/facts.json.")
-    var cachePath: String?
-
-    @Flag(name: .long, help: "Disable the incremental facts cache.")
-    var noCache = false
-
-    @Flag(name: .long, help: "Explain index-store toolchain selection and rejected candidates on stderr.")
-    var verbose = false
-
-    @Option(
-        name: .customLong("define"),
-        help: "Custom #if condition to treat as set (repeatable; the compiler's -D)."
-    )
-    var define: [String] = []
-
-    @Option(
-        name: .long,
-        help: ArgumentHelp(
-            "Regions to treat as first-class code: preview,debug,test,mock,generated,script, or all.",
-            discussion:
-                "A leak or cycle withheld because it lives in preview or generated code is reported "
-                + "like any other, tagged \"region: <name>\" so it can be filtered back out; one in "
-                + "#if DEBUG or test code drops the note that explains why it might be fine. mock "
-                + "and script name no region arcleak withholds or annotates today, so including them "
-                + "has no effect. The same key, with the same values, in deadwood, arcleak and dolly."
-        )
-    )
-    var include: String?
-
-    @Option(
-        name: .long,
-        help: "Regions to keep out of scope even if --include (or \"all\") names them."
-    )
-    var exclude: String?
 
     @Flag(name: .long, help: "Apply mechanical [weak self] fix-its for fixable findings, in place.")
     var fix = false
@@ -155,59 +85,26 @@ struct Analyze: AsyncParsableCommand {
     )
     var experimentalSilConfirm = false
 
-    @Flag(
-        name: .customLong("index-store"),
-        help: ArgumentHelp(
-            "Resolve cross-module types via IndexStoreDB (macOS-only, opt-in).",
-            discussion:
-                "Lets cross-file rules reason about class-ness of types declared in other modules or the SDK. Fails open: with no index (or on Linux) the analysis is corpus-only, byte-identical, with a note."
-        )
-    )
-    var indexStore = false
-
-    @Option(
-        name: .customLong("index-store-path"),
-        help: "Explicit index-store directory (implies --index-store)."
-    )
-    var indexStorePath: String?
-
-    @Flag(
-        name: .customLong("index-store-build"),
-        help: "Build the index with `swift build` if none is found (implies --index-store)."
-    )
-    var indexStoreBuild = false
-
-    @Flag(
-        name: .customLong("experimental-embedding-rank"),
-        help: ArgumentHelp(
-            "Group findings of similar shape together in the report (experimental, macOS-only).",
-            discussion:
-                "Embeds each finding's flagged-site snippet with on-device NLContextualEmbedding (zero download; deterministic fallback offline) and clusters by cosine similarity. Ordering only — never changes which findings fire, their severity, or the exit code."
-        )
-    )
-    var experimentalEmbeddingRank = false
-
-    @Option(
-        name: .customLong("embedding-bundle"),
-        help: ArgumentHelp(
-            "Directory holding a Core ML model + its HuggingFace tokenizer, used instead of NLContextualEmbedding.",
-            discussion:
-                "Only meaningful with --experimental-embedding-rank. The default provider is an English natural-language model, so it over-clusters source lines; a code-trained sentence model (e.g. all-MiniLM-L6-v2) groups tighter and runs faster. The directory must contain a .mlpackage/.mlmodelc and the tokenizer files (tokenizer.json, config.json). A bundle that fails to load is reported and ignored — ranking falls back to the default and the finding set is untouched. ARCLEAK_EMBEDDING_BUNDLE sets the same path; a model at <exec-dir>/Models/MiniLM is picked up with no flag at all."
-        )
-    )
-    var embeddingBundle: String?
-
     func run() async throws {
-        var configuration = try loadConfiguration()
-        if !define.isEmpty {
-            configuration.defines = (configuration.defines ?? []) + define
+        for deprecation in input.deprecations + experimental.deprecations {
+            note(deprecation.message(tool: ToolInfo.name))
         }
-        if let include {
+        // Read before the analysis, so a bad path fails with 78 without the analysis cost.
+        var newSinceBaseline: Baseline?
+        if let path = output.reportNewSince {
+            newSinceBaseline = try baselineOrExit { try Baseline.load(path: path) }
+        }
+        var configuration = try loadConfiguration()
+        if !input.defines.isEmpty {
+            configuration.defines = (configuration.defines ?? []) + input.defines
+        }
+        if let include = input.includeRegions {
             configuration.includeRegions = include
         }
-        if let exclude {
+        if let exclude = input.excludeRegions {
             configuration.excludeRegions = exclude
         }
+        try applyRules(to: &configuration)
         do {
             _ = try configuration.regionSelection()
         } catch {
@@ -226,7 +123,7 @@ struct Analyze: AsyncParsableCommand {
         // and it silently reports nothing. Warn loudly; an *empty* scope stays
         // silent — "no Swift changed" is legitimate. The corpus is canonicalized
         // the way the scope is, so a path spelled through a symlink still matches.
-        if let scope = reportScope, !scope.files.isEmpty,
+        if output.reportNewSince == nil, let scope = reportScope, !scope.files.isEmpty,
             ReportScope(files: files).files.isDisjoint(with: scope.files)
         {
             standardError.write(
@@ -237,12 +134,16 @@ struct Analyze: AsyncParsableCommand {
 
         var report = await Analyzer(configuration: configuration)
             .analyze(
-                files: files, projectFiles: projectFiles, cacheURL: cacheURL(), index: index,
+                files: files, projectFiles: projectFiles, cache: cacheLocation(), index: index,
                 reportScope: reportScope
             )
         // Once: the run rewrites the cache it could not use.
         if let failure = report.cacheLoadFailure {
-            standardError.write(Data("arcleak: note: \(failure)\n".utf8))
+            note("arcleak: note: \(failure)")
+        }
+        for issue in report.classificationIssues {
+            note("arcleak: note: \(issue.message)")
+            if output.verbose { for path in issue.paths { note("    \(path)") } }
         }
 
         // A cancelled run analysed a partial corpus and therefore reports nothing.
@@ -262,12 +163,14 @@ struct Analyze: AsyncParsableCommand {
         // means "nothing analyzed", and exit 70 with empty stdout means the run
         // itself failed.
         if report.everyFileSkipped {
-            if let relativeTo {
+            if let relativeTo = output.relativeTo {
                 report = report.relativized(to: relativeTo)
             }
-            let output = ReportFormatter.format(report, as: format, relativeTo: relativeTo)
-            if !output.isEmpty {
-                print(output)
+            let text = ReportFormatter.format(
+                report, as: OutputFormat(output.format), relativeTo: output.relativeTo, verbose: output.verbose,
+                timings: output.timings)
+            if !text.isEmpty {
+                print(text)
             }
             standardError.write(
                 Data(
@@ -276,7 +179,20 @@ struct Analyze: AsyncParsableCommand {
             throw ExitCode(ExitStatus.internalFailure.rawValue)
         }
 
-        if let writeBaseline {
+        var promoted: Set<String> = []
+        var baselineMatchesNothing = false
+        if let newSinceBaseline {
+            let known = Set(newSinceBaseline.fingerprints)
+            baselineMatchesNothing = NewSince.matchesNothing(
+                report.findings + report.outOfScope, in: known, fingerprint: \.fingerprint)
+            let promotion = NewSince.promote(
+                inScope: report.findings, outOfScope: report.outOfScope, notIn: known, fingerprint: \.fingerprint)
+            report.findings = promotion.reported.sorted()
+            report.outOfScope = promotion.outOfScope
+            promoted = promotion.promoted
+        }
+
+        if let writeBaseline = output.writeBaseline {
             try outputOrExit { try Baseline(findings: report.findings).write(path: writeBaseline) }
             standardError.write(
                 Data("arcleak: wrote baseline with \(report.findings.count) fingerprint(s) to \(writeBaseline)\n".utf8)
@@ -284,7 +200,7 @@ struct Analyze: AsyncParsableCommand {
         }
 
         var baselinedCount = 0
-        if let baseline {
+        if let baseline = output.baseline {
             let loaded = try baselineOrExit { try Baseline.load(path: baseline) }
             let (kept, baselined) = loaded.filter(report.findings)
             report.findings = kept
@@ -317,6 +233,16 @@ struct Analyze: AsyncParsableCommand {
             }
         #endif
 
+        var extraNotes: [RunNote] = []
+        if let path = output.reportNewSince {
+            // Counted after --baseline, so the note states what the report shows.
+            let count = report.findings.count(where: { promoted.contains($0.fingerprint) })
+            for message in NewSince.notes(promoted: count, matchesNothing: baselineMatchesNothing, baseline: path) {
+                extraNotes.append(RunNote(code: "report-new-since", severity: "note", message: message))
+                note(message)
+            }
+        }
+
         if fix || fixDryRun {
             try applyFixes(report: report)
             if fix { return }
@@ -328,23 +254,30 @@ struct Analyze: AsyncParsableCommand {
         // same-named sibling checkout, wrote fix-its into the wrong file.
         // Baselines are unaffected by the move: they match on fingerprints,
         // which are repo-anchored independently of display.
-        if let relativeTo {
+        if let relativeTo = output.relativeTo {
             report = report.relativized(to: relativeTo)
         }
 
-        if embeddingBundle != nil, !experimentalEmbeddingRank {
+        if experimental.embeddingBundle != nil, experimental.embeddings == nil {
             standardError.write(
                 Data("arcleak: --embedding-bundle has no effect without --experimental-embedding-rank\n".utf8)
             )
         }
 
-        if experimentalEmbeddingRank {
+        if experimental.embeddings == .rank {
             report.findings = await rankFindings(report.findings)
         }
 
-        let output = ReportFormatter.format(report, as: format, relativeTo: relativeTo)
-        if !output.isEmpty {
-            print(output)
+        let text = ReportFormatter.format(
+            report, as: OutputFormat(output.format), relativeTo: output.relativeTo, runNotes: extraNotes,
+            verbose: output.verbose, timings: output.timings)
+        if !text.isEmpty {
+            print(text)
+        }
+        if output.timings {
+            for (phase, seconds) in report.timings.sorted(by: { $0.key < $1.key }) {
+                note("arcleak: timing: \(phase) \(Int((seconds * 1000).rounded())) ms")
+            }
         }
         var summary = ReportFormatter.summary(report)
         if baselinedCount > 0 {
@@ -353,16 +286,16 @@ struct Analyze: AsyncParsableCommand {
         if !report.outOfScope.isEmpty {
             summary += "; \(report.outOfScope.count) out of scope"
         }
-        if report.cacheHits + report.cacheMisses > 0, !noCache {
+        if report.cacheHits + report.cacheMisses > 0, !cache.noCache {
             summary += "; cache: \(report.cacheHits) reused, \(report.cacheMisses) parsed"
         }
-        standardError.write(Data((summary + "\n").utf8))
+        note(summary)
 
-        if writeBaseline != nil {
+        if output.writeBaseline != nil {
             return
         }
         // Notes inform; they never fail a run, not even a strict one.
-        let failed = RunOutcome.fails(report.findings.map(\.severity), strict: strict)
+        let failed = RunOutcome.fails(report.findings.map(\.severity), strict: output.strict)
         if !failed, let stamp {
             try? FileManager.default.createDirectory(
                 at: URL(fileURLWithPath: stamp).deletingLastPathComponent(),
@@ -390,7 +323,7 @@ struct Analyze: AsyncParsableCommand {
     private func rankFindings(_ findings: [Finding]) async -> [Finding] {
         #if canImport(NaturalLanguage)
             guard findings.count > 1 else { return findings }
-            let resolution = await EmbeddingRank.resolveProvider(bundlePath: embeddingBundle)
+            let resolution = await EmbeddingRank.resolveProvider(bundlePath: experimental.embeddingBundle)
             if let note = resolution.note {
                 standardError.write(Data("arcleak: \(note)\n".utf8))
             }
@@ -451,16 +384,16 @@ struct Analyze: AsyncParsableCommand {
         files: [String],
         configuration: Configuration
     ) async -> (any IndexReading)? {
-        guard indexStore || indexStorePath != nil || indexStoreBuild else { return nil }
-        if verbose {
-            for diagnostic in IndexToolchainDiagnostics.resolve() {
+        guard index.requested else { return nil }
+        if output.verbose {
+            for diagnostic in await IndexToolchainDiagnostics.resolve() {
                 standardError.write(Data(("arcleak: " + diagnostic + "\n").utf8))
             }
         }
         let outcome = await IndexStoreResolution.resolve(
-            projectRoot: ProjectLayout.discover(paths: paths)?.root ?? FileManager.default.currentDirectoryPath,
-            explicitStorePath: indexStorePath,
-            autoBuild: indexStoreBuild,
+            projectRoot: ProjectLayout.discover(paths: input.paths)?.root ?? FileManager.default.currentDirectoryPath,
+            explicitStorePath: index.indexStorePath,
+            autoBuild: index.indexStoreBuild,
             analyzedFiles: files,
             defines: configuration.activeDefines
         )
@@ -518,8 +451,9 @@ struct Analyze: AsyncParsableCommand {
     /// `--config`, or the configuration directory's shared and own files (ADR-0020).
     private func loadConfigurationUncaught() throws -> Configuration {
         let (configuration, sources) = try Configuration.resolve(
-            explicit: config, currentDirectory: FileManager.default.currentDirectoryPath, analyzedPaths: paths)
-        if verbose {
+            explicit: input.config, currentDirectory: FileManager.default.currentDirectoryPath,
+            analyzedPaths: input.paths)
+        if output.verbose {
             for line in sources.verboseLines(tool: ToolInfo.name) { standardError.write(Data((line + "\n").utf8)) }
         }
         return configuration
@@ -580,13 +514,17 @@ struct Analyze: AsyncParsableCommand {
         // A baseline records the whole corpus's accepted debt. Writing one from
         // a scoped run would silently accept only the scoped subset and drop
         // everything else from the baseline, so refuse rather than surprise.
-        if writeBaseline != nil, !only.isEmpty || onlyFrom != nil {
+        if output.writeBaseline != nil, !input.only.isEmpty || input.onlyFrom != nil {
             throw ValidationError(
                 "--write-baseline records whole-corpus debt and cannot be combined with "
                     + "--only/--only-from. Write the baseline unscoped, then scope the runs that use it."
             )
         }
-        if onlyFrom == "-", paths == ["-"] {
+        // Without a scope every finding is already reported, so there is nothing to promote (ADR-0028).
+        if output.reportNewSince != nil, input.only.isEmpty, input.onlyFrom == nil {
+            throw ValidationError("--report-new-since requires --only or --only-from")
+        }
+        if input.onlyFrom == "-", input.paths == ["-"] {
             throw ValidationError("--only-from - reads stdin, so paths cannot also come from stdin.")
         }
     }
@@ -600,9 +538,9 @@ struct Analyze: AsyncParsableCommand {
     /// distinct: `--only-from` pointed at a change set with no Swift files, so
     /// nothing should be reported.
     private func resolveReportScope() throws -> ReportScope? {
-        guard !only.isEmpty || onlyFrom != nil else { return nil }
-        var entries = only
-        if let onlyFrom {
+        guard !input.only.isEmpty || input.onlyFrom != nil else { return nil }
+        var entries = input.only
+        if let onlyFrom = input.onlyFrom {
             entries.append(contentsOf: try readScopeEntries(from: onlyFrom))
         }
         return ReportScope(files: entries)
@@ -653,34 +591,47 @@ struct Analyze: AsyncParsableCommand {
             .filter { !$0.isEmpty }
     }
 
-    private func cacheURL() -> URL? {
-        if noCache { return nil }
-        if let cachePath { return URL(fileURLWithPath: cachePath) }
-        guard let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
-        else { return nil }
-        // Namespaced per workspace: one global file meant analyzing repo B
-        // evicted repo A's entries, so alternating projects never hit.
-        let key = RepositoryRoot.workspaceKey(from: FileManager.default.currentDirectoryPath)
-        return caches.appending(path: "arcleak/\(key)/facts.json")
+    /// The cache's root (`--cache-path`, or the user cache directory) and the workspace the run serves (ADR-0011);
+    /// nil under `--no-cache`.
+    private func cacheLocation() -> CacheLocation? {
+        if cache.noCache { return nil }
+        let environment = ProcessInfo.processInfo.environment
+        let root =
+            cache.cachePath.map { SourcePath.absolute($0) }
+            ?? CacheLocation.defaultRoot(
+                tool: ToolInfo.name, environment: environment, home: environment["HOME"] ?? "/tmp")
+        let workspace =
+            ProjectLayout.discover(paths: input.paths)?.root ?? SourcePath.absolute(input.paths.first ?? ".")
+        return CacheLocation(root: root, workspace: workspace)
     }
 
-    /// Deterministic discovery: directories are walked recursively, skipping
-    /// build products and VCS internals (see `SourceDiscovery`). Every path —
-    /// explicit file argument or walked entry — is normalized to absolute,
-    /// because `Finding.path` feeds the fingerprint, and a fingerprint that
-    /// depends on how the corpus was spelled on the command line makes
-    /// baselines unusable across invocation styles.
-    ///
-    /// Project files (Xcode projects, manifests, Info.plists, storyboards,
-    /// xibs) found the same way, or given explicitly, give the platforms and
-    /// the classes the system creates; they are read, never parsed as Swift.
+    /// `--rules`: only the rules named run; an unknown name is a usage error.
+    private func applyRules(to configuration: inout Configuration) throws {
+        guard let wanted = rules.rules else { return }
+        for name in wanted where RuleID(rawValue: name) == nil {
+            throw ValidationError("no rule named \(name); `arcleak rules` lists them")
+        }
+        var settings = configuration.rules
+        for rule in RuleID.allCases where !wanted.contains(rule.rawValue) {
+            settings[rule.rawValue, default: Configuration.RuleSettings()].enabled = false
+        }
+        configuration.rules = settings
+    }
+
+    /// A line on stderr, unless `--quiet`.
+    private func note(_ line: String) {
+        if !output.quiet { standardError.write(Data((line + "\n").utf8)) }
+    }
+
     private func discoverInputs(
         configuration: Configuration
     ) throws -> (swiftFiles: [String], projectFiles: [String]) {
         var files: Set<String> = []
         var projectFiles: Set<String> = []
-        let exclusion = configuration.pathFilter
-        for path in paths {
+        let fromFile = configuration.pathFilter
+        let commandLine = PathFilter(input.excludePaths, root: FileManager.default.currentDirectoryPath)
+        let exclusion = CombinedExclusion(fromFile: fromFile, commandLine: commandLine)
+        for path in input.paths {
             guard
                 // Resolved first — attributesOfItem does not traverse a final
                 // symlink — and attributes rather than URL resource values,
@@ -738,5 +689,23 @@ struct Rules: ParsableCommand {
               // @al:accept:next <rule|all> [-- reason]
               // @al:disable <rule|all> … // @al:enable <rule|all>
             """)
+    }
+}
+
+/// The configuration's `exclude` and the command line's `--exclude-path`, as one filter.
+struct CombinedExclusion: Sendable {
+    let fromFile: PathFilter
+    let commandLine: PathFilter
+
+    func excludes(_ path: String) -> Bool { fromFile.excludes(path) || commandLine.excludes(path) }
+}
+
+extension OutputFormat {
+    init(_ format: OutputOptions.Format) {
+        switch format {
+        case .xcode: self = .xcode
+        case .json: self = .json
+        case .sarif: self = .sarif
+        }
     }
 }

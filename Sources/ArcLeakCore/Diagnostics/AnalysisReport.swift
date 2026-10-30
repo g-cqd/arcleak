@@ -18,9 +18,19 @@ public struct AnalysisReport: Sendable, Codable {
     public var cacheHits = 0
     public var cacheMisses = 0
     /// Why the facts cache on disk was ignored, when it could not be read or
-    /// decoded (see ``FactsCache/loadFailure``). The run treats it as a miss
+    /// decoded (analyzerkit `CorpusScan.cacheLoadFailure`). The run treats it as a miss
     /// and rewrites it, so the next run does not report it again.
     public var cacheLoadFailure: String?
+    /// Files classified by path conventions although a project encloses them. Not encoded; `runNotes` carries them.
+    public var classificationIssues: [ClassificationIssue] = []
+    /// Seconds per phase, for `--timings`. Not encoded; the envelope carries them when asked.
+    public var timings: [String: Double] = [:]
+
+    /// The report's own keys, as before the shared surface (the envelope adds its own around them).
+    private enum CodingKeys: String, CodingKey {
+        case findings, suppressed, outOfScope, degradedFiles, analyzedFileCount, cacheHits, cacheMisses
+        case cacheLoadFailure, wasCancelled
+    }
 
     /// Set when the run was cancelled before the corpus was complete.
     ///

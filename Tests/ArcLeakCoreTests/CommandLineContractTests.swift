@@ -145,7 +145,7 @@ import Testing
 
     // MARK: - Facts cache
 
-    @Test("Cache-path help names the workspace-scoped default")
+    @Test("Cache-path help names the cache's root directory")
     func cachePathHelpMatchesDefault() throws {
         let root = try Workspace.make([:])
         defer { try? FileManager.default.removeItem(at: root) }
@@ -153,7 +153,7 @@ import Testing
         #expect(run.status == 0)
         #expect(
             String(decoding: run.standardOutput, as: UTF8.self).contains(
-                "~/Library/Caches/arcleak/<key>/facts.json"))
+                "The facts cache's root directory"))
     }
 
     /// `"\r\n"` is one `Character`: a scope file split on `"\n"` alone stayed one line, so a CRLF change set (a
@@ -170,40 +170,33 @@ import Testing
         #expect(!run.standardError.contains("matches no analyzed file"))
     }
 
+    /// The cache's files are analyzerkit's (ADR-0011); whatever they hold, a run that cannot use them misses, says so
+    /// once, and rebuilds them.
     @Test("A facts cache that cannot be used is a miss, reported at most once")
     func unusableCacheIsAMiss() throws {
         let root = try Workspace.make(["Box.swift": Self.leakyBox])
         defer { try? FileManager.default.removeItem(at: root) }
-        let cache = root.appending(path: "facts.json")
+        let cache = root.appending(path: "cache")
         let arguments = ["analyze", root.path, "--cache-path", cache.path]
+        _ = try BuiltTool.run(arguments, in: root)
 
-        // Valid JSON that is no cache. The released decoder read past its
-        // tape on it and the process died; it is now never decoded, and a
-        // file another build could have written is not worth a word.
-        try Data(#""x""#.utf8).write(to: cache)
-        let foreign = try BuiltTool.run(arguments, in: root)
-        #expect(foreign.status == 1, "the leaky box is an error-severity finding")
-        #expect(!foreign.standardError.contains("facts cache"))
+        let entries = FileManager.default.enumerator(at: cache, includingPropertiesForKeys: [.isRegularFileKey])
+        var corrupted = 0
+        for case let file as URL in entries?.allObjects ?? []
+        where (try? file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true {
+            let size = (try? Data(contentsOf: file).count) ?? 0
+            try Data(repeating: 0x7B, count: max(size, 1)).write(to: file)
+            corrupted += 1
+        }
+        #expect(corrupted > 0, "the first run wrote the cache")
 
-        // This build's cache, cut short after its header: reported, once.
-        let written = try Data(contentsOf: cache)
-        let headerEnd = try #require(written.firstIndex(of: UInt8(ascii: "\n")))
-        try (written[...headerEnd] + Data(#"{"entries":{"#.utf8)).write(to: cache)
         let broken = try BuiltTool.run(arguments, in: root)
-        #expect(broken.status == 1)
-        #expect(broken.standardError.contains("arcleak: note: ignored the facts cache"))
-
-        // The header is genuine, but an entry has a valid JSON value of the
-        // wrong shape. The decoder must report a miss instead of trapping.
-        let repaired = try Data(contentsOf: cache)
-        let repairedHeaderEnd = try #require(repaired.firstIndex(of: UInt8(ascii: "\n")))
-        try (repaired[...repairedHeaderEnd] + Data(#"{"entries":{"A":false}}"#.utf8)).write(to: cache)
-        let wrongShape = try BuiltTool.run(arguments, in: root)
-        #expect(wrongShape.status == 1)
-        #expect(wrongShape.standardError.contains("arcleak: note: ignored the facts cache"))
+        #expect(broken.status == 1, "the leaky box is an error-severity finding")
+        #expect(broken.standardError.contains("arcleak: note:"))
 
         let next = try BuiltTool.run(arguments, in: root)
-        #expect(!next.standardError.contains("facts cache"))
+        #expect(next.status == 1)
+        #expect(!next.standardError.contains("arcleak: note:"))
         #expect(next.standardError.contains("cache: 1 reused"))
     }
 

@@ -36,23 +36,22 @@ let package = Package(
         // server's stdin/stdout framing). Foundation's FileHandle is
         // corelibs-only and would re-link ~47 MiB of ICU on Linux.
         .package(url: "https://github.com/apple/swift-system.git", from: "1.8.1"),
-        // indexstore-db has no semver tags — revision-pinned per DESIGN.md.
-        // Linked into ArcLeakCore on macOS only (see the target dependency).
+        // indexstore-db has no semver tags. Linked into ArcLeakCore on macOS only (see the target dependency).
+        // analyzerkit's revision, written exactly as analyzerkit writes it: SwiftPM refuses one package required in
+        // two spellings, even a revision and a branch naming the same commit (analyzerkit ADR-0025).
         .package(
-            url: "https://github.com/swiftlang/indexstore-db.git",
-            revision: "64aa0b26913249c4e7c21d351a215fba02702003"
-        ),
+            url: "https://github.com/swiftlang/indexstore-db.git", revision: "0390867818c28241af4650eb4ef29af5669335a3"),
         // The pinned JSON package uses Aemi's kernel and runtime products.
         // Only the internal facts cache uses this codec; report byte formats stay stable.
         .package(
             url: "https://github.com/g-cqd/AemiJSON.git",
-            revision: "9a7d4450ff518a390613821913ba85c6a6944521"
+            revision: "b59ce29617af52ec8585377d694e64becbe2ce81"
         ),
         // The project model the analyzers share: code regions, test code,
         // generated files, platforms and system entry points.
         .package(
             url: "https://github.com/g-cqd/analyzerkit.git",
-            revision: "30322712f88c2a0effdda093fdc4cacca62b8642"
+            revision: "45850885365470bc96ace79fa1e8f005cfe62a1e"
         ),
     ],
     targets: [
@@ -64,6 +63,7 @@ let package = Package(
                 .product(name: "SwiftIfConfig", package: "swift-syntax"),
                 .product(name: "AemiJSON", package: "AemiJSON"),
                 .product(name: "ProjectModel", package: "analyzerkit"),
+                .product(name: "CorpusScan", package: "analyzerkit"),
                 .product(name: "IndexStoreSupport", package: "analyzerkit", condition: .when(platforms: [.macOS])),
                 .product(name: "AnalyzerConfiguration", package: "analyzerkit"),
                 .product(name: "SourceCorpus", package: "analyzerkit"),

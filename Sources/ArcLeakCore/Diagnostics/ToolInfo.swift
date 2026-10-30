@@ -5,9 +5,9 @@ public enum ToolInfo {
     // 0.5.0: experimental embedding-rank can now run a code-trained Core ML model
     // plus its HuggingFace tokenizer (`--embedding-bundle`) instead of the
     // English NLContextual default — new user-facing capability, new dependency.
-    // The on-disk FactsCache is gated by the build that wrote it, not by this
-    // string (see BuildIdentity): two builds of one version can extract
-    // different facts, and the current coder only ever reads caches it wrote.
+    // The facts cache (analyzerkit's CorpusScanner) is gated by the build that
+    // wrote it, not by this string (CacheIdentity folds in BuildIdentity): two
+    // builds of one version can extract different facts.
     public static let version = "0.12.1"
     public static let informationURI = "https://github.com/g-cqd/arcleak"
 }

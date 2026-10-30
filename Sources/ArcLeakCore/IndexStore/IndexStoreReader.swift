@@ -169,9 +169,9 @@
                 let assessment = IndexStoreSupport.BinaryTrustChecker.assess(provided)
                 guard assessment.isTrusted else { throw IndexStoreError.dylibNotFound }
                 libPath = assessment.path
-            } else if let resolved = Self.resolveLibraryPathSync() {
-                libPath = resolved
             } else {
+                // Resolution is async (it runs xcode-select and xcrun through analyzerkit's BoundedProcess); a caller
+                // without a library goes through ``open(indexStorePath:allowsDirectoryCreation:)``.
                 throw IndexStoreError.dylibNotFound
             }
 
@@ -237,13 +237,9 @@
 
         // MARK: dylib discovery
 
-        /// Same policy for synchronous and asynchronous callers: analyzerkit's ordered, audited resolution.
-        static func resolveLibraryPathSync() -> String? {
-            ToolchainResolution.resolve().libraryPath
-        }
-
+        /// analyzerkit's ordered, audited resolution.
         public static func findLibIndexStore() async -> String? {
-            resolveLibraryPathSync()
+            await ToolchainResolution.resolve().libraryPath
         }
 
         // MARK: queries

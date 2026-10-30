@@ -1,5 +1,5 @@
 import ProjectModel
-import ReportSupport
+public import ReportSupport
 import SourceCorpus
 
 #if canImport(FoundationEssentials)
@@ -21,12 +21,20 @@ public enum OutputFormat: String, CaseIterable, Sendable {
 public enum ReportFormatter {
     /// - Parameter root: the directory `report` was relativized to, if any.
     ///   SARIF declares it as the base its relative uris resolve against.
+    /// - Parameters:
+    ///   - runNotes: notes the command adds (`--report-new-since`).
+    ///   - verbose: every path of a note, not the first few.
+    ///   - timings: carry the phases' times in the JSON report.
     public static func format(
-        _ report: AnalysisReport, as format: OutputFormat, relativeTo root: String? = nil
+        _ report: AnalysisReport, as format: OutputFormat, relativeTo root: String? = nil,
+        runNotes: [RunNote] = [], verbose: Bool = false, timings: Bool = false
     ) -> String {
         switch format {
         case .xcode: xcode(report)
-        case .json: json(report)
+        case .json:
+            encode(
+                envelope(
+                    report, root: root.map(SourcePath.canonical), extra: runNotes, verbose: verbose, timings: timings))
         case .sarif: sarif(report, root: root.map(SourcePath.canonical))
         }
     }
@@ -69,19 +77,29 @@ public enum ReportFormatter {
     }
 
     /// The JSON report: the analysis report's fields and the keys every analyzer's report carries (ADR-0017).
-    private static func envelope(_ report: AnalysisReport) -> ReportEnvelope<AnalysisReport> {
+    private static func envelope(
+        _ report: AnalysisReport, root: String? = nil, extra: [RunNote] = [], verbose: Bool = false,
+        timings: Bool = false
+    ) -> ReportEnvelope<AnalysisReport> {
         var seen: Set<String> = []
         let skipped = report.degradedFiles.compactMap { file in
             seen.insert(file.path).inserted ? SkippedFile(path: file.path, reason: .degraded) : nil
         }
+        func shown(_ path: String) -> String { root.map { RepositoryRoot.relativize(path, to: $0) } ?? path }
+        let notes = report.classificationIssues.map { issue in
+            RunNote(
+                code: issue.code, severity: "note", message: issue.message, paths: issue.paths.map(shown),
+                verbose: verbose)
+        }
         return ReportEnvelope(
-            report, tool: ToolInfo.name, version: ToolInfo.version, runNotes: [], skippedFiles: skipped)
+            report, tool: ToolInfo.name, version: ToolInfo.version, runNotes: notes + extra, skippedFiles: skipped,
+            timings: timings ? report.timings : nil)
     }
 
-    private static func json(_ report: AnalysisReport) -> String {
+    private static func encode(_ envelope: ReportEnvelope<AnalysisReport>) -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let data = try? encoder.encode(envelope(report)),
+        guard let data = try? encoder.encode(envelope),
             let text = String(data: data, encoding: .utf8)
         else {
             return "{}"
