@@ -115,6 +115,17 @@ import Testing
         }
     }
 
+    /// `--timings` reports the time of each phase: in the JSON report and on stderr, not an empty object.
+    @Test func `timings name the scan and the rules`() throws {
+        try Self.workspace(["Box.swift": Self.box("Box")]) { root in
+            let timed = try Self.run(["analyze", ".", "--no-cache", "--format", "json", "--timings"], in: root)
+            let object = try JSONSerialization.jsonObject(with: Data(timed.output.utf8)) as? [String: Any]
+            let timings = object?["timings"] as? [String: Double] ?? [:]
+            #expect(Set(timings.keys) == ["scan", "rules"], "\(timings)")
+            #expect(timed.errors.contains("arcleak: timing: scan"), "\(timed.errors)")
+        }
+    }
+
     /// The base branch's baseline holds A's cycle; the change adds B's and touches only C.
     @Test func `report-new-since reports out-of-scope findings the base baseline lacks`() throws {
         try Self.workspace(["A.swift": Self.box("A"), "C.swift": "let c = 1\n"]) { root in
