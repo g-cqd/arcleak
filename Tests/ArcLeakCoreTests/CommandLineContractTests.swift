@@ -156,6 +156,20 @@ import Testing
                 "~/Library/Caches/arcleak/<key>/facts.json"))
     }
 
+    /// `"\r\n"` is one `Character`: a scope file split on `"\n"` alone stayed one line, so a CRLF change set (a
+    /// Windows-authored diff, `core.autocrlf`) scoped every finding out and the gate passed (analyzerkit roadmap 0057).
+    @Test("A CRLF or CR --only-from file scopes like an LF one", arguments: ["\r\n", "\r"])
+    func crlfOnlyFromScopesLikeLF(ending: String) throws {
+        let root = try Workspace.make(["Box.swift": Self.leakyBox, "Fine.swift": "final class Fine {}\n"])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let scope = root.appending(path: "changed.txt")
+        try Data(("Box.swift" + ending + "Fine.swift" + ending).utf8).write(to: scope)
+        let run = try BuiltTool.run(["analyze", root.path, "--no-cache", "--only-from", scope.path], in: root)
+
+        #expect(run.status == 1, "the leaky box is in scope and an error-severity finding")
+        #expect(!run.standardError.contains("matches no analyzed file"))
+    }
+
     @Test("A facts cache that cannot be used is a miss, reported at most once")
     func unusableCacheIsAMiss() throws {
         let root = try Workspace.make(["Box.swift": Self.leakyBox])
