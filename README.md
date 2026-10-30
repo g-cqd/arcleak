@@ -99,24 +99,21 @@ Baseline fingerprints include positions, so large refactors shift findings
 out of the baseline — regenerate deliberately rather than let fuzzy matching
 swallow new bugs.
 
-**Cache** — on by default, one per workspace
-(`~/Library/Caches/arcleak/<key>/facts.json` on macOS, the platform's caches
-directory elsewhere; override with
-`--cache-path`, disable with `--no-cache`). Only parsed facts are cached. Each
-file's entry is keyed by its content and by the configuration facts depend on
-(`defines`, `debugBuild`, `platforms`, `contracts`); the whole cache is keyed by the arcleak build that
-wrote it — its executable, not just its version — so a rebuilt or reinstalled
-arcleak starts cold rather than trust facts another build extracted. A run
-over part of the workspace keeps the other files' entries; only entries of
-deleted files are dropped. A cache larger than 64 MiB is neither read nor
-written. Rules always re-run, so findings never go stale relative to rules or
-configuration.
-The cache fails open. Its first line names the build that wrote it and is
-checked before anything is decoded, so another build's cache, or a file that
-is no cache at all, is ignored without a word; this build's cache that still
-cannot be read or decoded — truncated or the wrong JSON shape, say — is
-reported once on stderr and rewritten. Either way the run parses every file
-afresh.
+**Cache** — on by default: analyzerkit's facts cache (its ADR-0011), rooted at
+`~/Library/Caches/arcleak` on macOS (`$XDG_CACHE_HOME/arcleak` or
+`~/.cache/arcleak` elsewhere; override the root with `--cache-path <directory>`,
+disable with `--no-cache`), one directory per workspace (the package or project
+around the analyzed paths). Only parsed facts are cached. Each file's entry is
+keyed by its content and by the configuration facts depend on (`defines`,
+`debugBuild`, `platforms`, `contracts`), and the cache is gated by the arcleak
+build that wrote it — its executable, not just its version — so a rebuilt or
+reinstalled arcleak starts cold rather than trust facts another build
+extracted. A run touches only the shards of its own files and keeps the rest;
+entries of deleted files are dropped, within a size budget. Rules always
+re-run, so findings never go stale relative to rules or configuration.
+The cache fails open: a shard that cannot be read or decoded is a miss,
+reported once on stderr and rebuilt. Caches written by arcleak before 1.x's
+move to analyzerkit (`<key>/facts.json`) are no longer read; delete them.
 
 ## CLI and JSON contract (1.x)
 
@@ -133,9 +130,13 @@ JSON goes to stdout and stderr is free-form text, so do not merge them with `2>&
 | `--relative-to <dir>` | print paths relative to `<dir>`; see [Fingerprints](#fingerprints-are-portable-by-default) |
 | `--baseline <file>`, `--write-baseline <file>` | drop accepted findings; write the current findings as a baseline, then exit `0` |
 | `--config <file>` | configuration file; default: see [Configuration](#configuration-arcleakjson) |
-| `--cache-path <file>`, `--no-cache` | facts-cache file; disable the cache. See [Facts cache](#facts-cache-and-parallel-jobs) |
+| `--cache-path <directory>`, `--no-cache` | the facts cache's root directory; disable the cache. See [Facts cache](#facts-cache-and-parallel-jobs) |
 | `--strict` | warnings fail the gate too; notes never do |
-| `--include <regions>`, `--exclude <regions>` | `preview`, `debug`, `test`, `mock`, `generated`, `script` or `all`: analyze as first-class code, or keep out of scope |
+| `--include-regions <regions>`, `--exclude-regions <regions>` | `preview`, `debug`, `test`, `mock`, `generated`, `script` or `all`: analyze as first-class code, or keep out of scope. `--include`/`--exclude` still work, with a deprecation note |
+| `--exclude-path <pattern>` | skip matching paths, on top of the configuration's `exclude`; repeatable |
+| `--rules <ids>` | run only these rules (comma-separated); an unknown id exits `64` |
+| `--report-new-since <baseline>` | with `--only`/`--only-from`: also report findings outside the scope that are not in the baseline |
+| `--quiet`, `--verbose`, `--timings` | no stderr notes; every path of a note; phase times on stderr (and in JSON) |
 
 ### Exit status
 
@@ -182,10 +183,10 @@ Each element of `findings`:
 
 ### Facts cache and parallel jobs
 
-- The default cache is `~/Library/Caches/arcleak/<key>/facts.json` on macOS, and under the platform's caches directory elsewhere. The key identifies the git repository of the working directory (the directory itself outside one), so all its subdirectories share one cache.
-- Entries are keyed by path and validated against the file's content and the configuration (`defines`, `debugBuild`, `platforms`, `contracts`). A cache written by another arcleak build is ignored whole; a stale or torn entry is never served.
-- Writes are atomic and replace the whole file: concurrent runs can lose each other's new entries (the last writer wins), but never read wrong facts.
-- Parallel CI jobs on one machine: give each its own `--cache-path`, which avoids lost updates and evictions. `--no-cache` disables the cache; a file over 64 MiB is neither read nor written.
+- The cache is analyzerkit's (its ADR-0011): a root directory, `~/Library/Caches/arcleak` on macOS (`$XDG_CACHE_HOME/arcleak` or `~/.cache/arcleak` elsewhere), holding one directory per workspace (the package or project around the analyzed paths) of sharded entries.
+- Entries are keyed by the file's content and the configuration (`defines`, `debugBuild`, `platforms`, `contracts`), and gated by the arcleak build. A stale or torn entry is never served.
+- A run touches only the shards of its files and writes them atomically, so concurrent runs over different files keep each other's entries; over the same files the last writer wins, never with wrong facts.
+- Parallel CI jobs can share the default root; `--cache-path` gives a job its own, and `--no-cache` disables the cache.
 
 ### Baselines and fingerprints
 

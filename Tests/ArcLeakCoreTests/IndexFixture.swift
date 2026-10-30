@@ -6,11 +6,20 @@
     /// format and the reader always match. `-emit-module` matters: a `-typecheck` build records no per-file units.
     enum IndexFixture {
         /// The matching `swiftc`, or nil on a host without a trusted toolchain.
+        /// From `xcrun`, which selects as analyzerkit's `ToolchainResolution` does (`DEVELOPER_DIR`, then
+        /// `xcode-select`); that resolution is async and a static initializer is not.
         static let swiftc: String? = {
-            guard let dylib = IndexStoreReader.resolveLibraryPathSync() else { return nil }
-            let swiftc = URL(fileURLWithPath: dylib).deletingLastPathComponent().deletingLastPathComponent()
-                .appendingPathComponent("bin/swiftc").path
-            return FileManager.default.isExecutableFile(atPath: swiftc) ? swiftc : nil
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+            process.arguments = ["--find", "swiftc"]
+            let output = Pipe()
+            process.standardOutput = output
+            process.standardError = FileHandle.nullDevice
+            guard (try? process.run()) != nil else { return nil }
+            let data = output.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            let swiftc = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            return process.terminationStatus == 0 && FileManager.default.isExecutableFile(atPath: swiftc) ? swiftc : nil
         }()
 
         static var available: Bool { swiftc != nil }

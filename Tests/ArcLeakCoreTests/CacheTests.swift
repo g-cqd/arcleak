@@ -1,9 +1,15 @@
+//  The facts cache is an optimization and must never change results: hit and miss runs give identical findings.
+//  The cache itself (shards, corruption failing open, the build identity, pruning, the budget) is analyzerkit's
+//  CorpusScanner, tested there (roadmap 0018); what stays here is what arcleak keys and stores.
+
+import AemiJSON
 import ArcLeakCore
+import CorpusScan
 import Foundation
 import Testing
 
 @Suite struct CacheTests {
-    private func makeWorkspace() throws -> (dir: URL, cache: URL, files: [String]) {
+    private func makeWorkspace() throws -> (dir: URL, cache: CacheLocation, files: [String]) {
         let dir = FileManager.default.temporaryDirectory
             .appending(path: "arcleak-cache-test-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -25,7 +31,7 @@ import Testing
             let second = dir.appending(path: "Fine.swift")
             try leaky.write(to: first, atomically: true, encoding: .utf8)
             try clean.write(to: second, atomically: true, encoding: .utf8)
-            let cache = dir.appending(path: "facts-cache.json")
+            let cache = CacheLocation(root: dir.appending(path: "cache").path, workspace: dir.path)
             return (dir, cache, [first.path, second.path])
         } catch {
             try? FileManager.default.removeItem(at: dir)
@@ -37,12 +43,12 @@ import Testing
         let (dir, cache, files) = try makeWorkspace()
         defer { try? FileManager.default.removeItem(at: dir) }
 
-        let cold = await Analyzer().analyze(files: files, cacheURL: cache)
+        let cold = await Analyzer().analyze(files: files, cache: cache)
         #expect(cold.cacheHits == 0)
         #expect(cold.cacheMisses == 2)
         #expect(cold.findings.count == 1)
 
-        let warm = await Analyzer().analyze(files: files, cacheURL: cache)
+        let warm = await Analyzer().analyze(files: files, cache: cache)
         #expect(warm.cacheHits == 2)
         #expect(warm.cacheMisses == 0)
         #expect(warm.findings == cold.findings)
@@ -51,7 +57,7 @@ import Testing
     @Test func editedFileInvalidatesOnlyItsEntry() async throws {
         let (dir, cache, files) = try makeWorkspace()
         defer { try? FileManager.default.removeItem(at: dir) }
-        _ = await Analyzer().analyze(files: files, cacheURL: cache)
+        _ = await Analyzer().analyze(files: files, cache: cache)
 
         let edited = dir.appending(path: "Fine.swift")
         try """
@@ -62,203 +68,61 @@ import Testing
         }
         """.write(to: edited, atomically: true, encoding: .utf8)
 
-        let rerun = await Analyzer().analyze(files: files, cacheURL: cache)
+        let rerun = await Analyzer().analyze(files: files, cache: cache)
         #expect(rerun.cacheHits == 1)
         #expect(rerun.cacheMisses == 1)
         #expect(rerun.findings.count == 2)
     }
 
-    /// The cache is shared by every run in a workspace, and a run over part of
-    /// the corpus — a pull request's files, one file from an editor — must not
-    /// evict the rest: the next whole-corpus run would start cold.
+    /// The cache is shared by every run in a workspace, and a run over part of the corpus (a pull request's files,
+    /// one file from an editor) must not evict the rest: the next whole-corpus run would start cold.
     @Test func subsetRunKeepsEntriesOfFilesItDidNotAnalyze() async throws {
         let (dir, cache, files) = try makeWorkspace()
         defer { try? FileManager.default.removeItem(at: dir) }
-        _ = await Analyzer().analyze(files: files, cacheURL: cache)
+        _ = await Analyzer().analyze(files: files, cache: cache)
+        _ = await Analyzer().analyze(files: [files[0]], cache: cache)
 
-        _ = await Analyzer().analyze(files: [files[0]], cacheURL: cache)
-        #expect(Set(FactsCache.load(url: cache).entries.keys) == Set(files))
-
-        let whole = await Analyzer().analyze(files: files, cacheURL: cache)
+        let whole = await Analyzer().analyze(files: files, cache: cache)
         #expect(whole.cacheHits == 2)
     }
 
-    @Test func prunesEntriesForDeletedFiles() async throws {
+    /// Facts depend on the `#if` configuration: other defines must not reuse them.
+    @Test func otherDefinesMissTheCache() async throws {
         let (dir, cache, files) = try makeWorkspace()
         defer { try? FileManager.default.removeItem(at: dir) }
-        _ = await Analyzer().analyze(files: files, cacheURL: cache)
+        _ = await Analyzer().analyze(files: files, cache: cache)
 
-        // Per-run rebuild, not append-forever: a file that is gone loses its entry.
-        try FileManager.default.removeItem(atPath: files[1])
-        _ = await Analyzer().analyze(files: [files[0]], cacheURL: cache)
-        #expect(Set(FactsCache.load(url: cache).entries.keys) == [files[0]])
+        let defined = await Analyzer(configuration: Configuration(defines: ["EXTRA"])).analyze(
+            files: files, cache: cache)
+        #expect(defined.cacheHits == 0)
+        #expect(defined.cacheMisses == 2)
     }
 
-    /// A cancelled run must report *nothing*, not a partial answer.
-    ///
-    /// This previously asserted a "possibly partial report" was fine. It is not:
-    /// `mutual-strong-properties` walks an ownership graph built from the whole
-    /// corpus, so a partial run draws conclusions from a corpus that is missing
-    /// files — the same defect that makes feeding a diff as the corpus wrong. A
-    /// cancelled run is a failed run, and the CLI exits 70 for it.
+    /// A file that could not be analysed is cached as such, and reported the same on a warm run.
+    @Test func unanalysableFileIsReportedFromTheCacheToo() async throws {
+        let (dir, cache, _) = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let unreadable = dir.appending(path: "Bad.swift")
+        try Data([0xFF, 0xFE, 0x7B]).write(to: unreadable)
+
+        let cold = await Analyzer().analyze(files: [unreadable.path], cache: cache)
+        let warm = await Analyzer().analyze(files: [unreadable.path], cache: cache)
+        #expect(cold.degradedFiles.map(\.detail) == ["not valid UTF-8"])
+        #expect(warm.degradedFiles.map(\.detail) == ["not valid UTF-8"])
+    }
+
+    /// A cancelled run must report *nothing*, not a partial answer: `mutual-strong-properties` walks an ownership
+    /// graph built from the whole corpus, so a partial run draws conclusions from a corpus that is missing files.
+    /// A cancelled run is a failed run, and the CLI exits 70 for it.
     @Test func cancelledAnalysisReportsNothing() async throws {
         let (dir, cache, files) = try makeWorkspace()
         defer { try? FileManager.default.removeItem(at: dir) }
-        let task = Task { await Analyzer().analyze(files: files, cacheURL: cache) }
+        let task = Task { await Analyzer().analyze(files: files, cache: cache) }
         task.cancel()
         let report = await task.value
         #expect(report.wasCancelled)
         #expect(report.findings.isEmpty)
         #expect(report.outOfScope.isEmpty)
-    }
-
-    @Test func corruptCacheFailsOpen() async throws {
-        let (dir, cache, files) = try makeWorkspace()
-        defer { try? FileManager.default.removeItem(at: dir) }
-        try "not json at all {{{".write(to: cache, atomically: true, encoding: .utf8)
-
-        let report = await Analyzer().analyze(files: files, cacheURL: cache)
-        #expect(report.cacheHits == 0)
-        #expect(report.cacheMisses == 2)
-        #expect(report.findings.count == 1)
-
-        // And the bad file was overwritten with a valid cache.
-        let warm = await Analyzer().analyze(files: files, cacheURL: cache)
-        #expect(warm.cacheHits == 2)
-    }
-
-    /// A file that does not start with this build's header is never decoded.
-    /// This includes valid JSON that is not a cache.
-    @Test func malformedCacheIsAMissNotACrash() async {
-        await #expect(processExitsWith: .success) {
-            let url = FileManager.default.temporaryDirectory
-                .appending(path: "arcleak-malformed-\(UUID().uuidString).json")
-            defer { try? FileManager.default.removeItem(at: url) }
-            // Three bytes of valid JSON that is not a cache.
-            try Data(#""x""#.utf8).write(to: url)
-            #expect(FactsCache.load(url: url).entries.isEmpty)
-        }
-    }
-
-    @Test("This build's cache with a wrong JSON shape is a reported miss")
-    func wrongShapeCacheIsAMiss() async {
-        await #expect(processExitsWith: .success) {
-            let url = FileManager.default.temporaryDirectory
-                .appending(path: "arcleak-wrong-shape-\(UUID().uuidString).json")
-            defer { try? FileManager.default.removeItem(at: url) }
-            var cache = FactsCache()
-            cache.update(path: "/x/A.swift", fingerprint: "fp", facts: FileFacts(path: "/x/A.swift"))
-            cache.persist(url: url, build: "shape-test")
-            let written = try Data(contentsOf: url)
-            let headerEnd = try #require(written.firstIndex(of: UInt8(ascii: "\n")))
-            try (written[...headerEnd] + Data(#"{"entries":{"A":false}}"#.utf8)).write(to: url)
-            let loaded = FactsCache.load(url: url, build: "shape-test")
-            #expect(loaded.entries.isEmpty)
-            #expect(loaded.loadFailure?.contains("could not be decoded") == true)
-        }
-    }
-
-    /// Any decode failure is a miss, reported once: the run rewrites the cache
-    /// it could not use, so the next run reads it without a word.
-    @Test func undecodableCacheIsAMissReportedOnce() async throws {
-        let (dir, cache, files) = try makeWorkspace()
-        defer { try? FileManager.default.removeItem(at: dir) }
-        _ = await Analyzer().analyze(files: files, cacheURL: cache)
-        try truncateAfterHeader(cache)
-
-        let broken = await Analyzer().analyze(files: files, cacheURL: cache)
-        #expect(broken.cacheHits == 0)
-        #expect(broken.findings.count == 1)
-        #expect(broken.cacheLoadFailure?.contains("could not be decoded") == true)
-
-        let next = await Analyzer().analyze(files: files, cacheURL: cache)
-        #expect(next.cacheHits == 2)
-        #expect(next.cacheLoadFailure == nil)
-    }
-
-    /// Nothing parsed, so nothing new to save — the unusable cache must still
-    /// be replaced, or every later run reports it again.
-    @Test func undecodableCacheIsReplacedEvenWhenNothingParses() async throws {
-        let (dir, cache, files) = try makeWorkspace()
-        defer { try? FileManager.default.removeItem(at: dir) }
-        _ = await Analyzer().analyze(files: files, cacheURL: cache)
-        try truncateAfterHeader(cache)
-        let unreadable = dir.appending(path: "Bad.swift")
-        try Data([0xFF, 0xFE, 0x7B]).write(to: unreadable)
-
-        let broken = await Analyzer().analyze(files: [unreadable.path], cacheURL: cache)
-        #expect(broken.cacheLoadFailure != nil)
-        let next = await Analyzer().analyze(files: [unreadable.path], cacheURL: cache)
-        #expect(next.cacheLoadFailure == nil)
-    }
-
-    /// Keeps a cache file's header line — this build's — and cuts the JSON
-    /// after it short.
-    private func truncateAfterHeader(_ cache: URL) throws {
-        let written = try Data(contentsOf: cache)
-        let headerEnd = try #require(written.firstIndex(of: UInt8(ascii: "\n")))
-        try (written[...headerEnd] + Data(#"{"entries":{"#.utf8)).write(to: cache)
-    }
-
-    /// load refuses a cache over its size cap, so persist must not write one:
-    /// past the cap, every run would write a file no run can read.
-    @Test func persistNeverWritesACacheLoadWouldRefuse() throws {
-        let url = FileManager.default.temporaryDirectory
-            .appending(path: "arcleak-cap-test-\(UUID().uuidString).json")
-        defer { try? FileManager.default.removeItem(at: url) }
-        var small = FactsCache()
-        small.update(path: "/x/Small.swift", fingerprint: "fp", facts: FileFacts(path: "/x/Small.swift"))
-        small.persist(url: url)
-        #expect(FactsCache.load(url: url).entries.count == 1)
-
-        var oversized = FactsCache()
-        let path = String(repeating: "x", count: FactsCache.maxCacheBytes)
-        oversized.update(path: "/x/Big.swift", fingerprint: "fp", facts: FileFacts(path: path))
-        oversized.persist(url: url)
-        // Neither the oversized cache nor the one it would have replaced.
-        #expect(!FileManager.default.fileExists(atPath: url.path))
-        #expect(FactsCache.load(url: url).loadFailure == nil)
-    }
-
-    @Test func toolVersionMismatchDiscardsCache() throws {
-        var cache = FactsCache()
-        cache.update(
-            path: "/tmp/x.swift",
-            fingerprint: "abc",
-            facts: FileFacts(path: "/tmp/x.swift")
-        )
-        let url = FileManager.default.temporaryDirectory
-            .appending(path: "arcleak-version-test-\(UUID().uuidString).json")
-        defer { try? FileManager.default.removeItem(at: url) }
-        cache.persist(url: url)
-
-        var onDisk = try #require(
-            String(data: Data(contentsOf: url), encoding: .utf8)
-        )
-        onDisk = onDisk.replacingOccurrences(of: ToolInfo.version, with: "0.0.0-other")
-        try onDisk.write(to: url, atomically: true, encoding: .utf8)
-
-        let reloaded = FactsCache.load(url: url)
-        #expect(reloaded.entries.isEmpty)
-    }
-
-    /// Facts are a function of the extraction code, and the version string is
-    /// bumped only when a release is cut: two builds of one version can
-    /// extract different facts from the same file, so neither may serve the
-    /// other's.
-    @Test func cacheFromAnotherBuildOfTheSameVersionIsDiscarded() throws {
-        // What another build of this version wrote: its tool name, this
-        // version, and facts it extracted — but nothing naming this build.
-        let written = #"""
-            {"tool":"arcleak","version":"\#(ToolInfo.version)","entries":{"/x/Stale.swift":\#
-            {"fingerprint":"fp","facts":{"path":"/x/Stale.swift","types":[],"directives":[]}}}}
-            """#
-        let url = FileManager.default.temporaryDirectory
-            .appending(path: "arcleak-build-test-\(UUID().uuidString).json")
-        defer { try? FileManager.default.removeItem(at: url) }
-        try written.write(to: url, atomically: true, encoding: .utf8)
-
-        #expect(FactsCache.load(url: url).entries.isEmpty)
     }
 
     /// A `FileFacts` exercising every fact type and enum shape the AemiJSON coder
@@ -326,32 +190,15 @@ import Testing
             ])
     }
 
+    /// What the cache stores goes through AemiJSON, as `CorpusScanner` writes and reads it: byte-stable and lossless.
     @Test func realisticPayloadRoundTripsByteStableAndLossless() throws {
-        var cache = FactsCache()
-        cache.update(path: "/x/Sample.swift", fingerprint: "fp-1", facts: richFacts(path: "/x/Sample.swift"))
-        cache.update(path: "/x/Another.swift", fingerprint: "fp-2", facts: FileFacts(path: "/x/Another.swift"))
+        let stored = ExtractedFacts(facts: richFacts(path: "/x/Sample.swift"))
+        let first = try AemiJSON.JSONEncoder().encodeToBytes(stored)
+        let loaded = try AemiJSON.JSONDecoder().decode(ExtractedFacts.self, from: first)
+        #expect(try AemiJSON.JSONEncoder().encodeToBytes(loaded) == first)
 
-        let url = FileManager.default.temporaryDirectory
-            .appending(path: "arcleak-rt-\(UUID().uuidString).json")
-        defer { try? FileManager.default.removeItem(at: url) }
-
-        // Byte-stable AND lossless: persist -> load -> re-persist is
-        // byte-identical. Sets encode sorted, so this holds regardless of how the
-        // sets were built (freshly constructed here vs decoder-rebuilt on load);
-        // if the round-trip dropped or mangled ANY field the re-persist would
-        // diverge from the first.
-        cache.persist(url: url)
-        let first = try Data(contentsOf: url)
-        let loaded = FactsCache.load(url: url)
-        #expect(loaded.entries.count == 2)
-        loaded.persist(url: url)
-        let second = try Data(contentsOf: url)
-        #expect(first == second)
-
-        // Spot-check the associated-value enums that ride AemiJSON's generic Codable
-        // bridge (a live corpus rarely produces APICallFact) — they must survive
-        // verbatim through the round-trip.
-        let type = try #require(loaded.entries["/x/Sample.swift"]?.facts.types.first)
+        // The associated-value enums ride AemiJSON's generic Codable bridge and must survive verbatim.
+        let type = try #require(loaded.facts?.types.first)
         #expect(type.apiCalls.count == 3)
         #expect(type.apiCalls[1].kind == .userTokenProducer("React.to"))
         #expect(type.apiCalls[0].consumption == .storedToSelfMember("bag"))
@@ -359,39 +206,5 @@ import Testing
         #expect(type.apiCalls[2].closureSelfCapture == SelfCaptureKind.none)
         #expect(type.taskSpawns.first?.consumption == .storedToLocalOnly("t"))
         #expect(type.storedClosures.first?.selfCapture == .strong(implicit: false))
-    }
-
-    @Test func allHitsWarmRunSkipsRepersist() async throws {
-        let (dir, cache, files) = try makeWorkspace()
-        defer { try? FileManager.default.removeItem(at: dir) }
-
-        // Cold run writes the cache.
-        let cold = await Analyzer().analyze(files: files, cacheURL: cache)
-        #expect(cold.cacheMisses == 2)
-
-        // Stamp a known past mtime; an atomic re-persist would replace the file
-        // and reset it to "now".
-        let past = Date(timeIntervalSince1970: 946_684_800)  // 2000-01-01
-        try FileManager.default.setAttributes([.modificationDate: past], ofItemAtPath: cache.path)
-
-        // All hits, nothing to prune -> the guard skips the redundant re-persist.
-        let warm = await Analyzer().analyze(files: files, cacheURL: cache)
-        #expect(warm.cacheHits == 2)
-        #expect(warm.cacheMisses == 0)
-        let untouched =
-            try FileManager.default.attributesOfItem(atPath: cache.path)[.modificationDate] as? Date
-        #expect(untouched?.timeIntervalSince1970 == past.timeIntervalSince1970)
-
-        // A miss must still persist (the cache is rebuilt): edit one file so the
-        // next run has a miss, and confirm the file was rewritten.
-        try """
-        final class Fine { var onTick: (() -> Void)?; func arm() { onTick = { self.t() } }; func t() {} }
-        """.write(to: dir.appending(path: "Fine.swift"), atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.modificationDate: past], ofItemAtPath: cache.path)
-        let rerun = await Analyzer().analyze(files: files, cacheURL: cache)
-        #expect(rerun.cacheMisses == 1)
-        let rewritten =
-            try FileManager.default.attributesOfItem(atPath: cache.path)[.modificationDate] as? Date
-        #expect((rewritten?.timeIntervalSince1970 ?? 0) > past.timeIntervalSince1970)
     }
 }

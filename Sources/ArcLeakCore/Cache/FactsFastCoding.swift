@@ -2,7 +2,7 @@
 //
 //  The `@JSONCodable` macro emits AemiJSON's reflection-free
 //  `ADJSONFast{Decodable,Encodable}` conformance for a struct (see the model
-//  types + `FactsCache.swift`). It only handles structs, so the String-raw-value
+//  types and `ExtractedFacts`). It only handles structs, so the String-raw-value
 //  enums that appear as frequent struct fields get a small hand-written fast
 //  conformance here so they still decode straight off the tape (the decisive
 //  win): `ReferenceStrength` (on every stored property — the payload's densest
