@@ -49,9 +49,12 @@ let package = Package(
         ),
         // The project model the analyzers share: code regions, test code,
         // generated files, platforms and system entry points.
+        // The facts cache's payload codec; analyzerkit's revision, written as analyzerkit writes it (ADR-0025).
+        .package(
+            url: "https://github.com/g-cqd/AemiProtobuf.git", revision: "3aae025f2bf19e78dc6491915f368c6a5bd8e0f5"),
         .package(
             url: "https://github.com/g-cqd/analyzerkit.git",
-            revision: "ed8c81588790612763b4e47cc4431e8ac357e205"
+            revision: "ef7e5952652a28c4cd4972e85995f0378bfd03cc"
         ),
     ],
     targets: [
@@ -62,6 +65,8 @@ let package = Package(
                 .product(name: "SwiftParser", package: "swift-syntax"),
                 .product(name: "SwiftIfConfig", package: "swift-syntax"),
                 .product(name: "AemiJSON", package: "AemiJSON"),
+                .product(name: "AemiProtobuf", package: "AemiProtobuf"),
+                .product(name: "AemiProtobufCore", package: "AemiProtobuf"),
                 .product(name: "ProjectModel", package: "analyzerkit"),
                 .product(name: "CorpusScan", package: "analyzerkit"),
                 .product(name: "IndexStoreSupport", package: "analyzerkit", condition: .when(platforms: [.macOS])),
@@ -119,6 +124,8 @@ let package = Package(
             dependencies: [
                 "ArcLeakCore", .product(name: "SourceCorpus", package: "analyzerkit"),
                 .product(name: "WordPiece", package: "analyzerkit"),
+                .product(name: "AemiJSON", package: "AemiJSON"),
+                .product(name: "AemiProtobuf", package: "AemiProtobuf"),
             ],
             exclude: ["Goldens"],
             resources: [.copy("Fixtures")],
