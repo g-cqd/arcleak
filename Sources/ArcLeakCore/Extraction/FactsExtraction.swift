@@ -53,28 +53,14 @@ public enum FactsExtraction {
 
     /// Facts follow what a compile would see: the `os()` conditions of the
     /// project's platforms (the host's when none is known) plus the custom
-    /// conditions. (`canImport` modules are not modeled yet — documented
-    /// limitation.)
+    /// conditions, through analyzerkit's one recipe (ADR-0029), which fcheck
+    /// and modeler read too. (`canImport` modules are not modeled yet —
+    /// documented limitation.)
     static func buildConfiguration(
         defines: Set<String>,
         platforms: Set<String> = []
     ) -> StaticBuildConfiguration {
-        var configuration = StaticBuildConfiguration(
-            customConditions: defines,
-            languageVersion: VersionTuple(6),
-            compilerVersion: VersionTuple(6, 4)
-        )
-        if !platforms.isEmpty {
-            // `os(OSX)` is the older spelling of `os(macOS)`.
-            configuration.targetOSs = platforms.contains("macOS") ? platforms.union(["OSX"]) : platforms
-            return configuration
-        }
-        #if os(macOS)
-            configuration.targetOSs = ["macOS", "OSX"]
-        #elseif os(Linux)
-            configuration.targetOSs = ["Linux"]
-        #endif
-        return configuration
+        CompilationConditions(defines: defines, platforms: platforms).buildConfiguration
     }
 
     /// One token sweep collecting `@al:`/`@arcleak:` comment directives with their lines.
