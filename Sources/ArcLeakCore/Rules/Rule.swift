@@ -37,6 +37,7 @@ public enum RuleEngine {
         DelegateStrongPropertyRule.self,
         WebViewScriptHandlerRule.self,
         KVOObservationSelfCycleRule.self,
+        ContinuationOverwriteRule.self,
     ]
 
     private static let corpusRules: [any CorpusRule.Type] = [

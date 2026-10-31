@@ -55,6 +55,12 @@ public struct APICallFact: Sendable, Equatable, Codable {
         /// `combine-sink-self-cycle`: dropping a reactive Disposable does not
         /// end the subscription, so it is no premature-release token.
         case reactiveSubscription(String)
+        /// `member = continuation` as a top-level statement of a
+        /// `with(Checked|Unsafe)(Throwing)?Continuation` closure, with no
+        /// condition before it in the closure or the enclosing method and no
+        /// mention of the member before it: the member, in
+        /// ``APICallFact/receiverRootMember``, is replaced unconditionally.
+        case continuationStore
     }
 
     /// Whether a Combine upstream provably completes. `Subscribers.Sink`
@@ -170,7 +176,7 @@ public struct APICallFact: Sendable, Equatable, Codable {
             false
         case .userTokenProducer, .userSinkWrapper:
             true
-        case .reactiveSubscription:
+        case .reactiveSubscription, .continuationStore:
             false
         }
     }
