@@ -310,7 +310,7 @@ error-severity findings fail the build:
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/g-cqd/arcleak.git", from: "0.12.0"),
+    .package(url: "https://github.com/g-cqd/arcleak.git", from: "0.14.0"),
 ],
 targets: [
     .target(
