@@ -228,6 +228,102 @@
             {
               "physicalLocation" : {
                 "artifactLocation" : {
+                  "uri" : "Fixtures\/Leaks\/ContinuationOverwrite.swift",
+                  "uriBaseId" : "SRCROOT"
+                },
+                "region" : {
+                  "startColumn" : 13,
+                  "startLine" : 16
+                }
+              }
+            }
+          ],
+          "message" : {
+            "text" : "continuation stored over 'photoContinuation' with nothing that checks or resumes the one it may hold — a second call before the first resumes leaves that caller suspended forever — guard photoContinuation == nil else { continuation.resume(throwing: …); return }, or resume the old one first, or keep each caller's continuation under its own key"
+          },
+          "partialFingerprints" : {
+            "arcleak\/v1" : "678dd273d3a22662"
+          },
+          "ruleId" : "continuation-overwrite"
+        },
+        {
+          "level" : "warning",
+          "locations" : [
+            {
+              "physicalLocation" : {
+                "artifactLocation" : {
+                  "uri" : "Fixtures\/Leaks\/ContinuationOverwrite.swift",
+                  "uriBaseId" : "SRCROOT"
+                },
+                "region" : {
+                  "startColumn" : 13,
+                  "startLine" : 33
+                }
+              }
+            }
+          ],
+          "message" : {
+            "text" : "continuation stored over 'waiter' with nothing that checks or resumes the one it may hold — a second call before the first resumes leaves that caller suspended forever — guard waiter == nil else { continuation.resume(throwing: …); return }, or resume the old one first, or keep each caller's continuation under its own key"
+          },
+          "partialFingerprints" : {
+            "arcleak\/v1" : "e730e25bff6b3a8c"
+          },
+          "ruleId" : "continuation-overwrite"
+        },
+        {
+          "level" : "warning",
+          "locations" : [
+            {
+              "physicalLocation" : {
+                "artifactLocation" : {
+                  "uri" : "Fixtures\/Leaks\/ContinuationOverwrite.swift",
+                  "uriBaseId" : "SRCROOT"
+                },
+                "region" : {
+                  "startColumn" : 13,
+                  "startLine" : 49
+                }
+              }
+            }
+          ],
+          "message" : {
+            "text" : "continuation stored over 'answer' with nothing that checks or resumes the one it may hold — a second call before the first resumes leaves that caller suspended forever — guard answer == nil else { continuation.resume(throwing: …); return }, or resume the old one first, or keep each caller's continuation under its own key"
+          },
+          "partialFingerprints" : {
+            "arcleak\/v1" : "3a932c15150f3d13"
+          },
+          "ruleId" : "continuation-overwrite"
+        },
+        {
+          "level" : "warning",
+          "locations" : [
+            {
+              "physicalLocation" : {
+                "artifactLocation" : {
+                  "uri" : "Fixtures\/Leaks\/ContinuationOverwrite.swift",
+                  "uriBaseId" : "SRCROOT"
+                },
+                "region" : {
+                  "startColumn" : 13,
+                  "startLine" : 68
+                }
+              }
+            }
+          ],
+          "message" : {
+            "text" : "continuation stored over 'completion' with nothing that checks or resumes the one it may hold — a second call before the first resumes leaves that caller suspended forever — guard completion == nil else { continuation.resume(throwing: …); return }, or resume the old one first, or keep each caller's continuation under its own key"
+          },
+          "partialFingerprints" : {
+            "arcleak\/v1" : "610347107a88ab74"
+          },
+          "ruleId" : "continuation-overwrite"
+        },
+        {
+          "level" : "warning",
+          "locations" : [
+            {
+              "physicalLocation" : {
+                "artifactLocation" : {
                   "uri" : "Fixtures\/Leaks\/DiscardedTokens.swift",
                   "uriBaseId" : "SRCROOT"
                 },
@@ -1498,6 +1594,15 @@
               "id" : "kvo-observation-self-cycle",
               "shortDescription" : {
                 "text" : "observe(\\.keyPath) change handler captures `self` strongly and the NSKeyValueObservation is stored on `self`"
+              }
+            },
+            {
+              "help" : {
+                "text" : "A continuation must be resumed exactly once (\"CheckedContinuation … logs a\nmessage if the continuation is never resumed\", the Swift standard library).\nA method that stores the one `with…Continuation` hands it into a member,\nwith no condition anywhere before the store and nothing that resumes or\nclears the member first, replaces whatever the member held. When a second\ncall arrives before the first one's continuation is resumed, the first is\ndropped: its caller stays suspended forever, and the resume meant for it\nreaches the second caller.\n\nReported only for an unconditional store: a `guard`, an `if`, a `switch` or\nany other condition before it, in the method or the closure, may be how the\ncode keeps a second call out, so it is left alone, as are continuations kept\nunder a key or in a collection.\n\nFix: `guard pending == nil else { continuation.resume(throwing: …); return }`,\nor resume the old one first, or keep each caller's continuation under its own\nkey."
+              },
+              "id" : "continuation-overwrite",
+              "shortDescription" : {
+                "text" : "A continuation is stored over a member with nothing that checks or resumes the one it may hold — a second call leaves its caller suspended forever"
               }
             },
             {
