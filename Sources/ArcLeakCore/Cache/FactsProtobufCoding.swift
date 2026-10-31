@@ -360,6 +360,7 @@ extension APICallFact: AemiProtoFastEncodable, AemiProtoFastDecodable {
         case .userTokenProducer(let callee): ("userTokenProducer", callee)
         case .userSinkWrapper(let callee): ("userSinkWrapper", callee)
         case .reactiveSubscription(let callee): ("reactiveSubscription", callee)
+        case .continuationStore: ("continuationStore", nil)
         }
     }
 
@@ -379,6 +380,7 @@ extension APICallFact: AemiProtoFastEncodable, AemiProtoFastDecodable {
         case "userTokenProducer": .userTokenProducer(payload)
         case "userSinkWrapper": .userSinkWrapper(payload)
         case "reactiveSubscription": .reactiveSubscription(payload)
+        case "continuationStore": .continuationStore
         default: nil
         }
     }

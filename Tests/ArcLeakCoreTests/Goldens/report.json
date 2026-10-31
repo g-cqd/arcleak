@@ -1,7 +1,7 @@
 {
-  "analyzedFileCount" : 61,
+  "analyzedFileCount" : 63,
   "cacheHits" : 0,
-  "cacheMisses" : 60,
+  "cacheMisses" : 62,
   "degradedFiles" : [
     {
       "detail" : "not valid UTF-8",
@@ -104,6 +104,50 @@
       "path" : "Fixtures\/Leaks\/CombineSinkStored.swift",
       "rule" : "combine-sink-self-cycle",
       "severity" : "error"
+    },
+    {
+      "column" : 13,
+      "fingerprint" : "678dd273d3a22662",
+      "fingerprintPath" : "Fixtures\/Leaks\/ContinuationOverwrite.swift",
+      "line" : 16,
+      "message" : "continuation stored over 'photoContinuation' with nothing that checks or resumes the one it may hold — a second call before the first resumes leaves that caller suspended forever",
+      "note" : "guard photoContinuation == nil else { continuation.resume(throwing: …); return }, or resume the old one first, or keep each caller's continuation under its own key",
+      "path" : "Fixtures\/Leaks\/ContinuationOverwrite.swift",
+      "rule" : "continuation-overwrite",
+      "severity" : "warning"
+    },
+    {
+      "column" : 13,
+      "fingerprint" : "e730e25bff6b3a8c",
+      "fingerprintPath" : "Fixtures\/Leaks\/ContinuationOverwrite.swift",
+      "line" : 33,
+      "message" : "continuation stored over 'waiter' with nothing that checks or resumes the one it may hold — a second call before the first resumes leaves that caller suspended forever",
+      "note" : "guard waiter == nil else { continuation.resume(throwing: …); return }, or resume the old one first, or keep each caller's continuation under its own key",
+      "path" : "Fixtures\/Leaks\/ContinuationOverwrite.swift",
+      "rule" : "continuation-overwrite",
+      "severity" : "warning"
+    },
+    {
+      "column" : 13,
+      "fingerprint" : "3a932c15150f3d13",
+      "fingerprintPath" : "Fixtures\/Leaks\/ContinuationOverwrite.swift",
+      "line" : 49,
+      "message" : "continuation stored over 'answer' with nothing that checks or resumes the one it may hold — a second call before the first resumes leaves that caller suspended forever",
+      "note" : "guard answer == nil else { continuation.resume(throwing: …); return }, or resume the old one first, or keep each caller's continuation under its own key",
+      "path" : "Fixtures\/Leaks\/ContinuationOverwrite.swift",
+      "rule" : "continuation-overwrite",
+      "severity" : "warning"
+    },
+    {
+      "column" : 13,
+      "fingerprint" : "610347107a88ab74",
+      "fingerprintPath" : "Fixtures\/Leaks\/ContinuationOverwrite.swift",
+      "line" : 68,
+      "message" : "continuation stored over 'completion' with nothing that checks or resumes the one it may hold — a second call before the first resumes leaves that caller suspended forever",
+      "note" : "guard completion == nil else { continuation.resume(throwing: …); return }, or resume the old one first, or keep each caller's continuation under its own key",
+      "path" : "Fixtures\/Leaks\/ContinuationOverwrite.swift",
+      "rule" : "continuation-overwrite",
+      "severity" : "warning"
     },
     {
       "column" : 13,
@@ -612,9 +656,7 @@
       "severity" : "warning"
     }
   ],
-  "outOfScope" : [
-
-  ],
+  "outOfScope" : [],
   "schemaVersion" : 1,
   "suppressed" : [
     {

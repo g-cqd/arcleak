@@ -30,7 +30,7 @@ closures, Combine `sink` and `assign`, timers, notification observers,
 are runtime-proven: the leak oracle (`Scripts/run-leak-oracle.sh`)
 reconstructs each one and verifies it with `leaks -atExit` and deinit
 canaries on every macOS CI run. The oracle does not cover
-`webview-script-handler-cycle`, `kvo-observation-self-cycle`, the finite
+`webview-script-handler-cycle`, `kvo-observation-self-cycle`, `continuation-overwrite`, the finite
 `Task` stored on `self` and cancelled only in `deinit` (its oracle scenario is
 the non-terminating task), the RxSwift and SwiftSignalKit subscriptions of
 `combine-sink-self-cycle`, or closures stored on an owned child: those rest on
@@ -482,6 +482,7 @@ capturing `self` strongly) is flagged; the same call with `[weak self]` is not.
 | `unowned-outlives-owner` | warning | `[unowned self]` in an anchor-held closure — traps if `self` deallocates first |
 | `webview-script-handler-cycle` | warning† | `userContentController.add(self, name:)` (or `add(_:contentWorld:name:)`) with no reachable `removeScriptMessageHandler(forName:)` or `removeAllScriptMessageHandlers()`; the deinit-only **error** needs the `add` receiver to start at a strong stored `WKWebView`, `WKWebViewConfiguration` or `WKUserContentController` property of the type; a parameter or local receiver is at most an "observed" warning, and a type that keeps none of them is silent on a deinit-only removal |
 | `kvo-observation-self-cycle` | warning | `self.<obs> = <x>.observe(\.keyPath) { … self … }` (any observed object `<x>`) whose change handler captures `self` strongly, with no reachable `invalidate()` in the type (any `invalidate()` counts, a Timer's included). `invalidate()` alone does not release the change handler: also set the observation to nil |
+| `continuation-overwrite` | warning | `member = continuation` in a `with(Checked\|Unsafe)(Throwing)?Continuation` closure, with no condition before it in the closure or the method and nothing that checks, resumes or clears the stored member first. A second call before the first resumes drops the first caller's continuation, which then never resumes. A `guard`, an `if` or any condition before the store, a continuation kept under a key or appended, and a computed member are left alone. |
 | `dead-weak-capture` | warning, opt-in | `[weak self]` whose body never uses `self` |
 | `delegate-strong-property` | warning, opt-in | strong stored property named/typed like a delegate |
 | `sec-session-in-cycle` | opt-in tag | security (CWE-401): adds a note to each cycle finding on a type that keeps a `WKWebView`, `LAContext`, `ASWebAuthenticationSession` or a `URLSession` with a delegate; no finding of its own. `@al:disable` has no effect on it, since it emits no findings to suppress: turn it off in `.arcleak.json` |

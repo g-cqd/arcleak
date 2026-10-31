@@ -21,6 +21,7 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
     case delegateStrongProperty = "delegate-strong-property"
     case webviewScriptHandlerCycle = "webview-script-handler-cycle"
     case kvoObservationSelfCycle = "kvo-observation-self-cycle"
+    case continuationOverwrite = "continuation-overwrite"
     case secCleanupInUnreachableDeinit = "sec-cleanup-in-unreachable-deinit"
     case secSessionInCycle = "sec-session-in-cycle"
 
@@ -33,7 +34,8 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
         case .timerRetainsSelf, .notificationObserverLeak, .taskNonterminatingSelf,
             .unstoredLifetimeToken, .tokenStoredInLocal, .mutualStrongProperties,
             .urlSessionDelegateLeak, .unownedOutlivesOwner, .deadWeakCapture,
-            .delegateStrongProperty, .webviewScriptHandlerCycle, .kvoObservationSelfCycle:
+            .delegateStrongProperty, .webviewScriptHandlerCycle, .kvoObservationSelfCycle,
+            .continuationOverwrite:
             .warning
         case .secCleanupInUnreachableDeinit, .secSessionInCycle:
             .note
@@ -97,6 +99,8 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
             "userContentController.add(self, name:) with no reachable removeScriptMessageHandler — the controller keeps self"
         case .kvoObservationSelfCycle:
             "observe(\\.keyPath) change handler captures `self` strongly and the NSKeyValueObservation is stored on `self`"
+        case .continuationOverwrite:
+            "A continuation is stored over a member with nothing that checks or resumes the one it may hold — a second call leaves its caller suspended forever"
         case .secCleanupInUnreachableDeinit:
             "deinit wipes bytes, invalidates a session, closes a handle or cancels work in a type a reported cycle may keep alive (opt-in)"
         case .secSessionInCycle:
@@ -125,6 +129,26 @@ public enum RuleID: String, CaseIterable, Sendable, Codable {
             clear its callback after firing. A struct child counts: `self` stores it
             inline, closure included. Weak or unowned children, children held in a
             local, and computed properties are not reported.
+            """
+        case .continuationOverwrite:
+            """
+            A continuation must be resumed exactly once ("CheckedContinuation … logs a
+            message if the continuation is never resumed", the Swift standard library).
+            A method that stores the one `with…Continuation` hands it into a member,
+            with no condition anywhere before the store and nothing that resumes or
+            clears the member first, replaces whatever the member held. When a second
+            call arrives before the first one's continuation is resumed, the first is
+            dropped: its caller stays suspended forever, and the resume meant for it
+            reaches the second caller.
+
+            Reported only for an unconditional store: a `guard`, an `if`, a `switch` or
+            any other condition before it, in the method or the closure, may be how the
+            code keeps a second call out, so it is left alone, as are continuations kept
+            under a key or in a collection.
+
+            Fix: `guard pending == nil else { continuation.resume(throwing: …); return }`,
+            or resume the old one first, or keep each caller's continuation under its own
+            key.
             """
         case .timerRetainsSelf:
             """

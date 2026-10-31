@@ -525,7 +525,145 @@ final class FactsExtractor: SyntaxVisitor {
         {
             appendAPICall(call)
         }
+        if let store = matchUnconditionalContinuationStore(node) { appendAPICall(store) }
         return .visitChildren
+    }
+
+    // MARK: - Continuation stores (continuation-overwrite)
+
+    private static let continuationMakers: Set<String> = [
+        "withCheckedContinuation", "withCheckedThrowingContinuation",
+        "withUnsafeContinuation", "withUnsafeThrowingContinuation",
+    ]
+
+    /// `member = continuation` in a `with…Continuation` closure, recorded only
+    /// when the code holds no condition that could keep a second call out: none
+    /// before the store in the closure, none before the call in the method, the
+    /// call not nested in a closure or a branch, and no mention of the member
+    /// before the store. Anything else is left alone: the rule must not guess.
+    private func matchUnconditionalContinuationStore(_ node: FunctionCallExprSyntax) -> APICallFact? {
+        guard typeStack.last != nil, !methodStack.isEmpty, closureDepth == 0,
+            let callee = node.calledExpression.as(DeclReferenceExprSyntax.self)?.baseName.text,
+            Self.continuationMakers.contains(callee),
+            let closure = node.trailingClosure ?? node.arguments.last?.expression.as(ClosureExprSyntax.self),
+            let before = Self.statementsBefore(node)
+        else { return nil }
+        let parameter: String
+        switch closure.signature?.parameterClause {
+        case .simpleInput(let names)?:
+            guard names.count == 1, let only = names.first else { return nil }
+            parameter = only.name.text
+        case .parameterClause(let clause)?:
+            guard clause.parameters.count == 1, let only = clause.parameters.first else { return nil }
+            parameter = (only.secondName ?? only.firstName).text
+        case nil:
+            parameter = "$0"
+        }
+        var seenTokens: [String] = []
+        for item in closure.statements {
+            if let member = Self.storedMember(item.item, value: parameter),
+                !(methodStack.last?.localDeclarations.contains(member) ?? false),
+                !seenTokens.contains(member)
+            {
+                // The method's own statements before the call must decide nothing either.
+                guard !Self.decides(before), !Self.mentions(before, member) else { return nil }
+                return APICallFact(
+                    kind: .continuationStore, position: position(of: item), repeats: nil, targetIsSelf: false,
+                    receiverIsSelfMember: true, receiverRootMember: member, closureSelfCapture: nil,
+                    consumption: .discarded)
+            }
+            if Self.decides([Syntax(item)]) { return nil }
+            seenTokens += item.tokens(viewMode: .sourceAccurate).compactMap {
+                if case .identifier(let name) = $0.tokenKind { name } else { nil }
+            }
+        }
+        return nil
+    }
+
+    private static func mentions(_ nodes: [Syntax], _ name: String) -> Bool {
+        nodes.contains { node in
+            node.tokens(viewMode: .sourceAccurate).contains { $0.tokenKind == .identifier(name) }
+        }
+    }
+
+    /// `member = value` or `self.member = value`, with `value` the bare name.
+    private static func storedMember(_ item: CodeBlockItemSyntax.Item, value: String) -> String? {
+        let expression = item.as(ExprSyntax.self) ?? item.as(ExpressionStmtSyntax.self)?.expression
+        guard let sequence = expression?.as(SequenceExprSyntax.self) else { return nil }
+        let elements = Array(sequence.elements)
+        guard elements.count == 3, elements[1].is(AssignmentExprSyntax.self),
+            elements[2].as(DeclReferenceExprSyntax.self)?.baseName.text == value
+        else { return nil }
+        if let reference = elements[0].as(DeclReferenceExprSyntax.self) { return reference.baseName.text }
+        if let access = elements[0].as(MemberAccessExprSyntax.self),
+            access.base?.as(DeclReferenceExprSyntax.self)?.baseName.text == "self"
+        {
+            return access.declName.baseName.text
+        }
+        return nil
+    }
+
+    /// Whether any of `nodes` holds a condition or a loop: what could keep a
+    /// second call out, or run the store more than once.
+    private static func decides(_ nodes: [Syntax]) -> Bool {
+        final class Finder: SyntaxVisitor {
+            var found = false
+            override func visit(_ node: IfExprSyntax) -> SyntaxVisitorContinueKind {
+                found = true; return .skipChildren
+            }
+            override func visit(_ node: GuardStmtSyntax) -> SyntaxVisitorContinueKind {
+                found = true; return .skipChildren
+            }
+            override func visit(_ node: SwitchExprSyntax) -> SyntaxVisitorContinueKind {
+                found = true; return .skipChildren
+            }
+            override func visit(_ node: TernaryExprSyntax) -> SyntaxVisitorContinueKind {
+                found = true; return .skipChildren
+            }
+            override func visit(_ node: WhileStmtSyntax) -> SyntaxVisitorContinueKind {
+                found = true; return .skipChildren
+            }
+            override func visit(_ node: RepeatStmtSyntax) -> SyntaxVisitorContinueKind {
+                found = true; return .skipChildren
+            }
+            override func visit(_ node: ForStmtSyntax) -> SyntaxVisitorContinueKind {
+                found = true; return .skipChildren
+            }
+            override func visit(_ node: DoStmtSyntax) -> SyntaxVisitorContinueKind {
+                found = true; return .skipChildren
+            }
+            override func visit(_ node: BinaryOperatorExprSyntax) -> SyntaxVisitorContinueKind {
+                if ["??", "&&", "||"].contains(node.operator.text) { found = true }
+                return .skipChildren
+            }
+        }
+        let finder = Finder(viewMode: .sourceAccurate)
+        for node in nodes { finder.walk(node) }
+        return finder.found
+    }
+
+    /// The statements of the method before the one that holds `node`, when the
+    /// call sits in the method's own body (a `return`, a `try`, an `await`, a
+    /// binding of its result), not in a closure or a branch.
+    private static func statementsBefore(_ node: FunctionCallExprSyntax) -> [Syntax]? {
+        var current = Syntax(node)
+        while let parent = current.parent {
+            if let item = parent.as(CodeBlockItemSyntax.self), let list = item.parent?.as(CodeBlockItemListSyntax.self),
+                let block = list.parent?.as(CodeBlockSyntax.self),
+                block.parent?.is(FunctionDeclSyntax.self) == true || block.parent?.is(AccessorDeclSyntax.self) == true
+            {
+                return list.prefix { $0.id != item.id }.map { Syntax($0) }
+            }
+            let allowed =
+                parent.is(TryExprSyntax.self) || parent.is(AwaitExprSyntax.self)
+                || parent.is(ReturnStmtSyntax.self) || parent.is(ExpressionStmtSyntax.self)
+                || parent.is(CodeBlockItemSyntax.self) || parent.is(InitializerClauseSyntax.self)
+                || parent.is(PatternBindingSyntax.self) || parent.is(PatternBindingListSyntax.self)
+                || parent.is(VariableDeclSyntax.self)
+            guard allowed else { return nil }
+            current = parent
+        }
+        return nil
     }
 
     /// Same-file inference: calling a member function whose
