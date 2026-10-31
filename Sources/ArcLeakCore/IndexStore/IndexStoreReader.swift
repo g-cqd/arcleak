@@ -170,10 +170,13 @@
 
         /// The underlying IndexStoreDB database.
         private var db: IndexStoreDB { session.database }
+        /// analyzerkit's queries over it (roadmap 0054): paths in the corpus's spelling.
+        private let queries: IndexQueries
 
         public init(session: IndexStoreSession) {
             self.session = session
             indexStorePath = session.store
+            queries = IndexQueries(session: session)
         }
 
         /// Opens the store `path` names (``IndexStoreLocation``), its database under `cacheRoot`, with the trusted
@@ -228,38 +231,17 @@
 
         /// All canonical occurrences of a symbol with the given (anchored) name.
         public func findOccurrences(ofSymbolNamed name: String) -> [IndexedOccurrence] {
-            var occurrences: [IndexedOccurrence] = []
-            db.forEachCanonicalSymbolOccurrence(
-                containing: name,
-                anchorStart: true,
-                anchorEnd: true,
-                subsequence: false,
-                ignoreCase: false
-            ) { occurrence in
-                occurrences.append(Self.convert(occurrence))
-                return true
-            }
-            return occurrences
+            queries.occurrences(named: name).map(Self.convert)
         }
 
         /// All occurrences of a symbol by USR.
         public func findOccurrences(ofUSR usr: String) -> [IndexedOccurrence] {
-            var occurrences: [IndexedOccurrence] = []
-            db.forEachSymbolOccurrence(byUSR: usr, roles: .all) { occurrence in
-                occurrences.append(Self.convert(occurrence))
-                return true
-            }
-            return occurrences
+            queries.occurrences(ofUSR: usr).map(Self.convert)
         }
 
         /// Whether a symbol (by USR) has any reference occurrences.
         public func hasReferences(usr: String) -> Bool {
-            var hasRef = false
-            db.forEachSymbolOccurrence(byUSR: usr, roles: .reference) { _ in
-                hasRef = true
-                return false
-            }
-            return hasRef
+            queries.hasOccurrences(ofUSR: usr, roles: .reference)
         }
 
         /// Poll for changes to the index.
@@ -273,17 +255,17 @@
             db.dateOfLatestUnitFor(filePath: path)
         }
 
-        private static func convert(_ occurrence: SymbolOccurrence) -> IndexedOccurrence {
+        private static func convert(_ occurrence: IndexQueries.Occurrence) -> IndexedOccurrence {
             IndexedOccurrence(
                 symbol: IndexedSymbol(
-                    usr: occurrence.symbol.usr,
-                    name: occurrence.symbol.name,
-                    kind: IndexedSymbolKind(from: occurrence.symbol.kind),
+                    usr: occurrence.usr,
+                    name: occurrence.name,
+                    kind: IndexedSymbolKind(from: occurrence.kind),
                     isSystem: false
                 ),
-                file: occurrence.location.path,
-                line: occurrence.location.line,
-                column: occurrence.location.utf8Column,
+                file: occurrence.file,
+                line: occurrence.line,
+                column: occurrence.column,
                 roles: convert(occurrence.roles)
             )
         }
