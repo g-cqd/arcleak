@@ -54,7 +54,7 @@ let package = Package(
             url: "https://github.com/g-cqd/AemiProtobuf.git", revision: "4947dd13e9f591d6ae7d90780fcd4a6990a62735"),
         .package(
             url: "https://github.com/g-cqd/analyzerkit.git",
-            revision: "7cbac6c23bb10360bfe2aede87ba0db1f80e9d1e"
+            revision: "d00cb83f4916cb3b60495facd8b92c4fde8e54c5"
         ),
     ],
     targets: [
