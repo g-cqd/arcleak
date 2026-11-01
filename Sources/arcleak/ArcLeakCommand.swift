@@ -5,6 +5,7 @@ public import ArgumentParser
 import CorpusScan
 import ProjectModel
 import ReportSupport
+import SemanticEmbedding
 import SourceCorpus
 import SystemPackage
 
