@@ -32,7 +32,9 @@ import Testing
             for name in ["Sources/App/Internal/Secret.swift", "Package.swift", "Sources/App/App.swift"] {
                 let url = URL(fileURLWithPath: root + "/" + name)
                 try FileManager.default.createDirectory(
-                    at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    at: url.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
                 try "struct S {}\n".write(to: url, atomically: true, encoding: .utf8)
                 paths.append(url.path)
             }

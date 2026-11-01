@@ -16,20 +16,29 @@ import Testing
         let sources = root.appending(path: "Sources")
         for directory in ["Sub", "Leaf"] {
             try FileManager.default.createDirectory(
-                at: sources.appending(path: directory), withIntermediateDirectories: true)
+                at: sources.appending(path: directory),
+                withIntermediateDirectories: true
+            )
         }
         for (path, name) in [("A.swift", "A"), ("Sub/B.swift", "B"), ("Leaf/C.swift", "C")] {
             try "final class \(name) {}\n".write(
-                to: sources.appending(path: path), atomically: true, encoding: .utf8)
+                to: sources.appending(path: path),
+                atomically: true,
+                encoding: .utf8
+            )
         }
         guard linked else {
             completed = true
             return root
         }
         try FileManager.default.createSymbolicLink(
-            atPath: sources.appending(path: "Sub/Loop").path, withDestinationPath: "../..")
+            atPath: sources.appending(path: "Sub/Loop").path,
+            withDestinationPath: "../.."
+        )
         try FileManager.default.createSymbolicLink(
-            atPath: root.appending(path: "Alias").path, withDestinationPath: "Sources/Leaf")
+            atPath: root.appending(path: "Alias").path,
+            withDestinationPath: "Sources/Leaf"
+        )
         completed = true
         return root
     }
@@ -59,13 +68,17 @@ import Testing
         let root = try makeTree(linked: false)
         defer { try? FileManager.default.removeItem(at: root) }
         try FileManager.default.createSymbolicLink(
-            atPath: root.appending(path: "Vendor").path, withDestinationPath: "Sources/Sub")
+            atPath: root.appending(path: "Vendor").path,
+            withDestinationPath: "Sources/Sub"
+        )
         let outside = FileManager.default.temporaryDirectory.appending(path: "arcleak-outside-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: outside) }
         try "final class D {}\n".write(to: outside.appending(path: "D.swift"), atomically: true, encoding: .utf8)
         try FileManager.default.createSymbolicLink(
-            atPath: root.appending(path: "External").path, withDestinationPath: outside.path)
+            atPath: root.appending(path: "External").path,
+            withDestinationPath: outside.path
+        )
 
         let files = SourceDiscovery.swiftFiles(under: root.path) {
             $0.contains("/Vendor/") || $0.contains("/External/")
@@ -80,7 +93,9 @@ import Testing
         for hidden in [".hidden/H.swift", ".build/debug/D.swift", "DerivedData/E.swift"] {
             let url = root.appending(path: hidden)
             try FileManager.default.createDirectory(
-                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
             try "final class H {}\n".write(to: url, atomically: true, encoding: .utf8)
         }
         let files = SourceDiscovery.swiftFiles(under: root.path) { $0.hasSuffix("/C.swift") }

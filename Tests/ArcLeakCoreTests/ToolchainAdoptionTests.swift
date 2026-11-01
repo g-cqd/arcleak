@@ -32,11 +32,16 @@ import Testing
             try FileManager.default.setAttributes([.posixPermissions: 0o666], ofItemAtPath: library)
             do {
                 try FileManager.default.createDirectory(
-                    at: root.appending(path: "Store/v5/records"), withIntermediateDirectories: true)
+                    at: root.appending(path: "Store/v5/records"),
+                    withIntermediateDirectories: true
+                )
                 try Data().write(to: root.appending(path: "Store/v5/records/r"))
                 _ = try IndexStoreReader.open(
-                    indexStorePath: root.appending(path: "Store").path, cacheRoot: cache.path, library: library,
-                    analyzedFiles: [])
+                    indexStorePath: root.appending(path: "Store").path,
+                    cacheRoot: cache.path,
+                    library: library,
+                    analyzedFiles: []
+                )
                 Issue.record("opened a reader using an untrusted library")
             } catch IndexStoreError.failedToOpen(let reason) {
                 // Rejected before any IndexStoreDB filesystem or dlopen work.

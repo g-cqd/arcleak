@@ -26,16 +26,27 @@ public enum ReportFormatter {
     ///   - verbose: every path of a note, not the first few.
     ///   - timings: carry the phases' times in the JSON report.
     public static func format(
-        _ report: AnalysisReport, as format: OutputFormat, relativeTo root: String? = nil,
-        runNotes: [RunNote] = [], skippedFiles: [SkippedFile] = [], verbose: Bool = false, timings: Bool = false
+        _ report: AnalysisReport,
+        as format: OutputFormat,
+        relativeTo root: String? = nil,
+        runNotes: [RunNote] = [],
+        skippedFiles: [SkippedFile] = [],
+        verbose: Bool = false,
+        timings: Bool = false
     ) -> String {
         switch format {
         case .xcode: xcode(report)
         case .json:
             encode(
                 envelope(
-                    report, root: root.map(SourcePath.canonical), extra: runNotes, extraSkipped: skippedFiles,
-                    verbose: verbose, timings: timings))
+                    report,
+                    root: root.map(SourcePath.canonical),
+                    extra: runNotes,
+                    extraSkipped: skippedFiles,
+                    verbose: verbose,
+                    timings: timings
+                )
+            )
         case .sarif: sarif(report, root: root.map(SourcePath.canonical))
         }
     }
@@ -64,23 +75,38 @@ public enum ReportFormatter {
         for finding in report.findings {
             lines.append(
                 XcodeDiagnostic.line(
-                    path: finding.path, line: finding.line, column: finding.column, severity: finding.severity.rawValue,
+                    path: finding.path,
+                    line: finding.line,
+                    column: finding.column,
+                    severity: finding.severity.rawValue,
                     rule: finding.rule.rawValue,
-                    message: finding.note.map { "\(finding.message) — \($0)" } ?? finding.message))
+                    message: finding.note.map { "\(finding.message) — \($0)" } ?? finding.message
+                )
+            )
         }
         for degraded in report.degradedFiles {
             lines.append(
                 XcodeDiagnostic.line(
-                    path: degraded.path, line: 1, column: 1, severity: "warning", rule: "arcleak",
-                    message: "file skipped: \(degraded.detail)"))
+                    path: degraded.path,
+                    line: 1,
+                    column: 1,
+                    severity: "warning",
+                    rule: "arcleak",
+                    message: "file skipped: \(degraded.detail)"
+                )
+            )
         }
         return lines.joined(separator: "\n")
     }
 
     /// The JSON report: the analysis report's fields and the keys every analyzer's report carries (ADR-0017).
     private static func envelope(
-        _ report: AnalysisReport, root: String? = nil, extra: [RunNote] = [], extraSkipped: [SkippedFile] = [],
-        verbose: Bool = false, timings: Bool = false
+        _ report: AnalysisReport,
+        root: String? = nil,
+        extra: [RunNote] = [],
+        extraSkipped: [SkippedFile] = [],
+        verbose: Bool = false,
+        timings: Bool = false
     ) -> ReportEnvelope<AnalysisReport> {
         var seen: Set<String> = []
         let skipped = report.degradedFiles.compactMap { file in
@@ -89,13 +115,21 @@ public enum ReportFormatter {
         func shown(_ path: String) -> String { root.map { RepositoryRoot.relativize(path, to: $0) } ?? path }
         let notes = report.classificationIssues.map { issue in
             RunNote(
-                code: issue.code, severity: "note", message: issue.message, paths: issue.paths.map(shown),
-                verbose: verbose)
+                code: issue.code,
+                severity: "note",
+                message: issue.message,
+                paths: issue.paths.map(shown),
+                verbose: verbose
+            )
         }
         return ReportEnvelope(
-            report, tool: ToolInfo.name, version: ToolInfo.version, runNotes: notes + extra,
+            report,
+            tool: ToolInfo.name,
+            version: ToolInfo.version,
+            runNotes: notes + extra,
             skippedFiles: skipped + extraSkipped.filter { seen.insert($0.path).inserted },
-            timings: timings ? report.timings : nil)
+            timings: timings ? report.timings : nil
+        )
     }
 
     private static func encode(_ envelope: ReportEnvelope<AnalysisReport>) -> String {
@@ -120,8 +154,10 @@ public enum ReportFormatter {
             Sarif.Location(
                 physicalLocation: Sarif.PhysicalLocation(
                     artifactLocation: Sarif.ArtifactLocation(path: path, root: root),
-                    region: Sarif.Region(startLine: line, startColumn: columns.column(column, line: line, path: path))),
-                message: message)
+                    region: Sarif.Region(startLine: line, startColumn: columns.column(column, line: line, path: path))
+                ),
+                message: message
+            )
         }
         let results = report.findings.map { finding in
             Sarif.Result(
@@ -147,7 +183,9 @@ public enum ReportFormatter {
                     Sarif.Location(
                         physicalLocation: Sarif.PhysicalLocation(
                             artifactLocation: Sarif.ArtifactLocation(path: file.path, root: root),
-                            region: Sarif.Region(startLine: 1, startColumn: 1)))
+                            region: Sarif.Region(startLine: 1, startColumn: 1)
+                        )
+                    )
                 ],
                 partialFingerprints: [:]
             )
@@ -168,13 +206,20 @@ public enum ReportFormatter {
             informationUri: ToolInfo.informationURI,
             rules: RuleID.allCases.map {
                 Sarif.Rule(
-                    id: $0.rawValue, shortDescription: Sarif.Text($0.summary), help: Sarif.Text($0.explanation),
-                    properties: $0.securityTags.map { ["tags": .strings($0)] })
-            })
+                    id: $0.rawValue,
+                    shortDescription: Sarif.Text($0.summary),
+                    help: Sarif.Text($0.explanation),
+                    properties: $0.securityTags.map { ["tags": .strings($0)] }
+                )
+            }
+        )
         let log = Sarif.Log(runs: [
             Sarif.Run(
-                tool: Sarif.Tool(driver: driver), invocations: [Sarif.Invocation(failure: failure)], root: root,
-                results: results + degradedResults)
+                tool: Sarif.Tool(driver: driver),
+                invocations: [Sarif.Invocation(failure: failure)],
+                root: root,
+                results: results + degradedResults
+            )
         ])
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

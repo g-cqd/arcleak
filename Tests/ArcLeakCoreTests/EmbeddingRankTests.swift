@@ -41,7 +41,9 @@ import ProjectModel
         func mismatchedCountIsIdentity() async {
             let findings = [finding(line: 1), finding(line: 2)]
             let ranked = await EmbeddingRank.reorder(
-                findings: findings, snippets: ["only one"], provider: DeterministicEmbeddingProvider()
+                findings: findings,
+                snippets: ["only one"],
+                provider: DeterministicEmbeddingProvider()
             )
             #expect(ranked.map(\.line) == [1, 2])
         }

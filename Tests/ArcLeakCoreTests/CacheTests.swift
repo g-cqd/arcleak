@@ -93,7 +93,9 @@ import Testing
         _ = await Analyzer().analyze(files: files, cache: cache)
 
         let defined = await Analyzer(configuration: Configuration(defines: ["EXTRA"])).analyze(
-            files: files, cache: cache)
+            files: files,
+            cache: cache
+        )
         #expect(defined.cacheHits == 0)
         #expect(defined.cacheMisses == 2)
     }
@@ -138,42 +140,76 @@ import Testing
         type.deadWeakCaptures = [SourcePosition(line: 5, column: 9)]
         type.storedProperties = [
             StoredPropertyFact(
-                name: "child", strength: .strong, referencedTypeNames: ["Child"],
-                position: SourcePosition(line: 2, column: 5)),
+                name: "child",
+                strength: .strong,
+                referencedTypeNames: ["Child"],
+                position: SourcePosition(line: 2, column: 5)
+            ),
             StoredPropertyFact(
-                name: "parent", strength: .weak, referencedTypeNames: ["Parent"],
-                hasPublishedAttribute: true, position: SourcePosition(line: 3, column: 5)),
+                name: "parent",
+                strength: .weak,
+                referencedTypeNames: ["Parent"],
+                hasPublishedAttribute: true,
+                position: SourcePosition(line: 3, column: 5)
+            ),
             StoredPropertyFact(
-                name: "owner", strength: .unowned, referencedTypeNames: [],
-                hasTransientAttribute: true, position: SourcePosition(line: 4, column: 5)),
+                name: "owner",
+                strength: .unowned,
+                referencedTypeNames: [],
+                hasTransientAttribute: true,
+                position: SourcePosition(line: 4, column: 5)
+            ),
         ]
         type.storedClosures = [
             StoredClosureFact(
-                position: SourcePosition(line: 6, column: 5), targetMember: "handler",
-                selfCapture: .strong(implicit: false)),
+                position: SourcePosition(line: 6, column: 5),
+                targetMember: "handler",
+                selfCapture: .strong(implicit: false)
+            ),
             StoredClosureFact(
-                position: SourcePosition(line: 7, column: 5), targetMember: "onTick",
-                selfCapture: .weak, isMethodReference: true),
+                position: SourcePosition(line: 7, column: 5),
+                targetMember: "onTick",
+                selfCapture: .weak,
+                isMethodReference: true
+            ),
         ]
         type.apiCalls = [
             APICallFact(
-                kind: .combineSink, position: SourcePosition(line: 8, column: 5), repeats: nil,
-                targetIsSelf: true, upstreamFiniteness: .infinite, upstreamRootMember: "subject",
-                closureSelfCapture: .strong(implicit: true), consumption: .storedToSelfMember("bag")),
+                kind: .combineSink,
+                position: SourcePosition(line: 8, column: 5),
+                repeats: nil,
+                targetIsSelf: true,
+                upstreamFiniteness: .infinite,
+                upstreamRootMember: "subject",
+                closureSelfCapture: .strong(implicit: true),
+                consumption: .storedToSelfMember("bag")
+            ),
             APICallFact(
-                kind: .userTokenProducer("React.to"), position: SourcePosition(line: 9, column: 5),
-                repeats: true, targetIsSelf: false, receiverIsSelfMember: true,
-                closureSelfCapture: nil, selfCaptureViaNestedListOnly: true,
-                consumption: .chainedStoreIn(memberOfSelf: true)),
+                kind: .userTokenProducer("React.to"),
+                position: SourcePosition(line: 9, column: 5),
+                repeats: true,
+                targetIsSelf: false,
+                receiverIsSelfMember: true,
+                closureSelfCapture: nil,
+                selfCaptureViaNestedListOnly: true,
+                consumption: .chainedStoreIn(memberOfSelf: true)
+            ),
             APICallFact(
-                kind: .timerScheduledTarget, position: SourcePosition(line: 11, column: 5),
-                repeats: false, targetIsSelf: true, closureSelfCapture: SelfCaptureKind.none,
-                consumption: .discarded),
+                kind: .timerScheduledTarget,
+                position: SourcePosition(line: 11, column: 5),
+                repeats: false,
+                targetIsSelf: true,
+                closureSelfCapture: SelfCaptureKind.none,
+                consumption: .discarded
+            ),
         ]
         type.taskSpawns = [
             TaskSpawnFact(
-                position: SourcePosition(line: 12, column: 5), selfCapture: .unowned,
-                hasNonterminatingBody: true, consumption: .storedToLocalOnly("t"))
+                position: SourcePosition(line: 12, column: 5),
+                selfCapture: .unowned,
+                hasNonterminatingBody: true,
+                consumption: .storedToLocalOnly("t")
+            )
         ]
         type.releaseSites = [
             ReleaseSite(kind: .invalidate, inDeinit: false),
@@ -184,10 +220,14 @@ import Testing
             types: [type, TypeFacts(name: "Empty", isReferenceType: nil)],
             directives: [
                 SuppressionDirective(
-                    rules: [.timerRetainsSelf, .combineSinkSelfCycle], kind: .accept, line: 3,
-                    reason: "intentional"),
+                    rules: [.timerRetainsSelf, .combineSinkSelfCycle],
+                    kind: .accept,
+                    line: 3,
+                    reason: "intentional"
+                ),
                 SuppressionDirective(rules: [], kind: .regionDisable, line: 10, reason: nil),
-            ])
+            ]
+        )
     }
 
     /// What the cache stores goes through AemiJSON, as `CorpusScanner` writes and reads it: byte-stable and lossless.

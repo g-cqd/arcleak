@@ -38,7 +38,8 @@ extension AemiJSONFastDecodable where Self: RawRepresentable, RawValue == String
         let raw = try c.currentString()
         guard let value = Self(rawValue: raw) else {
             throw DecodingError.dataCorrupted(
-                .init(codingPath: [], debugDescription: "unknown \(Self.self) raw value \"\(raw)\""))
+                .init(codingPath: [], debugDescription: "unknown \(Self.self) raw value \"\(raw)\"")
+            )
         }
         return value
     }

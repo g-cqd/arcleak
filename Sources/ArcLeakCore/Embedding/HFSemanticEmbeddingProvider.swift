@@ -91,16 +91,20 @@
                 guard let candidate = try? MLModel(contentsOf: compiledURL, configuration: configuration)
                 else { continue }
                 if HFSemanticEmbeddingProvider.probeSucceeds(
-                    candidate, inputIDsName: inputIDsName, attentionMaskName: attentionMaskName,
-                    tokenTypeIDsName: tokenTypeIDsName, positionIDsName: positionIDsName)
-                {
+                    candidate,
+                    inputIDsName: inputIDsName,
+                    attentionMaskName: attentionMaskName,
+                    tokenTypeIDsName: tokenTypeIDsName,
+                    positionIDsName: positionIDsName
+                ) {
                     loaded = candidate
                     break
                 }
             }
             guard let resolvedModel = loaded else {
                 throw SemanticEmbeddingError.modelLoadFailed(
-                    underlying: HFProviderError.noWorkingComputeUnit(compiledURL.lastPathComponent))
+                    underlying: HFProviderError.noWorkingComputeUnit(compiledURL.lastPathComponent)
+                )
             }
             self.model = resolvedModel
 

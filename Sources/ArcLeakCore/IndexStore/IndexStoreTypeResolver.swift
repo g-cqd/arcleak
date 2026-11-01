@@ -32,12 +32,18 @@
         /// Opens a resolver on the store `storePath` names, its database under `cacheRoot` (see
         /// ``IndexStoreReader/open(indexStorePath:cacheRoot:analyzedFiles:)``).
         public static func open(
-            storePath: String, cacheRoot: String, analyzedFiles: [String], defines: Set<String> = []
+            storePath: String,
+            cacheRoot: String,
+            analyzedFiles: [String],
+            defines: Set<String> = []
         ) async throws(IndexStoreError) -> IndexStoreTypeResolver {
             // Symbolic links resolved, as the units record them.
             let resolved = analyzedFiles.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
             let reader = try await IndexStoreReader.open(
-                indexStorePath: storePath, cacheRoot: cacheRoot, analyzedFiles: resolved)
+                indexStorePath: storePath,
+                cacheRoot: cacheRoot,
+                analyzedFiles: resolved
+            )
             return IndexStoreTypeResolver(reader: reader, defines: defines)
         }
 
@@ -137,7 +143,8 @@
                     inheritedTypeNames: type.inheritedTypeNames,
                     strongReferences: strongReferences,
                     declaringPath: file
-                ))
+                )
+            )
         }
     }
 #endif

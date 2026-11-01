@@ -14,7 +14,8 @@ import Testing
 
     private func leakFixtures() throws -> [String] {
         try FileManager.default.contentsOfDirectory(
-            at: Self.leaksRoot, includingPropertiesForKeys: nil
+            at: Self.leaksRoot,
+            includingPropertiesForKeys: nil
         )
         .filter { $0.pathExtension == "swift" }
         .map(\.path)

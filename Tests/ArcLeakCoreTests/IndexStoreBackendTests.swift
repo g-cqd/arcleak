@@ -27,7 +27,10 @@
             try IndexFixture.build(store: store, module: "ArcLeakIndexFixture", files: [hub, plugin], in: dir)
 
             let resolver = try await IndexStoreTypeResolver.open(
-                storePath: store.path, cacheRoot: dir.appending(path: "cache").path, analyzedFiles: [hub.path])
+                storePath: store.path,
+                cacheRoot: dir.appending(path: "cache").path,
+                analyzedFiles: [hub.path]
+            )
 
             // The index resolves Plugin as a class with a back-edge to Hub.
             let facts = try #require(resolver.externalTypeFacts(name: "Plugin"))

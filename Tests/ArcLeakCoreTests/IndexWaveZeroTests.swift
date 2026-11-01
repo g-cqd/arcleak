@@ -17,9 +17,13 @@ import Testing
                 isReferenceType: true,
                 strongReferences: [
                     ExternalStrongReference(
-                        property: "hub", referencedTypeNames: ["Hub"], position: SourcePosition(line: 2, column: 5))
+                        property: "hub",
+                        referencedTypeNames: ["Hub"],
+                        position: SourcePosition(line: 2, column: 5)
+                    )
                 ],
-                declaringPath: "Elsewhere/\(name).swift")
+                declaringPath: "Elsewhere/\(name).swift"
+            )
         ])
     }
 
@@ -56,7 +60,9 @@ import Testing
             let old = directory.appending(path: "ext/Old.swift")
             for url in [ext, old] {
                 try FileManager.default.createDirectory(
-                    at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    at: url.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
             }
             try "extension Plugin {\n    func arm() {\n        self.handler = { self.fire() }\n    }\n}\n"
                 .write(to: ext, atomically: true, encoding: .utf8)
@@ -69,8 +75,11 @@ import Testing
             let before = await Analyzer().analyze(
                 files: [ext.path],
                 index: try await IndexStoreTypeResolver.open(
-                    storePath: store.path, cacheRoot: directory.appending(path: "cache").path,
-                    analyzedFiles: [ext.path]))
+                    storePath: store.path,
+                    cacheRoot: directory.appending(path: "cache").path,
+                    analyzedFiles: [ext.path]
+                )
+            )
             #expect(before.findings.map(\.rule) == [.storedClosureStrongSelf])
 
             // Then the type leaves that file and becomes a struct in a file the index has never seen.
@@ -80,8 +89,11 @@ import Testing
             let after = await Analyzer().analyze(
                 files: [ext.path],
                 index: try await IndexStoreTypeResolver.open(
-                    storePath: store.path, cacheRoot: directory.appending(path: "cache").path,
-                    analyzedFiles: [ext.path]))
+                    storePath: store.path,
+                    cacheRoot: directory.appending(path: "cache").path,
+                    analyzedFiles: [ext.path]
+                )
+            )
             #expect(after.findings.isEmpty, "\(after.findings.map(\.rule)) from a declaration that is gone")
         }
 
@@ -91,8 +103,13 @@ import Testing
             let given = directory.appending(path: "DerivedData")
             try FileManager.default.createDirectory(at: given, withIntermediateDirectories: true)
             let outcome = await IndexStoreResolution.resolve(
-                projectRoot: directory.path, explicitStorePath: given.path, autoBuild: false,
-                analyzedFiles: [], defines: [], cacheRoot: directory.appending(path: "cache").path)
+                projectRoot: directory.path,
+                explicitStorePath: given.path,
+                autoBuild: false,
+                analyzedFiles: [],
+                defines: [],
+                cacheRoot: directory.appending(path: "cache").path
+            )
             #expect(outcome.index == nil)
             #expect(outcome.note?.contains("not an index store") == true, "\(outcome.note ?? "no note")")
             let created =

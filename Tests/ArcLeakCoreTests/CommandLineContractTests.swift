@@ -26,7 +26,9 @@ import Testing
         ])
         defer { try? FileManager.default.removeItem(at: root) }
         let run = try BuiltTool.run(
-            ["analyze", root.path, "--format", "sarif", "--relative-to", root.path, "--no-cache"], in: root)
+            ["analyze", root.path, "--format", "sarif", "--relative-to", root.path, "--no-cache"],
+            in: root
+        )
         let log = try SarifLog(run.standardOutput)
 
         let locations = log.artifactLocations
@@ -50,7 +52,9 @@ import Testing
         ])
         defer { try? FileManager.default.removeItem(at: root) }
         let run = try BuiltTool.run(
-            ["analyze", root.path, "--format", "sarif", "--relative-to", root.path, "--no-cache"], in: root)
+            ["analyze", root.path, "--format", "sarif", "--relative-to", root.path, "--no-cache"],
+            in: root
+        )
         let locations = try SarifLog(run.standardOutput).artifactLocations
 
         let plain = try #require(locations.first { $0.uri == "Sources/Plain.swift" })
@@ -103,7 +107,9 @@ import Testing
 
         func locations(analyzing analyzed: String, relativeTo base: String) throws -> Set<String> {
             let run = try BuiltTool.run(
-                ["analyze", analyzed, "--format", "sarif", "--relative-to", base, "--no-cache"], in: root)
+                ["analyze", analyzed, "--format", "sarif", "--relative-to", base, "--no-cache"],
+                in: root
+            )
             let log = try SarifLog(run.standardOutput)
             return Set(log.artifactLocations.map { "\($0.uriBaseId ?? "-") \($0.uri)" })
         }
@@ -133,7 +139,9 @@ import Testing
         ])
         defer { try? FileManager.default.removeItem(at: root) }
         let run = try BuiltTool.run(
-            ["analyze", root.path, "--format", "sarif", "--relative-to", root.path, "--no-cache"], in: root)
+            ["analyze", root.path, "--format", "sarif", "--relative-to", root.path, "--no-cache"],
+            in: root
+        )
         let log = try SarifLog(run.standardOutput)
 
         #expect(log.columnKind == "utf16CodeUnits")
@@ -153,7 +161,9 @@ import Testing
         #expect(run.status == 0)
         #expect(
             String(decoding: run.standardOutput, as: UTF8.self).contains(
-                "The facts cache's root directory"))
+                "The facts cache's root directory"
+            )
+        )
     }
 
     /// `"\r\n"` is one `Character`: a scope file split on `"\n"` alone stayed one line, so a CRLF change set (a
@@ -212,7 +222,9 @@ import Testing
         try Data([0xFF, 0xFE, 0x7B]).write(to: root.appending(path: "Bad.swift"))
 
         let sarif = try BuiltTool.run(
-            ["analyze", root.path, "--format", "sarif", "--relative-to", root.path, "--no-cache"], in: root)
+            ["analyze", root.path, "--format", "sarif", "--relative-to", root.path, "--no-cache"],
+            in: root
+        )
         #expect(sarif.status == 70)
         #expect(sarif.standardError.contains("every file in the corpus was skipped"))
         let log = try SarifLog(sarif.standardOutput)
@@ -254,7 +266,9 @@ import Testing
         try Data([0xFF, 0xFE, 0x7B]).write(to: root.appending(path: "Bad.swift"))
 
         let run = try BuiltTool.run(
-            ["analyze", root.path, "--format", "sarif", "--relative-to", root.path, "--no-cache"], in: root)
+            ["analyze", root.path, "--format", "sarif", "--relative-to", root.path, "--no-cache"],
+            in: root
+        )
         #expect(run.status == 0)
         let log = try SarifLog(run.standardOutput)
         #expect(log.invocation?["executionSuccessful"] as? Bool == true)
@@ -287,7 +301,9 @@ import Testing
         let root = try Workspace.make(["A.swift": "final class A {}\n"])
         defer { try? FileManager.default.removeItem(at: root) }
         let run = try BuiltTool.run(
-            ["analyze", root.path, "--no-cache", "--only", "Missing.swift"], in: root)
+            ["analyze", root.path, "--no-cache", "--only", "Missing.swift"],
+            in: root
+        )
 
         #expect(run.status == 0)
         #expect(run.standardError.contains("matches no analyzed file"))
@@ -322,7 +338,9 @@ enum BuiltTool {
     /// pipe buffer and stall the child while the test waits for it to exit.
     static func run(_ arguments: [String], in directory: URL) throws -> Run {
         let executable = try #require(
-            executable, "no arcleak executable next to \(Bundle.module.bundleURL.path); build the package first")
+            executable,
+            "no arcleak executable next to \(Bundle.module.bundleURL.path); build the package first"
+        )
         let scratch = FileManager.default.temporaryDirectory
             .appending(path: "arcleak-run-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
@@ -347,7 +365,8 @@ enum BuiltTool {
         return Run(
             status: process.terminationStatus,
             standardOutput: try Data(contentsOf: outputURL),
-            standardError: String(decoding: try Data(contentsOf: errorURL), as: UTF8.self))
+            standardError: String(decoding: try Data(contentsOf: errorURL), as: UTF8.self)
+        )
     }
 }
 
@@ -363,7 +382,9 @@ enum Workspace {
                 // `#` and spaces, which must stay part of the file name.
                 let url = URL(fileURLWithPath: root.path + "/" + path)
                 try FileManager.default.createDirectory(
-                    at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    at: url.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
                 try contents.write(to: url, atomically: true, encoding: .utf8)
             }
             return root
@@ -445,8 +466,10 @@ struct SarifLog {
                 else { return nil }
                 let region = physical?["region"] as? [String: Any]
                 return ArtifactLocation(
-                    uri: uri, uriBaseId: artifact["uriBaseId"] as? String,
-                    startColumn: region?["startColumn"] as? Int)
+                    uri: uri,
+                    uriBaseId: artifact["uriBaseId"] as? String,
+                    startColumn: region?["startColumn"] as? Int
+                )
             }
         }
     }

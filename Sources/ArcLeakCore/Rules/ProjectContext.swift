@@ -22,7 +22,9 @@ enum ProjectContext {
     /// still runs the finding through `annotated`, which tags it with its
     /// region so it stays filterable.
     static func withholdingReason(
-        for finding: Finding, in facts: FileFacts?, regionSelection: RegionSelection = .none
+        for finding: Finding,
+        in facts: FileFacts?,
+        regionSelection: RegionSelection = .none
     ) -> String? {
         guard let facts else { return nil }
         let region = facts.region(ofLine: finding.line)
@@ -38,7 +40,9 @@ enum ProjectContext {
     /// The finding with the notes its region calls for, and a region tag for
     /// one an `--include`d region kept from being withheld.
     static func annotated(
-        _ finding: Finding, in facts: FileFacts?, regionSelection: RegionSelection = .none
+        _ finding: Finding,
+        in facts: FileFacts?,
+        regionSelection: RegionSelection = .none
     ) -> Finding {
         guard let facts else { return finding }
         let region = facts.region(ofLine: finding.line)

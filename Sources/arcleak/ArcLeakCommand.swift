@@ -130,12 +130,17 @@ struct Analyze: AsyncParsableCommand {
             standardError.write(
                 Data(
                     "arcleak: warning: --only scope matches no analyzed file — check that scope paths are relative to the right directory\n"
-                        .utf8))
+                        .utf8
+                )
+            )
         }
 
         var report = await Analyzer(configuration: configuration)
             .analyze(
-                files: files, projectFiles: projectFiles, cache: cacheLocation(), index: index,
+                files: files,
+                projectFiles: projectFiles,
+                cache: cacheLocation(),
+                index: index,
                 reportScope: reportScope
             )
         // Once: the run rewrites the cache it could not use.
@@ -152,7 +157,8 @@ struct Analyze: AsyncParsableCommand {
         // with nothing on stdout.
         if report.wasCancelled {
             standardError.write(
-                Data("arcleak: run cancelled before the corpus was complete; no findings reported\n".utf8))
+                Data("arcleak: run cancelled before the corpus was complete; no findings reported\n".utf8)
+            )
             throw ExitCode(ExitStatus.internalFailure.rawValue)
         }
 
@@ -168,15 +174,21 @@ struct Analyze: AsyncParsableCommand {
                 report = report.relativized(to: relativeTo)
             }
             let text = ReportFormatter.format(
-                report, as: OutputFormat(output.format), relativeTo: output.relativeTo, verbose: output.verbose,
-                timings: output.timings)
+                report,
+                as: OutputFormat(output.format),
+                relativeTo: output.relativeTo,
+                verbose: output.verbose,
+                timings: output.timings
+            )
             if !text.isEmpty {
                 print(text)
             }
             standardError.write(
                 Data(
                     "arcleak: every file in the corpus was skipped (unreadable, non-UTF8, or over the size cap); nothing was analyzed\n"
-                        .utf8))
+                        .utf8
+                )
+            )
             throw ExitCode(ExitStatus.internalFailure.rawValue)
         }
 
@@ -185,9 +197,16 @@ struct Analyze: AsyncParsableCommand {
         if let newSinceBaseline {
             let known = Set(newSinceBaseline.fingerprints)
             baselineMatchesNothing = NewSince.matchesNothing(
-                report.findings + report.outOfScope, in: known, fingerprint: \.fingerprint)
+                report.findings + report.outOfScope,
+                in: known,
+                fingerprint: \.fingerprint
+            )
             let promotion = NewSince.promote(
-                inScope: report.findings, outOfScope: report.outOfScope, notIn: known, fingerprint: \.fingerprint)
+                inScope: report.findings,
+                outOfScope: report.outOfScope,
+                notIn: known,
+                fingerprint: \.fingerprint
+            )
             report.findings = promotion.reported.sorted()
             report.outOfScope = promotion.outOfScope
             promoted = promotion.promoted
@@ -222,7 +241,8 @@ struct Analyze: AsyncParsableCommand {
                 for finding in demoted {
                     standardError.write(
                         Data(
-                            "sil-confirm: demoted \(finding.path):\(finding.line) (SILGen shows a weak capture)\n".utf8)
+                            "sil-confirm: demoted \(finding.path):\(finding.line) (SILGen shows a weak capture)\n".utf8
+                        )
                     )
                 }
                 report.findings = (others + kept).sorted()
@@ -230,7 +250,8 @@ struct Analyze: AsyncParsableCommand {
         #else
             if experimentalSilConfirm {
                 standardError.write(
-                    Data("arcleak: --experimental-sil-confirm requires xcrun (macOS only)\n".utf8))
+                    Data("arcleak: --experimental-sil-confirm requires xcrun (macOS only)\n".utf8)
+                )
             }
         #endif
 
@@ -240,8 +261,12 @@ struct Analyze: AsyncParsableCommand {
         }
         var extraNotes: [RunNote] = (resolved?.runNotes ?? []).map { note in
             RunNote(
-                code: note.code, severity: note.severity, message: note.message, paths: note.paths.map(shown),
-                verbose: output.verbose)
+                code: note.code,
+                severity: note.severity,
+                message: note.message,
+                paths: note.paths.map(shown),
+                verbose: output.verbose
+            )
         }
         let indexSkipped = (resolved?.skippedFiles ?? []).map { SkippedFile(path: shown($0.path), reason: $0.reason) }
         if let path = output.reportNewSince {
@@ -279,9 +304,14 @@ struct Analyze: AsyncParsableCommand {
         }
 
         let text = ReportFormatter.format(
-            report, as: OutputFormat(output.format), relativeTo: output.relativeTo, runNotes: extraNotes,
+            report,
+            as: OutputFormat(output.format),
+            relativeTo: output.relativeTo,
+            runNotes: extraNotes,
             skippedFiles: indexSkipped,
-            verbose: output.verbose, timings: output.timings)
+            verbose: output.verbose,
+            timings: output.timings
+        )
         if !text.isEmpty {
             print(text)
         }
@@ -382,7 +412,8 @@ struct Analyze: AsyncParsableCommand {
             if index >= 0, index < lines.count {
                 let text = String(
                     lines[index].drop(while: \.isWhitespace)
-                        .reversed().drop(while: \.isWhitespace).reversed())
+                        .reversed().drop(while: \.isWhitespace).reversed()
+                )
                 if !text.isEmpty { return text }
             }
             return finding.rule.rawValue
@@ -463,8 +494,10 @@ struct Analyze: AsyncParsableCommand {
     /// `--config`, or the configuration directory's shared and own files (ADR-0020).
     private func loadConfigurationUncaught() throws -> Configuration {
         let (configuration, sources) = try Configuration.resolve(
-            explicit: input.config, currentDirectory: FileManager.default.currentDirectoryPath,
-            analyzedPaths: input.paths)
+            explicit: input.config,
+            currentDirectory: FileManager.default.currentDirectoryPath,
+            analyzedPaths: input.paths
+        )
         if output.verbose {
             for line in sources.verboseLines(tool: ToolInfo.name) { standardError.write(Data((line + "\n").utf8)) }
         }
@@ -590,7 +623,8 @@ struct Analyze: AsyncParsableCommand {
                 // above already ends lines at CRLF and CR.
                 let trimmable: (Character) -> Bool = { $0 == " " || $0 == "\t" || $0 == "\r" }
                 var entry = String(
-                    line.drop(while: trimmable).reversed().drop(while: trimmable).reversed())
+                    line.drop(while: trimmable).reversed().drop(while: trimmable).reversed()
+                )
                 // git C-quotes paths with special bytes ("So\\303\\251.swift",
                 // quotes included) unless core.quotepath=false; strip the quotes
                 // so at least plain-ASCII quoted paths keep matching.
@@ -619,7 +653,10 @@ struct Analyze: AsyncParsableCommand {
         let environment = ProcessInfo.processInfo.environment
         return cache.cachePath.map { SourcePath.absolute($0) }
             ?? CacheLocation.defaultRoot(
-                tool: ToolInfo.name, environment: environment, home: environment["HOME"] ?? "/tmp")
+                tool: ToolInfo.name,
+                environment: environment,
+                home: environment["HOME"] ?? "/tmp"
+            )
     }
 
     /// `--rules`: only the rules named run; an unknown name is a usage error.
@@ -654,7 +691,8 @@ struct Analyze: AsyncParsableCommand {
                 // symlink — and attributes rather than URL resource values,
                 // which are corelibs-only.
                 let attributes = try? FileManager.default.attributesOfItem(
-                    atPath: URL(fileURLWithPath: path).resolvingSymlinksInPath().path),
+                    atPath: URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+                ),
                 let type = attributes[.type] as? FileAttributeType
             else {
                 throw ValidationError("no such file or directory: \(path)")
@@ -705,7 +743,8 @@ struct Rules: ParsableCommand {
               // @al:accept:this <rule|all> [-- reason]
               // @al:accept:next <rule|all> [-- reason]
               // @al:disable <rule|all> … // @al:enable <rule|all>
-            """)
+            """
+        )
     }
 }
 

@@ -36,7 +36,9 @@ import Testing
         for (relativePath, contents) in files {
             let url = root.appending(path: relativePath)
             try FileManager.default.createDirectory(
-                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
             try Data(contents.utf8).write(to: url)
             if ProjectFileDiscovery.isProjectFile(url.path) {
                 projectFiles.append(url.path)
@@ -61,7 +63,9 @@ import Testing
 
         let debug = try await analyze(["Sources/DebugPanel.swift": source])
         let release = try await analyze(
-            ["Sources/DebugPanel.swift": source], configuration: Configuration(debugBuild: false))
+            ["Sources/DebugPanel.swift": source],
+            configuration: Configuration(debugBuild: false)
+        )
 
         #expect(debug.findings.count == 1)
         #expect(debug.findings.first?.note?.contains("only debug builds compile this code") == true)
@@ -87,7 +91,8 @@ import Testing
         #expect(
             Set(report.suppressed.compactMap(\.reason)) == [
                 "generated file: fix the generator's input or template", "preview code: previews never ship",
-            ])
+            ]
+        )
     }
 
     @Test func `a cycle in test code says so`() async throws {

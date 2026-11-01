@@ -82,11 +82,17 @@ public struct Analyzer: Sendable {
         let scan: CorpusScan<ExtractedFacts>
         do {
             scan = try await CorpusScanner.scan(
-                paths: included, cache: cache,
-                identity: CacheIdentity.current(tool: ToolInfo.name, version: ToolInfo.version), salt: definesSalt
+                paths: included,
+                cache: cache,
+                identity: CacheIdentity.current(tool: ToolInfo.name, version: ToolInfo.version),
+                salt: definesSalt
             ) { [configuration] path, bytes in
                 Self.extract(
-                    bytes: bytes, path: path, configuration: configuration, platforms: platforms)
+                    bytes: bytes,
+                    path: path,
+                    configuration: configuration,
+                    platforms: platforms
+                )
             }
         } catch {
             var cancelled = AnalysisReport()
@@ -109,8 +115,11 @@ public struct Analyzer: Sendable {
                 group.addTask { [configuration] in
                     await LargeStack.run {
                         Self.makeOutcome(
-                            file: file, classification: classification, configuration: configuration,
-                            systemEntryPoints: entryPoints)
+                            file: file,
+                            classification: classification,
+                            configuration: configuration,
+                            systemEntryPoints: entryPoints
+                        )
                     }
                 }
                 scheduled += 1
@@ -134,7 +143,10 @@ public struct Analyzer: Sendable {
                 let (effective, findings) = await LargeStack.run { [configuration] in
                     let effective = facts.upgraded(with: corpusIndex)
                     let findings = RuleEngine.check(
-                        file: effective, configuration: configuration, systemEntryPoints: entryPoints)
+                        file: effective,
+                        configuration: configuration,
+                        systemEntryPoints: entryPoints
+                    )
                     return (effective, findings)
                 }
                 outcome.effectiveFacts = effective
@@ -154,7 +166,8 @@ public struct Analyzer: Sendable {
         raw.append(
             contentsOf: await LargeStack.run { [configuration] in
                 RuleEngine.checkCorpus(corpus: corpusFacts, configuration: configuration, index: corpusIndex)
-            })
+            }
+        )
 
         // A cancelled run analysed only part of the corpus, and
         // `mutual-strong-properties` draws its conclusion from the whole of it.
@@ -166,7 +179,11 @@ public struct Analyzer: Sendable {
         }
 
         var report = Self.assemble(
-            raw: raw, corpus: corpus, reportScope: reportScope, regionSelection: regionSelection)
+            raw: raw,
+            corpus: corpus,
+            reportScope: reportScope,
+            regionSelection: regionSelection
+        )
 
         // Anchor fingerprints to the repository, not to this machine's checkout
         // path or to whether the caller remembered --relative-to. Display is a
@@ -212,7 +229,9 @@ public struct Analyzer: Sendable {
         var raw = RuleEngine.check(file: facts, configuration: configuration)
         raw.append(
             contentsOf: RuleEngine.checkCorpus(
-                corpus: [facts], configuration: configuration, index: corpusIndex
+                corpus: [facts],
+                configuration: configuration,
+                index: corpusIndex
             )
         )
         let report = Self.assemble(raw: raw, corpus: [facts], regionSelection: regionSelection)
@@ -228,7 +247,9 @@ public struct Analyzer: Sendable {
     }
 
     private static func assemble(
-        raw: [Finding], corpus: [FileFacts], reportScope: ReportScope? = nil,
+        raw: [Finding],
+        corpus: [FileFacts],
+        reportScope: ReportScope? = nil,
         regionSelection: RegionSelection = .none
     ) -> AnalysisReport {
         let tables = Dictionary(
@@ -241,8 +262,10 @@ public struct Analyzer: Sendable {
         for rawFinding in raw {
             let facts = factsByPath[rawFinding.path]
             if let reason = ProjectContext.withholdingReason(
-                for: rawFinding, in: facts, regionSelection: regionSelection)
-            {
+                for: rawFinding,
+                in: facts,
+                regionSelection: regionSelection
+            ) {
                 report.suppressed.append(AnalysisReport.SuppressedFinding(finding: rawFinding, reason: reason))
                 continue
             }
@@ -285,12 +308,16 @@ public struct Analyzer: Sendable {
     /// not UTF-8, nested too deeply), so a cached file is never parsed again only to fail again. The facts' test and
     /// generated flags hold what the content alone says; ``makeOutcome`` joins the project's part.
     static func extract(
-        bytes: [UInt8], path: String, configuration: Configuration, platforms: Set<String>
+        bytes: [UInt8],
+        path: String,
+        configuration: Configuration,
+        platforms: Set<String>
     ) -> ExtractedFacts {
         guard bytes.count <= maxFileBytes else {
             return ExtractedFacts(
                 degraded: ArcLeakError.fileUnreadable(path: path, underlying: "exceeds \(maxFileBytes) byte cap")
-                    .description)
+                    .description
+            )
         }
         // A byte-order mark is not source: columns count from after it, as SARIF's do (§3.30.2).
         let text = bytes.starts(with: [0xEF, 0xBB, 0xBF]) ? bytes.dropFirst(3) : bytes[...]
@@ -303,8 +330,12 @@ public struct Analyzer: Sendable {
             return ExtractedFacts(degraded: "nested deeper than \(SyntaxDepth.defaultLimit) levels; not analysed")
         }
         var facts = FactsExtraction.extract(
-            path: path, tree: tree, defines: configuration.activeDefines, platforms: platforms,
-            contracts: configuration.contracts ?? [])
+            path: path,
+            tree: tree,
+            defines: configuration.activeDefines,
+            platforms: platforms,
+            contracts: configuration.contracts ?? []
+        )
         let content = ProjectClassification.contentRegion(path: path, tree: tree)
         facts.isTestCode = content.contains(.test)
         facts.isGenerated = content.contains(.generated)
@@ -313,19 +344,24 @@ public struct Analyzer: Sendable {
 
     /// The per-file rules over one scanned file, its region joined with what its project says.
     static func makeOutcome(
-        file: ScannedFile<ExtractedFacts>, classification: ProjectClassification, configuration: Configuration,
+        file: ScannedFile<ExtractedFacts>,
+        classification: ProjectClassification,
+        configuration: Configuration,
         systemEntryPoints: Set<String>
     ) -> FileOutcome {
         if let failure = file.failure {
             return FileOutcome(
                 degraded: AnalysisReport.DegradedFile(
                     path: file.path,
-                    detail: ArcLeakError.fileUnreadable(path: file.path, underlying: failure).description))
+                    detail: ArcLeakError.fileUnreadable(path: file.path, underlying: failure).description
+                )
+            )
         }
         guard let extracted = file.facts else { return FileOutcome() }
         guard var facts = extracted.facts else {
             return FileOutcome(
-                degraded: AnalysisReport.DegradedFile(path: file.path, detail: extracted.degraded ?? "not analysed"))
+                degraded: AnalysisReport.DegradedFile(path: file.path, detail: extracted.degraded ?? "not analysed")
+            )
         }
         var content: CodeRegion = []
         if facts.isTestCode { content.insert(.test) }
@@ -334,10 +370,17 @@ public struct Analyzer: Sendable {
         facts.isTestCode = region.contains(.test)
         facts.isGenerated = region.contains(.generated)
         let findings = RuleEngine.check(
-            file: facts, configuration: configuration, systemEntryPoints: systemEntryPoints)
+            file: facts,
+            configuration: configuration,
+            systemEntryPoints: systemEntryPoints
+        )
         return FileOutcome(
-            facts: facts, effectiveFacts: facts, fingerprint: file.fingerprint, cacheHit: file.cacheHit,
-            findings: findings)
+            facts: facts,
+            effectiveFacts: facts,
+            fingerprint: file.fingerprint,
+            cacheHit: file.cacheHit,
+            findings: findings
+        )
     }
 
     /// What the project files say: the platforms the project builds for,

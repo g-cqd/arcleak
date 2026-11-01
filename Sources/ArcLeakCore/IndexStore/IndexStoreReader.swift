@@ -183,7 +183,9 @@
         /// `libIndexStore` that analyzerkit's toolchain resolution selects; a store that indexes none of
         /// `analyzedFiles` is refused before any query (ADR-0005).
         public static func open(
-            indexStorePath path: String, cacheRoot: String, analyzedFiles: [String]
+            indexStorePath path: String,
+            cacheRoot: String,
+            analyzedFiles: [String]
         ) async throws(IndexStoreError) -> IndexStoreReader {
             guard let library = await findLibIndexStore() else { throw .dylibNotFound }
             return try open(indexStorePath: path, cacheRoot: cacheRoot, library: library, analyzedFiles: analyzedFiles)
@@ -192,7 +194,10 @@
         /// ``open(indexStorePath:cacheRoot:analyzedFiles:)`` with an explicit library, checked by the same trust policy
         /// before anything is opened.
         public static func open(
-            indexStorePath path: String, cacheRoot: String, library: String, analyzedFiles: [String]
+            indexStorePath path: String,
+            cacheRoot: String,
+            library: String,
+            analyzedFiles: [String]
         ) throws(IndexStoreError) -> IndexStoreReader {
             switch IndexStoreSession.open(path, cacheRoot: cacheRoot, library: library, analyzedFiles: analyzedFiles) {
             case .usable(let session): return IndexStoreReader(session: session)
