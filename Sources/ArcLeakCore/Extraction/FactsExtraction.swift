@@ -118,6 +118,11 @@ final class FactsExtractor: SyntaxVisitor {
         /// SAME depth — a deeper store means the local was captured by a
         /// closure that extends its lifetime.
         var localBindingDepths: [String: Int] = [:]
+        /// Locals assigned to a member of self somewhere in the method.
+        var localsStoredToMember: Set<String> = []
+        /// Dispatch-source handler calls made on a local, by index in `apiCalls`: they become calls on a member of self
+        /// when the local is stored there.
+        var receiverLocals: [(callIndex: Int, name: String)] = []
     }
 
     /// Closure-nesting depth below the current method body.
@@ -321,7 +326,10 @@ final class FactsExtractor: SyntaxVisitor {
     private func popMethod(_ node: some SyntaxProtocol) {
         guard let top = methodStack.last, top.nodeID == node.id else { return }
         methodStack.removeLast()
-        let context = top
+        var context = top
+        for (index, name) in context.receiverLocals where context.localsStoredToMember.contains(name) {
+            context.apiCalls[index] = context.apiCalls[index].withReceiverIsSelfMember(true)
+        }
 
         func finalize(_ consumption: ResultConsumption) -> ResultConsumption {
             if case .storedToLocalOnly(let name) = consumption,
@@ -473,45 +481,87 @@ final class FactsExtractor: SyntaxVisitor {
 
     override func visit(_ node: SequenceExprSyntax) -> SyntaxVisitorContinueKind {
         let elements = Array(node.elements)
-        guard elements.count == 3, elements[1].is(AssignmentExprSyntax.self) else { return .visitChildren }
-        let member: String
-        let ownedChild: String?
-        if let name = memberOfSelfName(elements[0]) {
-            member = name
-            ownedChild = nil
-        } else if let target = ownedChildTarget(elements[0]) {
-            member = "\(target.child).\(target.member)"
-            ownedChild = target.child
-        } else {
+        guard elements.count >= 3 else { return .visitChildren }
+
+        // `members += [{ … }, …]` stores each closure of the literal in a collection self owns.
+        if let op = elements[1].as(BinaryOperatorExprSyntax.self), op.operator.text == "+=", elements.count == 3,
+            let array = elements[2].as(ArrayExprSyntax.self), let target = storedTarget(elements[0])
+        {
+            for element in array.elements {
+                if let closure = unwrapped(element.expression).as(ClosureExprSyntax.self) {
+                    appendStoredClosure(storedClosure(closure, target: target))
+                }
+            }
             return .visitChildren
         }
 
-        if let closure = unwrapped(elements[2]).as(ClosureExprSyntax.self) {
-            let analysis = ClosureCaptureAnalysis.analyze(
-                closure: closure,
-                memberNames: currentMemberNames,
-                allowImplicitSelf: false
-            )
-            appendStoredClosure(
-                StoredClosureFact(
-                    position: position(of: closure),
-                    targetMember: member,
-                    selfCapture: analysis.selfCapture,
-                    ownedChild: ownedChild
+        recordLocalStoredToMember(elements)
+        guard elements[1].is(AssignmentExprSyntax.self), let target = storedTarget(elements[0]) else {
+            return .visitChildren
+        }
+
+        // `member = flag ? { … } : nil` parses as five elements: the closure may be on either side of the `:`.
+        var candidates: [ExprSyntax] = []
+        if elements.count == 3 {
+            candidates = [elements[2]]
+        } else if elements.count == 5, let ternary = elements[3].as(UnresolvedTernaryExprSyntax.self) {
+            candidates = [ternary.thenExpression, elements[4]]
+        }
+        for candidate in candidates {
+            if let closure = unwrapped(candidate).as(ClosureExprSyntax.self) {
+                appendStoredClosure(storedClosure(closure, target: target))
+            } else if strongCaptureEquivalent(candidate) {
+                appendStoredClosure(
+                    StoredClosureFact(
+                        position: position(of: candidate),
+                        targetMember: target.member,
+                        selfCapture: .strong(implicit: false),
+                        isMethodReference: true,
+                        ownedChild: target.ownedChild
+                    )
                 )
-            )
-        } else if strongCaptureEquivalent(elements[2]) {
-            appendStoredClosure(
-                StoredClosureFact(
-                    position: position(of: elements[2]),
-                    targetMember: member,
-                    selfCapture: .strong(implicit: false),
-                    isMethodReference: true,
-                    ownedChild: ownedChild
-                )
-            )
+            }
         }
         return .visitChildren
+    }
+
+    private func storedClosure(
+        _ closure: ClosureExprSyntax,
+        target: (member: String, ownedChild: String?)
+    ) -> StoredClosureFact {
+        let analysis = ClosureCaptureAnalysis.analyze(
+            closure: closure,
+            memberNames: currentMemberNames,
+            allowImplicitSelf: false
+        )
+        return StoredClosureFact(
+            position: position(of: closure),
+            targetMember: target.member,
+            selfCapture: analysis.selfCapture,
+            ownedChild: target.ownedChild
+        )
+    }
+
+    /// What `expr` names as storage self owns: `member`, `self.member`, an element of one (`member[key]`), or a member
+    /// of a child self owns (`child.member`, with the child's name).
+    private func storedTarget(_ expr: some ExprSyntaxProtocol) -> (member: String, ownedChild: String?)? {
+        var target = ExprSyntax(expr)
+        while let subscripted = target.as(SubscriptCallExprSyntax.self) {
+            target = subscripted.calledExpression
+        }
+        if let name = memberOfSelfName(target) { return (name, nil) }
+        if let child = ownedChildTarget(target) { return ("\(child.child).\(child.member)", child.child) }
+        return nil
+    }
+
+    /// `member = local`: the local is kept by self from here on, whatever was set up on it before or after.
+    private func recordLocalStoredToMember(_ elements: [ExprSyntax]) {
+        guard elements.count == 3, elements[1].is(AssignmentExprSyntax.self),
+            memberOfSelfName(elements[0]) != nil,
+            let local = elements[2].as(DeclReferenceExprSyntax.self)?.baseName.text,
+            !methodStack.isEmpty, methodStack[methodStack.count - 1].localDeclarations.contains(local)
+        else { return }
+        methodStack[methodStack.count - 1].localsStoredToMember.insert(local)
     }
 
     // MARK: - Calls: KB matching, Task spawns, release sites, member-collection appends
@@ -528,6 +578,15 @@ final class FactsExtractor: SyntaxVisitor {
             ?? matchInferredTokenFactory(node)
         {
             appendAPICall(call)
+            if call.kind == .dispatchSourceHandler, !methodStack.isEmpty,
+                let receiver = node.calledExpression.as(MemberAccessExprSyntax.self)?.base?
+                    .as(DeclReferenceExprSyntax.self)?.baseName.text,
+                methodStack[methodStack.count - 1].localDeclarations.contains(receiver)
+            {
+                methodStack[methodStack.count - 1].receiverLocals.append(
+                    (methodStack[methodStack.count - 1].apiCalls.count - 1, receiver)
+                )
+            }
         }
         if let store = matchUnconditionalContinuationStore(node) { appendAPICall(store) }
         return .visitChildren
@@ -1011,6 +1070,19 @@ final class FactsExtractor: SyntaxVisitor {
                 return nil
             }
         } else if let reference = node.calledExpression.as(DeclReferenceExprSyntax.self),
+            reference.baseName.text == "Timer",
+            labels.contains("timeInterval") || labels.contains("fire")
+        {
+            // The unscheduled twin of `scheduledTimer`: once added to a run loop it keeps the timer, and the timer its target
+            // or its block.
+            if labels.contains("target") {
+                kind = .timerScheduledTarget
+                targetIsSelf = isSelf(argument("target"))
+            } else {
+                kind = .timerScheduledBlock
+                closureLabels = ["block"]
+            }
+        } else if let reference = node.calledExpression.as(DeclReferenceExprSyntax.self),
             reference.baseName.text == "CADisplayLink",
             labels.contains("target")
         {
@@ -1134,6 +1206,15 @@ final class FactsExtractor: SyntaxVisitor {
     /// `.first()` completes even a subject pipeline); `$projected` values and
     /// `Timer.publish` are infinite; a bare chain-root member is reported for
     /// per-type resolution against subject-backed properties in `finish()`.
+    /// `(a..<b)` or `(a...b)`.
+    private static func isRangeLiteral(_ expr: ExprSyntax) -> Bool {
+        guard let sequence = expr.as(TupleExprSyntax.self)?.elements.first?.expression.as(SequenceExprSyntax.self)
+        else { return false }
+        return sequence.elements.contains {
+            $0.as(BinaryOperatorExprSyntax.self).map { ["..<", "..."].contains($0.operator.text) } == true
+        }
+    }
+
     private func classifyUpstream(
         of node: FunctionCallExprSyntax
     ) -> (APICallFact.UpstreamFiniteness, String?) {
@@ -1179,10 +1260,15 @@ final class FactsExtractor: SyntaxVisitor {
                 current = nil
                 continue
             }
+            if expr.is(ArrayExprSyntax.self) || Self.isRangeLiteral(expr) { names.append("#sequenceLiteral") }
             current = nil
         }
 
         if names.contains(where: { Self.finiteChainMarkers.contains($0) }) {
+            return (.finite, rootMember)
+        }
+        // `[1, 2, 3].publisher`, `(0..<3).publisher`: a Sequence publisher completes after its elements.
+        if names.contains("publisher"), names.contains("#sequenceLiteral") {
             return (.finite, rootMember)
         }
         if sawProjected { return (.infinite, rootMember) }
@@ -1254,20 +1340,12 @@ final class FactsExtractor: SyntaxVisitor {
     private func recordAppendedClosureIfAny(_ node: FunctionCallExprSyntax) {
         guard
             let member = node.calledExpression.as(MemberAccessExprSyntax.self),
-            ["append", "insert"].contains(member.declName.baseName.text),
-            let base = member.base
+            ["append", "insert", "updateValue"].contains(member.declName.baseName.text),
+            let base = member.base,
+            let target = storedTarget(base)
         else { return }
-        let collection: String
-        let ownedChild: String?
-        if let name = memberOfSelfName(base) {
-            collection = name
-            ownedChild = nil
-        } else if let target = ownedChildTarget(base) {
-            collection = "\(target.child).\(target.member)"
-            ownedChild = target.child
-        } else {
-            return
-        }
+        let collection = target.member
+        let ownedChild = target.ownedChild
 
         var closure = node.trailingClosure
         if closure == nil {
@@ -1404,6 +1482,15 @@ final class FactsExtractor: SyntaxVisitor {
             if let item = parent.as(CodeBlockItemSyntax.self) {
                 return classifyBareStatement(item)
             }
+            // `bag.append(token)`, `bag.insert(token)`: stored in the collection, as `token.store(in: &bag)` is.
+            if let argument = parent.as(LabeledExprSyntax.self), argument.expression.id == current.id,
+                let collectionCall = argument.parent?.parent?.as(FunctionCallExprSyntax.self),
+                let access = collectionCall.calledExpression.as(MemberAccessExprSyntax.self),
+                ["append", "insert"].contains(access.declName.baseName.text),
+                let collection = access.base
+            {
+                return classifyStoreTarget(collection, tokenCall: call)
+            }
             return .other
         }
         return .other
@@ -1423,6 +1510,13 @@ final class FactsExtractor: SyntaxVisitor {
         tokenCall: FunctionCallExprSyntax
     ) -> ResultConsumption {
         guard let stored = target.as(InOutExprSyntax.self)?.expression else { return .other }
+        return classifyStoreTarget(stored, tokenCall: tokenCall)
+    }
+
+    private func classifyStoreTarget(
+        _ stored: ExprSyntax,
+        tokenCall: FunctionCallExprSyntax
+    ) -> ResultConsumption {
         if memberOfSelfName(stored) != nil {
             return .chainedStoreIn(memberOfSelf: true)
         }
@@ -1555,6 +1649,11 @@ final class FactsExtractor: SyntaxVisitor {
         let lhs = elements[0]
         if lhs.is(DiscardAssignmentExprSyntax.self) { return .discarded }
         if let member = memberOfSelfName(lhs) { return .storedToSelfMember(member) }
+        if let subscripted = lhs.as(SubscriptCallExprSyntax.self),
+            let member = memberOfSelfName(subscripted.calledExpression)
+        {
+            return .storedToSelfMember(member)
+        }
         if let local = lhs.as(DeclReferenceExprSyntax.self) {
             return .storedToLocalOnly(local.baseName.text)
         }

@@ -146,6 +146,23 @@ public struct APICallFact: Sendable, Equatable, Codable {
         )
     }
 
+    /// Copy that says the receiver is, after all, a member of self (a local that the method stores there).
+    public func withReceiverIsSelfMember(_ value: Bool) -> APICallFact {
+        APICallFact(
+            kind: kind,
+            position: position,
+            repeats: repeats,
+            targetIsSelf: targetIsSelf,
+            receiverIsSelfMember: value,
+            receiverRootMember: receiverRootMember,
+            upstreamFiniteness: upstreamFiniteness,
+            upstreamRootMember: upstreamRootMember,
+            closureSelfCapture: closureSelfCapture,
+            selfCaptureViaNestedListOnly: selfCaptureViaNestedListOnly,
+            consumption: consumption
+        )
+    }
+
     /// Copy with reclassified consumption (method-close post-pass for
     /// escaping locals). Copy methods, not field-list rebuilds: a rebuild
     /// silently drops any field added later.

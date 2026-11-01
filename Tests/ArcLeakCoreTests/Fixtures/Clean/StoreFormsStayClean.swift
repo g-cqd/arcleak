@@ -23,16 +23,6 @@ final class WeakAppendedSink {
     func bind() { bag.append(subject.sink { [weak self] in self?.last = $0 }) }
 }
 
-final class LocalAppendedSink {
-    let subject = PassthroughSubject<Int, Never>()
-    var last = 0
-    func bind() {
-        var bag: [AnyCancellable] = []
-        bag.append(subject.sink { print($0) })
-        _ = bag
-    }
-}
-
 final class FiniteSequencePublisher {
     var bag = Set<AnyCancellable>()
     var last = 0
