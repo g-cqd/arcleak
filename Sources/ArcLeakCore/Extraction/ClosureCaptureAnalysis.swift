@@ -199,12 +199,19 @@ private final class BodyWalker: SyntaxVisitor {
         if nestingDepth == 0,
             node.conditions.count == 1,
             let condition = node.conditions.first,
-            let literal = condition.condition.as(BooleanLiteralExprSyntax.self),
-            literal.literal.text == "true"
+            case .expression(let expression) = condition.condition,
+            Self.isEndlessCondition(expression)
         {
             sawNonterminatingLoop = true
         }
         return .visitChildren
+    }
+
+    /// `true`, or a condition that only cancellation turns false: `!Task.isCancelled`, `Task.isCancelled == false`.
+    private static func isEndlessCondition(_ condition: ExprSyntax) -> Bool {
+        if condition.as(BooleanLiteralExprSyntax.self)?.literal.text == "true" { return true }
+        let text = condition.trimmedDescription.filter { !$0.isWhitespace }
+        return text == "!Task.isCancelled" || text == "Task.isCancelled==false"
     }
 
     override func visit(_ node: AwaitExprSyntax) -> SyntaxVisitorContinueKind {

@@ -1,7 +1,7 @@
 {
-  "analyzedFileCount" : 68,
+  "analyzedFileCount" : 70,
   "cacheHits" : 0,
-  "cacheMisses" : 67,
+  "cacheMisses" : 69,
   "degradedFiles" : [
     {
       "detail" : "not valid UTF-8",
@@ -665,6 +665,28 @@
       "path" : "Fixtures\/Leaks\/StoredTaskDeinitCancel.swift",
       "rule" : "task-nonterminating-self",
       "severity" : "warning"
+    },
+    {
+      "column" : 19,
+      "fingerprint" : "63bc6108d6a89970",
+      "fingerprintPath" : "Fixtures\/Leaks\/TaskCancellationLoop.swift",
+      "line" : 10,
+      "message" : "potentially non-terminating Task captures self strongly",
+      "note" : "self stores the task handle while the task retains self — cancel() in deinit can never run; capture [weak self] (exit when self is nil) or cancel from a reachable path",
+      "path" : "Fixtures\/Leaks\/TaskCancellationLoop.swift",
+      "rule" : "task-nonterminating-self",
+      "severity" : "error"
+    },
+    {
+      "column" : 19,
+      "fingerprint" : "b4965c57981fb6c3",
+      "fingerprintPath" : "Fixtures\/Leaks\/TaskCancellationLoop.swift",
+      "line" : 22,
+      "message" : "potentially non-terminating Task captures self strongly",
+      "note" : "self stores the task handle while the task retains self — cancel() in deinit can never run; capture [weak self] (exit when self is nil) or cancel from a reachable path",
+      "path" : "Fixtures\/Leaks\/TaskCancellationLoop.swift",
+      "rule" : "task-nonterminating-self",
+      "severity" : "error"
     },
     {
       "column" : 16,
