@@ -8,7 +8,8 @@ import Testing
                 comment:
                     "// @al:accept:this stored-closure-strong-self, timer-retains-self -- managed elsewhere",
                 line: 10
-            ))
+            )
+        )
         #expect(directive.kind == .acceptThis)
         #expect(directive.rules == [.storedClosureStrongSelf, .timerRetainsSelf])
         #expect(directive.reason == "managed elsewhere")
@@ -19,7 +20,8 @@ import Testing
             SuppressionDirective.parse(
                 comment: "// @al:accept -- torn down in shutdown()",
                 line: 3
-            ))
+            )
+        )
         #expect(directive.kind == .accept)
         #expect(directive.rules.isEmpty)
         #expect(directive.covers(.storedClosureStrongSelf))
@@ -29,7 +31,8 @@ import Testing
     @Test func arcleakNamespaceIsSynonymForAl() throws {
         let short = try #require(SuppressionDirective.parse(comment: "// @al:accept:next", line: 1))
         let long = try #require(
-            SuppressionDirective.parse(comment: "// @arcleak:accept:next", line: 1))
+            SuppressionDirective.parse(comment: "// @arcleak:accept:next", line: 1)
+        )
         #expect(short.kind == .acceptNext)
         #expect(long.kind == .acceptNext)
     }

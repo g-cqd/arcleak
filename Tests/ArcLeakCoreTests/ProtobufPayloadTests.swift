@@ -43,8 +43,11 @@ import Testing
 
     static func extracted(_ index: Int) -> ExtractedFacts {
         Analyzer.extract(
-            bytes: Array(source(index).utf8), path: "/corpus/Sources/Module\(index % 40)/File\(index).swift",
-            configuration: .default, platforms: [])
+            bytes: Array(source(index).utf8),
+            path: "/corpus/Sources/Module\(index % 40)/File\(index).swift",
+            configuration: .default,
+            platforms: []
+        )
     }
 
     /// The facts as text, sets sorted, so two equal facts read the same whatever order their sets iterate in.
@@ -77,7 +80,8 @@ import Testing
         #expect(try ProtobufEncoder().encodeToBytes(ExtractedFacts(facts: decoded)) == bytes, "byte-stable")
 
         let degraded = try ProtobufDecoder().decode(
-            ExtractedFacts.self, fromBytes: ProtobufEncoder().encodeToBytes(ExtractedFacts(degraded: "not valid UTF-8"))
+            ExtractedFacts.self,
+            fromBytes: ProtobufEncoder().encodeToBytes(ExtractedFacts(degraded: "not valid UTF-8"))
         )
         #expect(degraded.degraded == "not valid UTF-8" && degraded.facts == nil)
     }

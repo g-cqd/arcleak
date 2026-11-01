@@ -15,11 +15,15 @@ import Testing
             Request(id: 1, method: "initialize"),
             Request(method: "textDocument/didOpen", params: .init(textDocument: .init(uri: uri, text: source))),
             Request(
-                id: 2, method: "textDocument/codeAction",
-                params: .init(textDocument: .init(uri: uri), range: .init(point: position))),
+                id: 2,
+                method: "textDocument/codeAction",
+                params: .init(textDocument: .init(uri: uri), range: .init(point: position))
+            ),
             Request(
-                id: 3, method: "textDocument/codeAction",
-                params: .init(textDocument: .init(uri: uri), range: .init(point: .init(line: 2, character: 0)))),
+                id: 3,
+                method: "textDocument/codeAction",
+                params: .init(textDocument: .init(uri: uri), range: .init(point: .init(line: 2, character: 0)))
+            ),
             Request(id: 4, method: "shutdown"),
             Request(method: "exit"),
         ]
@@ -47,13 +51,17 @@ import Testing
         let messages = [
             Request(
                 method: "textDocument/didOpen",
-                params: .init(textDocument: .init(uri: uri, text: "final class Box {}\n"))),
+                params: .init(textDocument: .init(uri: uri, text: "final class Box {}\n"))
+            ),
             Request(
                 method: "textDocument/didChange",
-                params: .init(textDocument: .init(uri: uri), contentChanges: [.init(text: source)])),
+                params: .init(textDocument: .init(uri: uri), contentChanges: [.init(text: source)])
+            ),
             Request(
-                id: 2, method: "textDocument/codeAction",
-                params: .init(textDocument: .init(uri: uri), range: .init(point: position))),
+                id: 2,
+                method: "textDocument/codeAction",
+                params: .init(textDocument: .init(uri: uri), range: .init(point: position))
+            ),
             Request(method: "exit"),
         ]
         let replies = try run(messages, in: root)

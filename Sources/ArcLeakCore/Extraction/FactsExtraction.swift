@@ -15,7 +15,11 @@ public enum FactsExtraction {
         contracts: [Configuration.UserContract] = []
     ) -> FileFacts {
         extract(
-            path: path, tree: Parser.parse(source: source), defines: defines, platforms: platforms, contracts: contracts
+            path: path,
+            tree: Parser.parse(source: source),
+            defines: defines,
+            platforms: platforms,
+            contracts: contracts
         )
     }
 
@@ -568,9 +572,15 @@ final class FactsExtractor: SyntaxVisitor {
                 // The method's own statements before the call must decide nothing either.
                 guard !Self.decides(before), !Self.mentions(before, member) else { return nil }
                 return APICallFact(
-                    kind: .continuationStore, position: position(of: item), repeats: nil, targetIsSelf: false,
-                    receiverIsSelfMember: true, receiverRootMember: member, closureSelfCapture: nil,
-                    consumption: .discarded)
+                    kind: .continuationStore,
+                    position: position(of: item),
+                    repeats: nil,
+                    targetIsSelf: false,
+                    receiverIsSelfMember: true,
+                    receiverRootMember: member,
+                    closureSelfCapture: nil,
+                    consumption: .discarded
+                )
             }
             if Self.decides([Syntax(item)]) { return nil }
             seenTokens += item.tokens(viewMode: .sourceAccurate).compactMap {

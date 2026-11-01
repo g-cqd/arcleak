@@ -4,7 +4,7 @@
   "indentation": { "spaces": 4 },
   "respectsExistingLineBreaks": true,
   "lineBreakBeforeControlFlowKeywords": false,
-  "lineBreakBeforeEachArgument": false,
+  "lineBreakBeforeEachArgument": true,
   "rules": {
     "AllPublicDeclarationsHaveDocumentation": false,
     "NoLeadingUnderscores": true,

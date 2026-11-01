@@ -29,7 +29,10 @@ public enum IndexStoreResolution {
         public let skippedFiles: [SkippedFile]
 
         public init(
-            index: (any IndexReading)?, note: String?, runNotes: [RunNote] = [], skippedFiles: [SkippedFile] = []
+            index: (any IndexReading)?,
+            note: String?,
+            runNotes: [RunNote] = [],
+            skippedFiles: [SkippedFile] = []
         ) {
             self.index = index
             self.note = note
@@ -122,15 +125,22 @@ public enum IndexStoreResolution {
             let resolver: IndexStoreTypeResolver
             do {
                 resolver = try await IndexStoreTypeResolver.open(
-                    storePath: storePath, cacheRoot: cacheRoot, analyzedFiles: analyzedFiles, defines: defines)
+                    storePath: storePath,
+                    cacheRoot: cacheRoot,
+                    analyzedFiles: analyzedFiles,
+                    defines: defines
+                )
             } catch .notAStore(let reason) {
                 return Outcome(index: nil, note: "\(reason); proceeding with corpus-only analysis")
             } catch .coversNoAnalyzedFile(let store, let count, let coverage) {
                 // The run-wide gate's one job (ADR-0005 item 2): no analyzed file is indexed, so the store does not
                 // describe these files; this also keeps a store of relative unit paths from any symbol query.
                 return Outcome(
-                    index: nil, note: Self.staleNote(store: store, count: count, freshlyBuilt: freshlyBuilt),
-                    runNotes: coverage.runNotes(store: store, verbose: true), skippedFiles: coverage.skippedFiles)
+                    index: nil,
+                    note: Self.staleNote(store: store, count: count, freshlyBuilt: freshlyBuilt),
+                    runNotes: coverage.runNotes(store: store, verbose: true),
+                    skippedFiles: coverage.skippedFiles
+                )
             } catch {
                 return Outcome(
                     index: nil,
@@ -150,8 +160,11 @@ public enum IndexStoreResolution {
                 "index active for \(indexed) of \(coverage.files.count) files; \(missing) not in the index, \(changed) "
                 + "changed since the build: \(resolver.storePath)"
             return Outcome(
-                index: resolver, note: note, runNotes: coverage.runNotes(store: resolver.storePath, verbose: true),
-                skippedFiles: coverage.skippedFiles)
+                index: resolver,
+                note: note,
+                runNotes: coverage.runNotes(store: resolver.storePath, verbose: true),
+                skippedFiles: coverage.skippedFiles
+            )
         }
 
         private static func staleNote(store: String, count: Int, freshlyBuilt: Bool) -> String {

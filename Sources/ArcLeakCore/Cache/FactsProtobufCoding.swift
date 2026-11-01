@@ -59,8 +59,13 @@ extension FileFacts: AemiProtoFastEncodable, AemiProtoFastDecodable {
             }
         }
         return Self(
-            path: path, types: types, directives: directives, regionSpans: spans, isTestCode: isTestCode,
-            isGenerated: isGenerated)
+            path: path,
+            types: types,
+            directives: directives,
+            regionSpans: spans,
+            isTestCode: isTestCode,
+            isGenerated: isGenerated
+        )
     }
 }
 
@@ -111,10 +116,19 @@ extension TypeFacts: AemiProtoFastEncodable, AemiProtoFastDecodable {
             }
         }
         return Self(
-            name: name, isReferenceType: isReferenceType, memberNames: members, inheritedTypeNames: inherited,
-            methodNames: methods, attributeNames: attributes, deadWeakCaptures: deadWeak,
-            storedProperties: properties, storedClosures: closures, apiCalls: calls, taskSpawns: spawns,
-            releaseSites: releases)
+            name: name,
+            isReferenceType: isReferenceType,
+            memberNames: members,
+            inheritedTypeNames: inherited,
+            methodNames: methods,
+            attributeNames: attributes,
+            deadWeakCaptures: deadWeak,
+            storedProperties: properties,
+            storedClosures: closures,
+            apiCalls: calls,
+            taskSpawns: spawns,
+            releaseSites: releases
+        )
     }
 }
 
@@ -190,8 +204,13 @@ extension StoredPropertyFact: AemiProtoFastEncodable, AemiProtoFastDecodable {
             }
         }
         return Self(
-            name: name, strength: strength, referencedTypeNames: referenced, hasPublishedAttribute: published,
-            hasTransientAttribute: transient, position: position)
+            name: name,
+            strength: strength,
+            referencedTypeNames: referenced,
+            hasPublishedAttribute: published,
+            hasTransientAttribute: transient,
+            position: position
+        )
     }
 }
 
@@ -221,8 +240,12 @@ extension StoredClosureFact: AemiProtoFastEncodable, AemiProtoFastDecodable {
             }
         }
         return Self(
-            position: position, targetMember: target, selfCapture: capture, isMethodReference: isMethodReference,
-            ownedChild: ownedChild)
+            position: position,
+            targetMember: target,
+            selfCapture: capture,
+            isMethodReference: isMethodReference,
+            ownedChild: ownedChild
+        )
     }
 }
 
@@ -252,8 +275,12 @@ extension TaskSpawnFact: AemiProtoFastEncodable, AemiProtoFastDecodable {
             }
         }
         return Self(
-            position: position, selfCapture: capture, hasNonterminatingBody: nonterminating, consumption: consumption,
-            bodyAwaits: awaits)
+            position: position,
+            selfCapture: capture,
+            hasNonterminatingBody: nonterminating,
+            consumption: consumption,
+            bodyAwaits: awaits
+        )
     }
 }
 
@@ -338,10 +365,18 @@ extension APICallFact: AemiProtoFastEncodable, AemiProtoFastDecodable {
             }
         }
         return Self(
-            kind: kind, position: position, repeats: repeats, targetIsSelf: targetIsSelf,
-            receiverIsSelfMember: receiverIsSelfMember, receiverRootMember: receiverRootMember,
-            upstreamFiniteness: upstream, upstreamRootMember: upstreamRootMember, closureSelfCapture: capture,
-            selfCaptureViaNestedListOnly: nestedOnly, consumption: consumption)
+            kind: kind,
+            position: position,
+            repeats: repeats,
+            targetIsSelf: targetIsSelf,
+            receiverIsSelfMember: receiverIsSelfMember,
+            receiverRootMember: receiverRootMember,
+            upstreamFiniteness: upstream,
+            upstreamRootMember: upstreamRootMember,
+            closureSelfCapture: capture,
+            selfCaptureViaNestedListOnly: nestedOnly,
+            consumption: consumption
+        )
     }
 
     private static func wire(_ kind: Kind) -> (String, String?) {

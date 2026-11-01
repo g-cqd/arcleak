@@ -13,15 +13,22 @@
 
         private static func write(_ text: String, to url: URL) throws {
             try FileManager.default.createDirectory(
-                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
             try text.write(to: url, atomically: true, encoding: .utf8)
         }
 
         private static func resolve(_ files: [URL], store: URL, in directory: URL) async -> IndexStoreResolution.Outcome
         {
             await IndexStoreResolution.resolve(
-                projectRoot: directory.path, explicitStorePath: store.path, autoBuild: false,
-                analyzedFiles: files.map(\.path), defines: [], cacheRoot: directory.appending(path: "cache").path)
+                projectRoot: directory.path,
+                explicitStorePath: store.path,
+                autoBuild: false,
+                analyzedFiles: files.map(\.path),
+                defines: [],
+                cacheRoot: directory.appending(path: "cache").path
+            )
         }
 
         private static func rules(_ files: [URL], _ outcome: IndexStoreResolution.Outcome) async -> [RuleID] {
@@ -45,7 +52,9 @@
             #expect(outcome.index != nil, "\(outcome.note ?? "no note")")
             #expect(
                 outcome.note?.contains("index active for 1 of 2 files; 1 not in the index, 0 changed since the build")
-                    == true, "\(outcome.note ?? "no note")")
+                    == true,
+                "\(outcome.note ?? "no note")"
+            )
             #expect(await Self.rules([hub, script], outcome) == [.mutualStrongProperties])
 
             // A8: the uncovered file is a run note with its path, and a skipped file of the index.
@@ -90,7 +99,9 @@
             try IndexFixture.build(store: store, module: "A4", files: [hub, plugin], in: directory)
             try Self.write("// edited\n" + Self.plugin, to: plugin)
             try FileManager.default.setAttributes(
-                [.modificationDate: Date().addingTimeInterval(3_600)], ofItemAtPath: plugin.path)
+                [.modificationDate: Date().addingTimeInterval(3_600)],
+                ofItemAtPath: plugin.path
+            )
 
             let outcome = await Self.resolve([hub], store: store, in: directory)
             #expect(outcome.index != nil)

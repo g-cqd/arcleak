@@ -15,7 +15,10 @@
         private static func package(storeAt store: String) throws -> (root: URL, hub: URL) {
             let root = try IndexFixture.directory()
             try "// swift-tools-version: 6.0\n".write(
-                to: root.appending(path: "Package.swift"), atomically: true, encoding: .utf8)
+                to: root.appending(path: "Package.swift"),
+                atomically: true,
+                encoding: .utf8
+            )
             let sources = root.appending(path: "Sources/A")
             let other = root.appending(path: "Other")
             try FileManager.default.createDirectory(at: sources, withIntermediateDirectories: true)
@@ -38,7 +41,9 @@
                 [
                     "analyze", hub.path, "--index-store-path", root.appending(path: "store").path, "--cache-path",
                     cache.path,
-                ], in: root)
+                ],
+                in: root
+            )
 
             #expect(run.standardError.contains("index active for 1 of 1 files"), "\(run.standardError)")
             #expect(!FileManager.default.fileExists(atPath: root.appending(path: "IndexDatabase").path))
@@ -54,7 +59,9 @@
                 [
                     "analyze", hub.path, "--index-store-path", root.appending(path: "build/debug").path,
                     "--cache-path", root.appending(path: "cache").path,
-                ], in: root)
+                ],
+                in: root
+            )
 
             #expect(run.standardError.contains("index active for 1 of 1 files"), "\(run.standardError)")
             #expect(String(decoding: run.standardOutput, as: UTF8.self).contains("mutual-strong-properties"))
@@ -66,7 +73,9 @@
             let (root, hub) = try Self.package(storeAt: ".build/out")
             defer { try? FileManager.default.removeItem(at: root) }
             let run = try BuiltTool.run(
-                ["analyze", hub.path, "--index-store", "--cache-path", root.appending(path: "cache").path], in: root)
+                ["analyze", hub.path, "--index-store", "--cache-path", root.appending(path: "cache").path],
+                in: root
+            )
 
             #expect(run.standardError.contains("index active for 1 of 1 files"), "\(run.standardError)")
         }

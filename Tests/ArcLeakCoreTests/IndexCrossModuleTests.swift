@@ -60,7 +60,9 @@ import Testing
     func chainWithoutBackReferenceStaysSilent() {
         let index = FakeIndex(types: [
             "Plugin": ExternalTypeFacts(
-                isReferenceType: true, strongReferences: [], declaringPath: "Plugin.swift"
+                isReferenceType: true,
+                strongReferences: [],
+                declaringPath: "Plugin.swift"
             )
         ])
         #expect(Analyzer().analyze(source: hubSource, path: "Hub.swift", index: index).findings.isEmpty)
@@ -80,7 +82,8 @@ import Testing
                 isReferenceType: true,
                 strongReferences: [
                     ExternalStrongReference(
-                        property: "b", referencedTypeNames: ["B"],
+                        property: "b",
+                        referencedTypeNames: ["B"],
                         position: SourcePosition(line: 1, column: 1)
                     )
                 ],
@@ -90,7 +93,8 @@ import Testing
                 isReferenceType: true,
                 strongReferences: [
                     ExternalStrongReference(
-                        property: "hub", referencedTypeNames: ["Hub"],
+                        property: "hub",
+                        referencedTypeNames: ["Hub"],
                         position: SourcePosition(line: 1, column: 1)
                     )
                 ],

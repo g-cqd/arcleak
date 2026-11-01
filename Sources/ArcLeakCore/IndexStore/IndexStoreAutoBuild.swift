@@ -22,15 +22,18 @@
                 return Result(
                     success: false,
                     output: "No Package.swift at \(projectRoot); auto-build supports SwiftPM projects only.",
-                    indexStorePath: nil)
+                    indexStorePath: nil
+                )
             }
             let storeRelative = ".build/index/store"
             do {
                 let result = try await BoundedProcess.run(
-                    "/usr/bin/swift", ["build", "-Xswiftc", "-index-store-path", "-Xswiftc", storeRelative],
+                    "/usr/bin/swift",
+                    ["build", "-Xswiftc", "-index-store-path", "-Xswiftc", storeRelative],
                     directory: projectRoot,
                     environment: BoundedProcess.scrubbedEnvironment(source: ProcessInfo.processInfo.environment),
-                    timeout: timeout)
+                    timeout: timeout
+                )
                 // The Swift Build system ignores `-index-store-path` and writes to `.build/out`: rediscover the store
                 // rather than trust the override's target.
                 let store =
@@ -39,8 +42,10 @@
                         ?? projectRoot + "/" + storeRelative)
                     : nil
                 return Result(
-                    success: result.succeeded, output: result.standardOutputText + result.standardErrorText,
-                    indexStorePath: store)
+                    success: result.succeeded,
+                    output: result.standardOutputText + result.standardErrorText,
+                    indexStorePath: store
+                )
             } catch {
                 return Result(success: false, output: "Failed to run swift build: \(error)", indexStorePath: nil)
             }

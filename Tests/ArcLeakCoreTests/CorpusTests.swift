@@ -50,7 +50,8 @@ import Testing
                         line: $0.line,
                         rule: $0.rule
                     )
-                })
+                }
+            )
 
             #expect(
                 actual == expected,

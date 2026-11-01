@@ -42,12 +42,16 @@ import Testing
 
     @Test func `the JSON report carries the shared schema version and the 1.x fields`() throws {
         let finding = Finding(
-            rule: .mutualStrongProperties, severity: .warning,
-            path: "Sources/Order.swift", line: 5, column: 9,
+            rule: .mutualStrongProperties,
+            severity: .warning,
+            path: "Sources/Order.swift",
+            line: 5,
+            column: 9,
             message: "potential retain cycle across types",
             note: "strong links: OrderService.payments → PaymentService",
             related: [RelatedLocation(path: "Sources/Payment.swift", line: 12, column: 5)],
-            fingerprintPath: "Sources/Order.swift")
+            fingerprintPath: "Sources/Order.swift"
+        )
         let report = AnalysisReport(findings: [finding], analyzedFileCount: 2)
 
         let text = ReportFormatter.format(report, as: .json)
@@ -68,17 +72,25 @@ import Testing
 
     @Test func `optional fields are omitted, not null`() throws {
         let bare = Finding(
-            rule: .mutualStrongProperties, severity: .warning,
-            path: "a.swift", line: 1, column: 1, message: "m")
+            rule: .mutualStrongProperties,
+            severity: .warning,
+            path: "a.swift",
+            line: 1,
+            column: 1,
+            message: "m"
+        )
         var report = AnalysisReport(
             findings: [bare],
             suppressed: [.init(finding: bare, reason: nil)],
             degradedFiles: [.init(path: "b.swift", detail: "d")],
-            analyzedFileCount: 1)
+            analyzedFileCount: 1
+        )
         report.cacheLoadFailure = "x"
         let object = try #require(
             try JSONSerialization.jsonObject(
-                with: Data(ReportFormatter.format(report, as: .json).utf8)) as? [String: Any])
+                with: Data(ReportFormatter.format(report, as: .json).utf8)
+            ) as? [String: Any]
+        )
 
         let first = try #require((object["findings"] as? [[String: Any]])?.first)
         #expect(Set(first.keys) == Self.findingKeys.subtracting(["note", "related", "fingerprintPath"]))
@@ -90,7 +102,9 @@ import Testing
 
         let unset = try #require(
             try JSONSerialization.jsonObject(
-                with: Data(ReportFormatter.format(AnalysisReport(findings: [bare]), as: .json).utf8)) as? [String: Any])
+                with: Data(ReportFormatter.format(AnalysisReport(findings: [bare]), as: .json).utf8)
+            ) as? [String: Any]
+        )
         #expect(!unset.keys.contains("cacheLoadFailure"))
     }
 }

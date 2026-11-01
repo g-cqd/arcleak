@@ -38,7 +38,9 @@ import Testing
         for (relativePath, contents) in files {
             let url = root.appending(path: relativePath)
             try FileManager.default.createDirectory(
-                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
             try Data(contents.utf8).write(to: url)
             if ProjectFileDiscovery.isProjectFile(url.path) {
                 projectFiles.append(url.path)
@@ -58,7 +60,9 @@ import Testing
     @Test func `including generated reports the cycle it would otherwise withhold, tagged`() async throws {
         let configuration = Configuration(includeRegions: "generated")
         let report = try await analyze(
-            ["Sources/Generated/SampleAccessor.swift": Self.generatedFile], configuration: configuration)
+            ["Sources/Generated/SampleAccessor.swift": Self.generatedFile],
+            configuration: configuration
+        )
 
         #expect(report.suppressed.isEmpty)
         let finding = try #require(report.findings.first)
@@ -69,7 +73,9 @@ import Testing
     @Test func `excluding generated wins over including everything`() async throws {
         let configuration = Configuration(includeRegions: "all", excludeRegions: "generated")
         let report = try await analyze(
-            ["Sources/Generated/SampleAccessor.swift": Self.generatedFile], configuration: configuration)
+            ["Sources/Generated/SampleAccessor.swift": Self.generatedFile],
+            configuration: configuration
+        )
 
         #expect(report.findings.isEmpty)
         #expect(report.suppressed.first?.reason == "generated file: fix the generator's input or template")
@@ -89,7 +95,9 @@ import Testing
     @Test func `including preview reports the cycle it would otherwise withhold, tagged`() async throws {
         let configuration = Configuration(includeRegions: "preview")
         let report = try await analyze(
-            ["Sources/SampleView.swift": Self.previewFile], configuration: configuration)
+            ["Sources/SampleView.swift": Self.previewFile],
+            configuration: configuration
+        )
 
         #expect(report.suppressed.isEmpty)
         let finding = try #require(report.findings.first)
@@ -103,7 +111,9 @@ import Testing
     @Test func `including debug drops the reassuring note`() async throws {
         let configuration = Configuration(includeRegions: "debug")
         let report = try await analyze(
-            ["Sources/DebugPanel.swift": Self.debugFile], configuration: configuration)
+            ["Sources/DebugPanel.swift": Self.debugFile],
+            configuration: configuration
+        )
 
         let finding = try #require(report.findings.first)
         #expect(finding.note?.contains("only debug builds compile this code") != true)
@@ -123,7 +133,9 @@ import Testing
     @Test func `including test drops the reassuring note`() async throws {
         let configuration = Configuration(includeRegions: "test")
         let report = try await analyze(
-            ["Sources/SampleSpy.swift": Self.testCodeFile], configuration: configuration)
+            ["Sources/SampleSpy.swift": Self.testCodeFile],
+            configuration: configuration
+        )
 
         let finding = try #require(report.findings.first)
         #expect(finding.note?.contains("test code") != true)
@@ -139,7 +151,8 @@ import Testing
         let defaultReport = try await analyze(["Sources/Mocks/SampleMock.swift": source])
         let included = try await analyze(
             ["Sources/Mocks/SampleMock.swift": source],
-            configuration: Configuration(includeRegions: "mock,script"))
+            configuration: Configuration(includeRegions: "mock,script")
+        )
 
         let shape = { (report: AnalysisReport) in
             report.findings.map { "\($0.rule)/\($0.severity)/\($0.note ?? "")" }

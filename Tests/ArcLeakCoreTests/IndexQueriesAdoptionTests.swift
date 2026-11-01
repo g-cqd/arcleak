@@ -19,12 +19,15 @@
             let store = directory.appending(path: "store")
             try IndexFixture.build(store: store, module: "IQ", files: [hub], in: directory)
             let reader = try await IndexStoreReader.open(
-                indexStorePath: store.path, cacheRoot: directory.appending(path: "cache").path,
-                analyzedFiles: [SourcePath.canonical(hub.path)])
+                indexStorePath: store.path,
+                cacheRoot: directory.appending(path: "cache").path,
+                analyzedFiles: [SourcePath.canonical(hub.path)]
+            )
             let definitions = reader.typeDefinitions(ofSymbolNamed: "Hub")
             #expect(definitions.map(\.file) == [SourcePath.canonical(hub.path)])
             #expect(
-                reader.findOccurrences(ofSymbolNamed: "Hub").allSatisfy { $0.file == SourcePath.canonical($0.file) })
+                reader.findOccurrences(ofSymbolNamed: "Hub").allSatisfy { $0.file == SourcePath.canonical($0.file) }
+            )
         }
     }
 #endif

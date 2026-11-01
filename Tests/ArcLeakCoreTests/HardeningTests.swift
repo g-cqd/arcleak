@@ -51,7 +51,10 @@ import Testing
         // 2 MB of padded JSON — over the 1 MB config cap.
         let padding = String(repeating: "a", count: 2 * 1024 * 1024)
         try #"{"rules":{},"exclude":["\#(padding)"]}"#.write(
-            toFile: path, atomically: true, encoding: .utf8)
+            toFile: path,
+            atomically: true,
+            encoding: .utf8
+        )
         #expect(throws: ArcLeakError.self) {
             try Configuration.load(path: path)
         }

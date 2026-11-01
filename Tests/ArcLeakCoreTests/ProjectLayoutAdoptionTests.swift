@@ -12,7 +12,9 @@
             func file(_ name: String, data: Data = Data()) throws {
                 let url = root.appending(path: name)
                 try FileManager.default.createDirectory(
-                    at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    at: url.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
                 try data.write(to: url)
             }
             try file("worktree/.git", data: Data("gitdir: elsewhere".utf8))
@@ -29,13 +31,17 @@
                     fromPropertyList: [
                         "WorkspacePath": root.appending(path: workspace).path,
                         "LastAccessedDate": Date(timeIntervalSince1970: date),
-                    ], format: .binary, options: 0)
+                    ],
+                    format: .binary,
+                    options: 0
+                )
                 try file("DD/" + name + "/info.plist", data: plist)
             }
             let expected = root.appending(path: "DD/unrelated-new/Index.noindex/DataStore").path
             let found = IndexStoreResolution.discover(
                 projectRoot: root.appending(path: "worktree/API/Sources").path,
-                derivedDataRoots: [root.appending(path: "DD").path])
+                derivedDataRoots: [root.appending(path: "DD").path]
+            )
             #expect(found == expected)
 
         }

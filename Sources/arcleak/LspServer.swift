@@ -231,7 +231,8 @@ struct LspServer {
         while filled < count {
             let read = bytes.withUnsafeMutableBytes { buffer in
                 (try? unsafe FileDescriptor.standardInput.read(
-                    into: UnsafeMutableRawBufferPointer(rebasing: buffer[filled...]))) ?? 0
+                    into: UnsafeMutableRawBufferPointer(rebasing: buffer[filled...])
+                )) ?? 0
             }
             if read <= 0 { return nil }
             filled += read
@@ -304,7 +305,8 @@ struct LspServer {
                 openDocuments.removeValue(forKey: uri)
                 lastFindings.removeValue(forKey: uri)
                 Self.send(
-                    PublishDiagnostics(params: .init(uri: uri, diagnostics: [])))
+                    PublishDiagnostics(params: .init(uri: uri, diagnostics: []))
+                )
             }
         case "textDocument/codeAction":
             respond(id: message.id, result: codeActions(params: params))

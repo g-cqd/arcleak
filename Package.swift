@@ -40,7 +40,9 @@ let package = Package(
         // analyzerkit's revision, written exactly as analyzerkit writes it: SwiftPM refuses one package required in
         // two spellings, even a revision and a branch naming the same commit (analyzerkit ADR-0025).
         .package(
-            url: "https://github.com/swiftlang/indexstore-db.git", revision: "0390867818c28241af4650eb4ef29af5669335a3"),
+            url: "https://github.com/swiftlang/indexstore-db.git",
+            revision: "0390867818c28241af4650eb4ef29af5669335a3"
+        ),
         // The pinned JSON package uses Aemi's kernel and runtime products.
         // Only the internal facts cache uses this codec; report byte formats stay stable.
         .package(
@@ -51,7 +53,9 @@ let package = Package(
         // generated files, platforms and system entry points.
         // The facts cache's payload codec; analyzerkit's revision, written as analyzerkit writes it (ADR-0025).
         .package(
-            url: "https://github.com/g-cqd/AemiProtobuf.git", revision: "5d6e868179262f0b1a48297808953730e97cd720"),
+            url: "https://github.com/g-cqd/AemiProtobuf.git",
+            revision: "5d6e868179262f0b1a48297808953730e97cd720"
+        ),
         .package(
             url: "https://github.com/g-cqd/analyzerkit.git",
             revision: "d26aac854bd8151205f34c22a23b0b80bc328a3f"

@@ -7,7 +7,8 @@ import SourceCorpus
 public enum ProjectFileDiscovery {
     /// The project files under `directory` that `isExcluded` keeps, sorted.
     public static func projectFiles(
-        under directory: String, isExcluded: @escaping @Sendable (String) -> Bool
+        under directory: String,
+        isExcluded: @escaping @Sendable (String) -> Bool
     ) -> [String] {
         SourceDiscovery.files(under: directory, isExcluded: isExcluded, where: isProjectFile)
     }
