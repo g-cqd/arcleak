@@ -1,7 +1,7 @@
 {
-  "analyzedFileCount" : 70,
+  "analyzedFileCount" : 71,
   "cacheHits" : 0,
-  "cacheMisses" : 69,
+  "cacheMisses" : 70,
   "degradedFiles" : [
     {
       "detail" : "not valid UTF-8",
