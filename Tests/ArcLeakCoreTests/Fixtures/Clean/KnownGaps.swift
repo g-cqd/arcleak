@@ -5,28 +5,7 @@
 // these move to Leaks/ with expect markers, and this file shrinks. Candidates
 // for SIL confirmation and index-layer work.
 
-// Gap 2: subscript stores on self collections.
-final class SubscriptStore {
-    var handlers: [Int: () -> Void] = [:]
-
-    func arm() {
-        handlers[0] = { self.fire() }
-    }
-
-    func fire() {}
-}
-
-// Gap 3: conditional (ternary) closure assignment.
-final class TernaryStore {
-    var onChange: (() -> Void)?
-    let flag = true
-
-    func arm() {
-        onChange = flag ? { self.fire() } : nil
-    }
-
-    func fire() {}
-}
+// (Gaps 2 and 3, subscript stores and conditional closure assignment — FIXED, moved to Leaks/StoredClosureForms.swift.)
 
 // Gap 4: a bound-method reference as a VALUE inside a collection literal passed
 // to a stored-property initializer (`self.router = Router([.k: self.method])`).

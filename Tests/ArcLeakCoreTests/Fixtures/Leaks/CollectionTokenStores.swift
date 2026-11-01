@@ -65,3 +65,14 @@ final class AppendedTask {
 
     func handle(_ value: Int) {}
 }
+
+// A collection that only the method holds dies with it, and so does what it owns: the sink is cancelled at once.
+final class LocalCollectionSink {
+    let subject = PassthroughSubject<Int, Never>()
+
+    func bind() {
+        var bag: [AnyCancellable] = []
+        bag.append(subject.sink { print($0) }) // #al:expect token-stored-in-local
+        _ = bag
+    }
+}
