@@ -359,6 +359,30 @@ final class FactsExtractor: SyntaxVisitor {
         }
     }
 
+    // MARK: - Bindings that shadow members
+
+    /// Every name a pattern binds inside a method (`for (k, v) in`, `case .x(let v)`, `if let v`) is a local that wins over
+    /// a member of the same name.
+    override func visit(_ node: IdentifierPatternSyntax) -> SyntaxVisitorContinueKind {
+        declareLocal(node.identifier.text)
+        return .visitChildren
+    }
+
+    override func visit(_ node: ClosureParameterSyntax) -> SyntaxVisitorContinueKind {
+        declareLocal((node.secondName ?? node.firstName).text)
+        return .visitChildren
+    }
+
+    override func visit(_ node: ClosureShorthandParameterSyntax) -> SyntaxVisitorContinueKind {
+        declareLocal(node.name.text)
+        return .visitChildren
+    }
+
+    private func declareLocal(_ name: String) {
+        guard !methodStack.isEmpty else { return }
+        methodStack[methodStack.count - 1].localDeclarations.insert(name)
+    }
+
     // MARK: - Reference counting for local-escape analysis
 
     override func visit(_ node: DeclReferenceExprSyntax) -> SyntaxVisitorContinueKind {
