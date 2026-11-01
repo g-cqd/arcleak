@@ -1452,6 +1452,54 @@
             {
               "physicalLocation" : {
                 "artifactLocation" : {
+                  "uri" : "Fixtures\/Leaks\/TaskCancellationLoop.swift",
+                  "uriBaseId" : "SRCROOT"
+                },
+                "region" : {
+                  "startColumn" : 19,
+                  "startLine" : 10
+                }
+              }
+            }
+          ],
+          "message" : {
+            "text" : "potentially non-terminating Task captures self strongly — self stores the task handle while the task retains self — cancel() in deinit can never run; capture [weak self] (exit when self is nil) or cancel from a reachable path"
+          },
+          "partialFingerprints" : {
+            "arcleak\/v1" : "63bc6108d6a89970"
+          },
+          "ruleId" : "task-nonterminating-self"
+        },
+        {
+          "level" : "error",
+          "locations" : [
+            {
+              "physicalLocation" : {
+                "artifactLocation" : {
+                  "uri" : "Fixtures\/Leaks\/TaskCancellationLoop.swift",
+                  "uriBaseId" : "SRCROOT"
+                },
+                "region" : {
+                  "startColumn" : 19,
+                  "startLine" : 22
+                }
+              }
+            }
+          ],
+          "message" : {
+            "text" : "potentially non-terminating Task captures self strongly — self stores the task handle while the task retains self — cancel() in deinit can never run; capture [weak self] (exit when self is nil) or cancel from a reachable path"
+          },
+          "partialFingerprints" : {
+            "arcleak\/v1" : "b4965c57981fb6c3"
+          },
+          "ruleId" : "task-nonterminating-self"
+        },
+        {
+          "level" : "error",
+          "locations" : [
+            {
+              "physicalLocation" : {
+                "artifactLocation" : {
                   "uri" : "Fixtures\/Leaks\/TaskInfiniteStrong.swift",
                   "uriBaseId" : "SRCROOT"
                 },
