@@ -1,4 +1,5 @@
 import ArcLeakCore
+import Suppression
 import Testing
 
 @Suite struct SuppressionDirectiveTests {

@@ -6,6 +6,7 @@ import AemiJSON
 import ArcLeakCore
 import CorpusScan
 import Foundation
+import Suppression
 import Testing
 
 @Suite struct CacheTests {

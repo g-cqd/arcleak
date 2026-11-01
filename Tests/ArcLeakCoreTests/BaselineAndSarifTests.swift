@@ -1,5 +1,6 @@
 import ArcLeakCore
 import Foundation
+import ReportSupport
 import Testing
 
 @Suite struct BaselineAndSarifTests {
