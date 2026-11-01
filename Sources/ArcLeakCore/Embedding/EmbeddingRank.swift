@@ -1,5 +1,6 @@
 #if canImport(NaturalLanguage)
-    public import Foundation
+    import Foundation
+    public import SemanticEmbedding
 
     /// Experimental, purely presentational: groups findings whose flagged-site
     /// snippets read similarly so repeated-shape findings appear together in the
@@ -48,7 +49,8 @@
                 if let bundlePath, !bundlePath.isEmpty {
                     do {
                         let provider = try await HFSemanticEmbeddingProvider(
-                            bundleDir: URL(fileURLWithPath: bundlePath)
+                            bundleDir: URL(fileURLWithPath: bundlePath),
+                            maxLength: bundleMaxLength
                         )
                         return ProviderResolution(provider: provider)
                     } catch {
@@ -61,8 +63,11 @@
                     }
                 }
 
-                if let bundledDir = bundledModelDirectory(),
-                    let provider = try? await HFSemanticEmbeddingProvider(bundleDir: bundledDir)
+                if let bundledDir = EmbeddingBundleLocator.directory(tool: ToolInfo.name),
+                    let provider = try? await HFSemanticEmbeddingProvider(
+                        bundleDir: bundledDir,
+                        maxLength: bundleMaxLength
+                    )
                 {
                     return ProviderResolution(provider: provider)
                 }
@@ -75,72 +80,13 @@
         /// asset is available, else the deterministic FNV fallback — so ranking
         /// always runs, offline, with nothing to install.
         public static func defaultProvider() -> any SemanticEmbeddingProvider {
-            if #available(macOS 14.0, *) {
-                if let contextual = try? NLContextualSemanticEmbeddingProvider() {
-                    return contextual
-                }
-            }
-            return DeterministicEmbeddingProvider()
+            SemanticEmbeddingProviders.onDeviceOrFallback()
         }
 
-        #if canImport(CoreML)
-            /// Locates a Core ML embedding bundle shipped alongside the executable,
-            /// so a distribution that bundles a model uses it with no flag.
-            /// `ARCLEAK_EMBEDDING_BUNDLE` overrides the location for installs that
-            /// separate the binary from its resources (`bin/` + `share/`).
-            ///
-            /// Returns nil for the ordinary case — a plain `arcleak` binary, and
-            /// every dev/test build, ships no model — which leaves the on-device
-            /// `NLContextualEmbedding` default in charge.
-            public static func bundledModelDirectory() -> URL? {
-                let executableURL =
-                    (Bundle.main.executableURL
-                    ?? URL(fileURLWithPath: CommandLine.arguments.first ?? ToolInfo.name))
-                    .resolvingSymlinksInPath()
-                return bundledModelDirectory(
-                    executableDir: executableURL.deletingLastPathComponent(),
-                    override: ProcessInfo.processInfo.environment["ARCLEAK_EMBEDDING_BUNDLE"]
-                )
-            }
-
-            /// Pure candidate search behind ``bundledModelDirectory()`` — no process
-            /// globals, so it is unit-testable. Search order: `override` (the
-            /// `ARCLEAK_EMBEDDING_BUNDLE` value) → `<executableDir>/Models/MiniLM` →
-            /// `<executableDir>/../share/arcleak/Models/MiniLM` (FHS / Homebrew
-            /// layout). The first candidate containing a `.mlpackage`/`.mlmodelc`
-            /// wins; nil when none do.
-            public static func bundledModelDirectory(executableDir: URL, override: String?) -> URL? {
-                let manager = FileManager.default
-                func hasModel(_ directory: URL) -> Bool {
-                    guard
-                        let contents = try? manager.contentsOfDirectory(
-                            at: directory,
-                            includingPropertiesForKeys: nil
-                        )
-                    else { return false }
-                    return contents.contains {
-                        $0.pathExtension == "mlpackage" || $0.pathExtension == "mlmodelc"
-                    }
-                }
-
-                var candidates: [URL] = []
-                if let override, !override.isEmpty {
-                    candidates.append(URL(fileURLWithPath: override))
-                }
-                candidates.append(executableDir.appendingPathComponent("Models/MiniLM"))
-                candidates.append(
-                    executableDir.deletingLastPathComponent()
-                        .appendingPathComponent("share/\(ToolInfo.name)/Models/MiniLM")
-                )
-
-                // Resolve each candidate so a symlinked model directory reaches the
-                // provider as its real path: `contentsOfDirectory` (here, and in the
-                // provider's own model lookup) does not traverse a URL that is
-                // itself a symlink to a directory, so an unresolved candidate reads
-                // as "no model" and discovery silently misses it.
-                return candidates.map { $0.resolvingSymlinksInPath() }.first(where: hasModel)
-            }
-        #endif
+        /// Cap on post-tokenization sequence length for a bundle's model: the
+        /// MiniLM-class context window, and a safe ceiling for fixed-shape
+        /// exports whose `[1, 128]` input a longer sequence overflows.
+        private static let bundleMaxLength = 128
 
         // MARK: - Ranking
 

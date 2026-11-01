@@ -58,7 +58,7 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/g-cqd/analyzerkit.git",
-            revision: "53d82440574f5fc121fa25dfe411f699cccb2431"
+            revision: "a8c9d638039c13b11adaa0803669746fda64dd51"
         ),
     ],
     targets: [
@@ -78,7 +78,7 @@ let package = Package(
                 .product(name: "SourceCorpus", package: "analyzerkit"),
                 .product(name: "Suppression", package: "analyzerkit"),
                 .product(name: "ReportSupport", package: "analyzerkit"),
-                .product(name: "WordPiece", package: "analyzerkit"),
+                .product(name: "SemanticEmbedding", package: "analyzerkit"),
                 .product(
                     name: "IndexStoreDB",
                     package: "indexstore-db",
@@ -92,6 +92,7 @@ let package = Package(
             dependencies: [
                 "ArcLeakCore",
                 .product(name: "AnalyzerCLI", package: "analyzerkit"),
+                .product(name: "SemanticEmbedding", package: "analyzerkit"),
                 .product(name: "SourceCorpus", package: "analyzerkit"),
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "SystemPackage", package: "swift-system"),
@@ -130,6 +131,7 @@ let package = Package(
                 .product(name: "Suppression", package: "analyzerkit"),
                 .product(name: "ReportSupport", package: "analyzerkit"),
                 .product(name: "WordPiece", package: "analyzerkit"),
+                .product(name: "SemanticEmbedding", package: "analyzerkit"),
                 .product(name: "AemiJSON", package: "AemiJSON"),
                 .product(name: "AemiProtobuf", package: "AemiProtobuf"),
             ],
