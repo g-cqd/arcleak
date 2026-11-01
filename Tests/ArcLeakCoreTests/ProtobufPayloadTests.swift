@@ -1,6 +1,7 @@
 import AemiJSON
 import AemiProtobuf
 import Foundation
+import Suppression
 import Testing
 
 @testable import ArcLeakCore
