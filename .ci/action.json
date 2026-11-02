@@ -1,0 +1,43 @@
+{
+  "swift": {
+    "parallel": false
+  },
+  "quality": {
+    "paths": [
+      "Sources"
+    ],
+    "include": [
+      "Package.swift",
+      "Sources/**",
+      "Plugins/**",
+      "Tests/ArcLeakCoreTests/*.swift"
+    ]
+  },
+  "release": {
+    "executables": [
+      "arcleak"
+    ]
+  },
+  "commands": [
+    {
+      "id": "no-gcd",
+      "run": "Scripts/no-gcd.sh",
+      "after": "quality"
+    },
+    {
+      "id": "self-analysis",
+      "run": "swift run arcleak analyze Sources --strict --no-cache",
+      "after": "linux-debug"
+    },
+    {
+      "id": "leak-oracle",
+      "run": "swift build --product leak-oracle && Scripts/run-leak-oracle.sh \"$(swift build --show-bin-path)/leak-oracle\"",
+      "after": "macos-debug"
+    },
+    {
+      "id": "lsp-smoke",
+      "run": "swift build --product arcleak && Scripts/lsp-smoke.sh \"$(swift build --show-bin-path)/arcleak\"",
+      "after": "macos-debug"
+    }
+  ]
+}
