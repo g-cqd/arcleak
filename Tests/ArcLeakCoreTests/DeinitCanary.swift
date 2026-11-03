@@ -19,6 +19,7 @@ func expectDeallocated<T: AnyObject>(
 
 func expectLeaked<T: AnyObject>(
     _ comment: Comment? = nil,
+    cleanup: (T) -> Void,
     _ make: () -> T
 ) {
     weak var canary: T?
@@ -28,6 +29,9 @@ func expectLeaked<T: AnyObject>(
         _ = object
     }
     #expect(canary != nil, comment ?? "object should still be alive (cycle expected)")
+    // Prove the cycle first, then break it so the canary itself stays LeakSanitizer-clean.
+    if let object = canary { cleanup(object) }
+    #expect(canary == nil, "breaking the cycle should deallocate the object")
 }
 
 @Suite struct DeinitCanaryTests {
@@ -50,7 +54,7 @@ func expectLeaked<T: AnyObject>(
 
     @Test("strong stored closure provably cycles at runtime")
     func strongStoredClosureLeaks() {
-        expectLeaked {
+        expectLeaked(cleanup: { $0.onChange = nil }) {
             let box = StrongBox()
             box.arm()
             return box
