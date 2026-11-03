@@ -22,22 +22,26 @@
     {
       "id": "no-gcd",
       "run": "Scripts/no-gcd.sh",
-      "after": "quality"
+      "after": "quality",
+      "title": "Quality \u00b7 GCD Ban"
     },
     {
       "id": "self-analysis",
       "run": "swift run arcleak analyze Sources --strict --no-cache",
-      "after": "linux-debug"
+      "after": "linux-debug",
+      "title": "Quality \u00b7 Self Analysis"
     },
     {
       "id": "leak-oracle",
       "run": "swift build --product leak-oracle && Scripts/run-leak-oracle.sh \"$(swift build --show-bin-path)/leak-oracle\"",
-      "after": "macos-debug"
+      "after": "macos-debug",
+      "title": "Integration \u00b7 Leak Oracle"
     },
     {
       "id": "lsp-smoke",
       "run": "swift build --product arcleak && Scripts/lsp-smoke.sh \"$(swift build --show-bin-path)/arcleak\"",
-      "after": "macos-debug"
+      "after": "macos-debug",
+      "title": "Integration \u00b7 Language Server Smoke"
     }
   ]
 }
