@@ -7,7 +7,7 @@
       "Sources"
     ],
     "include": [
-      "Package.swift",
+      "/Package.swift",
       "Sources/**",
       "Plugins/**",
       "Tests/ArcLeakCoreTests/*.swift"
@@ -23,25 +23,25 @@
       "id": "no-gcd",
       "run": "Scripts/no-gcd.sh",
       "after": "quality",
-      "title": "Quality \u00b7 GCD Ban"
+      "title": "Quality · GCD Ban"
     },
     {
       "id": "self-analysis",
       "run": "swift run arcleak analyze Sources --strict --no-cache",
       "after": "linux-debug",
-      "title": "Quality \u00b7 Self Analysis"
+      "title": "Quality · Self Analysis"
     },
     {
       "id": "leak-oracle",
       "run": "swift build --product leak-oracle && Scripts/run-leak-oracle.sh \"$(swift build --show-bin-path)/leak-oracle\"",
       "after": "macos-debug",
-      "title": "Integration \u00b7 Leak Oracle"
+      "title": "Integration · Leak Oracle"
     },
     {
       "id": "lsp-smoke",
       "run": "swift build --product arcleak && Scripts/lsp-smoke.sh \"$(swift build --show-bin-path)/arcleak\"",
       "after": "macos-debug",
-      "title": "Integration \u00b7 Language Server Smoke"
+      "title": "Integration · Language Server Smoke"
     }
   ],
   "localChecks": [
