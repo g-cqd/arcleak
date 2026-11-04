@@ -10,7 +10,7 @@ retention).
 
 ## Checklist before tagging
 
-1. `Scripts/ci-local.sh` green on the pinned toolchain (`swiftly run`).
+1. `.ci/swift-ci local` green (quality, the debug tests and the oracles attached to them, self-analysis).
 2. Analyze 2-3 large real Swift apps and investigate any new finding class.
 3. Bump `ToolInfo.version` (single source of truth: CLI `--version`, SARIF
    driver, baseline headers, cache invalidation key; the release workflow

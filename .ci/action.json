@@ -43,5 +43,10 @@
       "after": "macos-debug",
       "title": "Integration \u00b7 Language Server Smoke"
     }
+  ],
+  "localChecks": [
+    "quality",
+    "debug",
+    "self-analysis"
   ]
 }
