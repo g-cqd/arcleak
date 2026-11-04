@@ -1,7 +1,7 @@
 {
-  "analyzedFileCount" : 71,
+  "analyzedFileCount" : 73,
   "cacheHits" : 0,
-  "cacheMisses" : 70,
+  "cacheMisses" : 72,
   "degradedFiles" : [
     {
       "detail" : "not valid UTF-8",
@@ -346,6 +346,28 @@
       "path" : "Fixtures\/Leaks\/LazyStoredClosure.swift",
       "rule" : "stored-closure-strong-self",
       "severity" : "error"
+    },
+    {
+      "column" : 13,
+      "fingerprint" : "d1478275ac3025b",
+      "fingerprintPath" : "Fixtures\/Leaks\/MappedTokensDropped.swift",
+      "line" : 8,
+      "message" : "the observer token is discarded — the registration can never be removed (the center holds block and token until removal)",
+      "note" : "store it in a property of the owner (e.g. store(in:) into an instance Set<AnyCancellable>) for as long as the work should live",
+      "path" : "Fixtures\/Leaks\/MappedTokensDropped.swift",
+      "rule" : "unstored-lifetime-token",
+      "severity" : "warning"
+    },
+    {
+      "column" : 13,
+      "fingerprint" : "a17b7c2df303fd00",
+      "fingerprintPath" : "Fixtures\/Leaks\/MappedTokensDropped.swift",
+      "line" : 16,
+      "message" : "the observer token is stored in local 'observers' and dies at scope end — the registration can never be removed (the center holds block and token until removal)",
+      "note" : "move it to instance storage; a local cannot own work that outlives the call",
+      "path" : "Fixtures\/Leaks\/MappedTokensDropped.swift",
+      "rule" : "token-stored-in-local",
+      "severity" : "warning"
     },
     {
       "column" : 19,

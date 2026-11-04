@@ -751,6 +751,54 @@
           "ruleId" : "stored-closure-strong-self"
         },
         {
+          "level" : "warning",
+          "locations" : [
+            {
+              "physicalLocation" : {
+                "artifactLocation" : {
+                  "uri" : "Fixtures\/Leaks\/MappedTokensDropped.swift",
+                  "uriBaseId" : "SRCROOT"
+                },
+                "region" : {
+                  "startColumn" : 13,
+                  "startLine" : 8
+                }
+              }
+            }
+          ],
+          "message" : {
+            "text" : "the observer token is discarded — the registration can never be removed (the center holds block and token until removal) — store it in a property of the owner (e.g. store(in:) into an instance Set<AnyCancellable>) for as long as the work should live"
+          },
+          "partialFingerprints" : {
+            "arcleak\/v1" : "d1478275ac3025b"
+          },
+          "ruleId" : "unstored-lifetime-token"
+        },
+        {
+          "level" : "warning",
+          "locations" : [
+            {
+              "physicalLocation" : {
+                "artifactLocation" : {
+                  "uri" : "Fixtures\/Leaks\/MappedTokensDropped.swift",
+                  "uriBaseId" : "SRCROOT"
+                },
+                "region" : {
+                  "startColumn" : 13,
+                  "startLine" : 16
+                }
+              }
+            }
+          ],
+          "message" : {
+            "text" : "the observer token is stored in local 'observers' and dies at scope end — the registration can never be removed (the center holds block and token until removal) — move it to instance storage; a local cannot own work that outlives the call"
+          },
+          "partialFingerprints" : {
+            "arcleak\/v1" : "a17b7c2df303fd00"
+          },
+          "ruleId" : "token-stored-in-local"
+        },
+        {
           "level" : "error",
           "locations" : [
             {

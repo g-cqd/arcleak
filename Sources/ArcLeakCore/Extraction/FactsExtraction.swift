@@ -1504,6 +1504,9 @@ final class FactsExtractor: SyntaxVisitor {
             }
             if parent.is(ReturnStmtSyntax.self) { return .returned }
             if let item = parent.as(CodeBlockItemSyntax.self) {
+                // `xs.map { addObserver(…) }`: the token is an element of the transform's result, so it goes
+                // where that result goes (a member, a local, nowhere).
+                if let transform = elementTransform(yielding: item) { return classifyConsumption(of: transform) }
                 return classifyBareStatement(item)
             }
             // `bag.append(token)`, `bag.insert(token)`: stored in the collection, as `token.store(in: &bag)` is.
@@ -1631,6 +1634,36 @@ final class FactsExtractor: SyntaxVisitor {
             return true
         }
         return false
+    }
+
+    /// Calls whose closure's value becomes an element of the call's result.
+    private static let elementTransforms: Set<String> = ["map", "compactMap"]
+
+    /// The `map`/`compactMap` call whose closure is `item` alone (its implicit return), passed as the trailing
+    /// closure or the only argument.
+    private func elementTransform(yielding item: CodeBlockItemSyntax) -> FunctionCallExprSyntax? {
+        guard
+            let list = item.parent?.as(CodeBlockItemListSyntax.self),
+            list.count == 1,
+            let closure = list.parent?.as(ClosureExprSyntax.self)
+        else { return nil }
+        let call: FunctionCallExprSyntax
+        if let trailing = closure.parent?.as(FunctionCallExprSyntax.self), trailing.trailingClosure?.id == closure.id {
+            call = trailing
+        } else if let argument = closure.parent?.as(LabeledExprSyntax.self),
+            let arguments = argument.parent?.as(LabeledExprListSyntax.self),
+            arguments.count == 1,
+            let parenthesized = arguments.parent?.as(FunctionCallExprSyntax.self)
+        {
+            call = parenthesized
+        } else {
+            return nil
+        }
+        guard
+            let member = call.calledExpression.as(MemberAccessExprSyntax.self),
+            Self.elementTransforms.contains(member.declName.baseName.text)
+        else { return nil }
+        return call
     }
 
     /// A bare expression statement is a discard — unless it is the *only*
