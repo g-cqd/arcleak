@@ -1,3 +1,4 @@
+internal import AemiKernel
 /// Cross-file cycle detection: strongly-connected components of the
 /// type-level ownership graph (strong stored-property edges between corpus
 /// reference types). Reports one finding per component, anchored at the first

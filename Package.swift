@@ -56,6 +56,8 @@ let package = Package(
             url: "https://github.com/g-cqd/AemiProtobuf.git",
             revision: "ef41c42b6114419933ceb32040735241e9769de7"
         ),
+        // Aemi's kernels (strongly connected components); the revision analyzerkit pins, written as it writes it.
+        .package(url: "https://github.com/Aemi-Studio/aemi.git", revision: "409c647a91736065ac53c1877abe2cf4840f7617"),
         .package(
             url: "https://github.com/g-cqd/analyzerkit.git",
             revision: "a7814db1cdf56fbc97460f37e469a194e31cfc12"
@@ -71,6 +73,7 @@ let package = Package(
                 .product(name: "AemiJSON", package: "AemiJSON"),
                 .product(name: "AemiProtobuf", package: "AemiProtobuf"),
                 .product(name: "AemiProtobufCore", package: "AemiProtobuf"),
+                .product(name: "AemiKernel", package: "aemi"),
                 .product(name: "ProjectModel", package: "analyzerkit"),
                 .product(name: "CorpusScan", package: "analyzerkit"),
                 .product(name: "IndexStoreSupport", package: "analyzerkit", condition: .when(platforms: [.macOS])),
