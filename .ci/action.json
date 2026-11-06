@@ -42,6 +42,25 @@
       "run": "swift build --product arcleak && Scripts/lsp-smoke.sh \"$(swift build --show-bin-path)/arcleak\"",
       "after": "macos-debug",
       "title": "Integration · Language Server Smoke"
+    },
+    {
+      "id": "benchmarks",
+      "title": "Performance · Benchmarks against the Commit Before",
+      "os": "macOS",
+      "cadence": [
+        "push",
+        "nightly",
+        "dispatch"
+      ],
+      "paths": [
+        "Sources/**",
+        "Benchmarks/**",
+        "Package.swift",
+        "Package.resolved",
+        ".ci/action.json",
+        ".github/workflows/**"
+      ],
+      "benchmark": {}
     }
   ],
   "localChecks": [
