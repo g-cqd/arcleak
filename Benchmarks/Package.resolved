@@ -1,12 +1,12 @@
 {
-  "originHash" : "dcb4b40e82665bf83f4cbb42e557182b17b40e9406917d5359c0f7ddc101ce61",
+  "originHash" : "b37e30e3f4acfdf9426607e664a7fe052437ee3620407d056f07a2030f275b31",
   "pins" : [
     {
       "identity" : "aemi",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Aemi-Studio/aemi.git",
       "state" : {
-        "revision" : "b31f49916261927be86db82edee8541fcfc19a64"
+        "revision" : "409c647a91736065ac53c1877abe2cf4840f7617"
       }
     },
     {
@@ -14,7 +14,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/g-cqd/AemiJSON.git",
       "state" : {
-        "revision" : "f54849a614db4e5670eaf7ea09a88cf4cd97feb2"
+        "revision" : "8b7bfe373d2b36dbfe8e7ec068478b1aea65b12a"
       }
     },
     {
@@ -22,7 +22,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/g-cqd/AemiProtobuf.git",
       "state" : {
-        "revision" : "2c0a66b9a65781f22d88a70c51e769ed667cd2e0"
+        "revision" : "ef41c42b6114419933ceb32040735241e9769de7"
       }
     },
     {
@@ -30,7 +30,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/g-cqd/AemiRegex.git",
       "state" : {
-        "revision" : "687fa0b735af5f982a69270e8b98c65d42d50455"
+        "revision" : "2d4cf1203dac2c992db9d3ab4da3756968d73d9e"
       }
     },
     {
@@ -38,16 +38,16 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/g-cqd/analyzerkit.git",
       "state" : {
-        "revision" : "bb9f59dc068d03f93f034d120515b86cc2ee6ee5"
+        "revision" : "a7814db1cdf56fbc97460f37e469a194e31cfc12"
       }
     },
     {
-      "identity" : "arcleak",
+      "identity" : "benchmark",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/g-cqd/arcleak.git",
+      "location" : "https://github.com/ordo-one/benchmark",
       "state" : {
-        "branch" : "main",
-        "revision" : "b0c6f088e692ec4f7f129b7f6d567791e99e2db7"
+        "revision" : "ca4a9d300fc15d38132853c2e30462337b33c43f",
+        "version" : "1.38.1"
       }
     },
     {
@@ -74,15 +74,6 @@
       "state" : {
         "revision" : "977dc0639b742ecd05ac03fecc53664095821a5d",
         "version" : "1.6.1"
-      }
-    },
-    {
-      "identity" : "package-benchmark",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/ordo-one/package-benchmark",
-      "state" : {
-        "revision" : "ca4a9d300fc15d38132853c2e30462337b33c43f",
-        "version" : "1.38.1"
       }
     },
     {
