@@ -47,20 +47,20 @@ let package = Package(
         // Only the internal facts cache uses this codec; report byte formats stay stable.
         .package(
             url: "https://github.com/g-cqd/AemiJSON.git",
-            revision: "8b7bfe373d2b36dbfe8e7ec068478b1aea65b12a"
+            revision: "5aa84e0eca14c344f4fc0b313dbb907dc1446b9e"
         ),
         // The project model the analyzers share: code regions, test code,
         // generated files, platforms and system entry points.
         // The facts cache's payload codec; analyzerkit's revision, written as analyzerkit writes it (ADR-0025).
         .package(
             url: "https://github.com/g-cqd/AemiProtobuf.git",
-            revision: "ef41c42b6114419933ceb32040735241e9769de7"
+            revision: "fca129de94fa8a131ca2cddcbd47765c060dc467"
         ),
         // Aemi's kernels (strongly connected components); the revision analyzerkit pins, written as it writes it.
-        .package(url: "https://github.com/Aemi-Studio/aemi.git", revision: "409c647a91736065ac53c1877abe2cf4840f7617"),
+        .package(url: "https://github.com/Aemi-Studio/aemi.git", revision: "0bae2edb1a89bd3d931fb3122c2184cc5c368834"),
         .package(
             url: "https://github.com/g-cqd/analyzerkit.git",
-            revision: "a7814db1cdf56fbc97460f37e469a194e31cfc12"
+            revision: "7f612434859324f325977f53f8a4edace7a3dbf7"
         ),
     ],
     targets: [
