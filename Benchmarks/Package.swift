@@ -10,7 +10,7 @@ let package = Package(
     dependencies: [
         .package(path: ".."),
         // The facts cache's location type (CorpusScan); the revision arcleak pins.
-        .package(url: "https://github.com/g-cqd/analyzerkit.git", revision: "93245fe0112f589fca5d02410b9762c3512e48f7"),
+        .package(url: "https://github.com/g-cqd/analyzerkit.git", revision: "68168c652a26daf58958d045ea9fcc0b3aff009e"),
         .package(url: "https://github.com/ordo-one/benchmark", from: "1.38.0"),
     ],
     targets: [
