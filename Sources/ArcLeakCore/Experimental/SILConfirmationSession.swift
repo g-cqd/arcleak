@@ -48,6 +48,12 @@
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
             process.arguments = ["swiftc", "-emit-silgen", "-g", file]
+            var env: [String: String] = ["PATH": "/usr/bin:/bin"]
+            let hostEnv = ProcessInfo.processInfo.environment
+            for key in ["DEVELOPER_DIR", "TOOLCHAINS", "SDKROOT", "HOME", "TMPDIR"] {
+                if let value = hostEnv[key] { env[key] = value }
+            }
+            process.environment = env
             let outPipe = Pipe()
             let errPipe = Pipe()
             process.standardOutput = outPipe
@@ -98,7 +104,7 @@
                         // Cancelled once both drains finish: the deadline did not
                         // fire, and the exit wait below reaps the child.
                         if Task.isCancelled { return .exited }
-                        try? await Task.sleep(for: .milliseconds(10))
+                        try? await Task.sleep(for: .milliseconds(50))
                     }
                     return .exited
                 }

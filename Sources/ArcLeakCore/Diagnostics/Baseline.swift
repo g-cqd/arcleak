@@ -33,7 +33,7 @@ extension FindingBaseline where Finding == ArcLeakCore.Finding {
 
     public func write(path: String) throws(ArcLeakError) {
         do {
-            try encoded(tool: ToolInfo.name).write(to: URL(fileURLWithPath: path))
+            try encoded(tool: ToolInfo.name).write(to: URL(fileURLWithPath: path), options: .atomic)
         } catch {
             throw .configurationUnreadable(path: path, underlying: String(describing: error))
         }

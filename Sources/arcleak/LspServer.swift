@@ -208,6 +208,7 @@ struct LspServer {
     /// OOM. Returning nil ends the read loop cleanly.
     private static let maxHeaderBytes = 4 * 1024
     private static let maxBodyBytes = 16 * 1024 * 1024
+    private static let maxOpenDocuments = 256
 
     /// One byte from stdin, or nil at EOF/error.
     ///
@@ -284,6 +285,12 @@ struct LspServer {
             return false
         case "textDocument/didOpen":
             if let document = params?.textDocument, let text = document.text {
+                if openDocuments[document.uri] == nil, openDocuments.count >= Self.maxOpenDocuments,
+                    let evicted = openDocuments.keys.sorted().first
+                {
+                    openDocuments.removeValue(forKey: evicted)
+                    lastFindings.removeValue(forKey: evicted)
+                }
                 openDocuments[document.uri] = text
                 publishDiagnostics(uri: document.uri, source: text)
             }
