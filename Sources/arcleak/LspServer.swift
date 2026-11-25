@@ -241,6 +241,14 @@ struct LspServer {
         return bytes
     }
 
+    private static func parseContentLength(_ raw: Substring) -> Int? {
+        let trimmed = raw.drop { $0 == " " || $0 == "\t" }
+            .reversed().drop { $0 == " " || $0 == "\t" || $0 == "\r" }.reversed()
+        let text = String(trimmed)
+        guard !text.isEmpty, text.utf8.allSatisfy({ $0 >= 0x30 && $0 <= 0x39 }) else { return nil }
+        return Int(text)
+    }
+
     private static func readMessage() -> Incoming? {
         var header: [UInt8] = []
         while !(header.count >= 4 && header.suffix(4) == [13, 10, 13, 10]) {
@@ -253,10 +261,8 @@ struct LspServer {
             let lengthLine = text.split(separator: "\r\n").first(where: {
                 $0.lowercased().hasPrefix("content-length:")
             }),
-            let lengthField = lengthLine.split(separator: ":").last,
-            // Digits only — the field arrives as " 123" (and may carry a
-            // stray \r); trimmingCharacters is corelibs-only.
-            let length = Int(lengthField.filter(\.isNumber)),
+            let colon = lengthLine.firstIndex(of: ":"),
+            let length = Self.parseContentLength(lengthLine[lengthLine.index(after: colon)...]),
             length >= 0, length <= maxBodyBytes
         else { return nil }
 
