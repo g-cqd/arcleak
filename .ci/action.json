@@ -40,7 +40,7 @@
     {
       "id": "lsp-smoke",
       "run": "swift build --product arcleak && Scripts/lsp-smoke.sh \"$(swift build --show-bin-path)/arcleak\"",
-      "after": "linux-debug",
+      "after": "macos-debug",
       "title": "Integration · Language Server Smoke"
     },
     {
