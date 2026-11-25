@@ -40,7 +40,7 @@
     {
       "id": "lsp-smoke",
       "run": "swift build --product arcleak && Scripts/lsp-smoke.sh \"$(swift build --show-bin-path)/arcleak\"",
-      "after": "macos-debug",
+      "after": "linux-debug",
       "title": "Integration · Language Server Smoke"
     },
     {
@@ -48,7 +48,6 @@
       "title": "Performance · Benchmarks against the Commit Before",
       "os": "macOS",
       "cadence": [
-        "push",
         "nightly",
         "dispatch"
       ],
