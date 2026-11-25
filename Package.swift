@@ -1,11 +1,6 @@
 // swift-tools-version: 6.4
 import PackageDescription
 
-// Strict-by-default: warnings are errors; upcoming features are on so the code
-// is already valid under the next language mode's semantics — including the
-// future concurrency defaults (caller-isolated async, inferred isolated
-// conformances) — and strict memory safety keeps the unsafe surface at zero.
-// Swift 6 language mode (below) already includes complete strict concurrency.
 let strictSwiftSettings: [SwiftSetting] = [
     .treatAllWarnings(as: .error),
     .enableUpcomingFeature("ExistentialAny"),
@@ -18,10 +13,6 @@ let strictSwiftSettings: [SwiftSetting] = [
 
 let package = Package(
     name: "arcleak",
-    // Floor bump 14 → 15: IndexStoreDB (the opt-in `--index-store` backend)
-    // targets macOS 15. arcleak is a developer tool, so the bump is acceptable;
-    // the syntax-only analysis path is unaffected and Linux builds gate the
-    // index out entirely (`#if canImport(IndexStoreDB)`).
     platforms: [.macOS(.v15)],
     products: [
         .library(name: "ArcLeakCore", targets: ["ArcLeakCore"]),
@@ -32,31 +23,19 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "604.0.0"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.8.2"),
-        // swift-system: a safe, Sendable stdio surface (stderr writes; the LSP
-        // server's stdin/stdout framing). Foundation's FileHandle is
-        // corelibs-only and would re-link ~47 MiB of ICU on Linux.
         .package(url: "https://github.com/apple/swift-system.git", from: "1.8.1"),
-        // indexstore-db has no semver tags. Linked into ArcLeakCore on macOS only (see the target dependency).
-        // analyzerkit's revision, written exactly as analyzerkit writes it: SwiftPM refuses one package required in
-        // two spellings, even a revision and a branch naming the same commit (analyzerkit ADR-0025).
         .package(
             url: "https://github.com/swiftlang/indexstore-db.git",
             revision: "0390867818c28241af4650eb4ef29af5669335a3"
         ),
-        // The pinned JSON package uses Aemi's kernel and runtime products.
-        // Only the internal facts cache uses this codec; report byte formats stay stable.
         .package(
             url: "https://github.com/g-cqd/AemiJSON.git",
             revision: "1c098f0456a2f86dee32dfd9b85455980216589f"
         ),
-        // The project model the analyzers share: code regions, test code,
-        // generated files, platforms and system entry points.
-        // The facts cache's payload codec; analyzerkit's revision, written as analyzerkit writes it (ADR-0025).
         .package(
             url: "https://github.com/g-cqd/AemiProtobuf.git",
             revision: "b31d62bbf28286aed1b394c0762257d745bbb530"
         ),
-        // Aemi's kernels (strongly connected components); the revision analyzerkit pins, written as it writes it.
         .package(url: "https://github.com/Aemi-Studio/aemi.git", revision: "bd5e4cf4441ca3ed1b424935142586ccaac0f835"),
         .package(
             url: "https://github.com/g-cqd/analyzerkit.git",
@@ -102,12 +81,6 @@ let package = Package(
             ],
             swiftSettings: strictSwiftSettings
         ),
-        // Runtime ground-truth oracle: proves every KB retention contract by
-        // running it. Cycle scenarios are judged externally by `leaks -atExit`;
-        // anchor scenarios self-verify with run-loop control. See
-        // Scripts/run-leak-oracle.sh. Compiled in language mode 5 on purpose:
-        // the scenarios reproduce real-world capture patterns verbatim, and
-        // Swift 6 strict concurrency would reject the very shapes under test.
         .executableTarget(
             name: "leak-oracle",
             swiftSettings: [.swiftLanguageMode(.v5)]

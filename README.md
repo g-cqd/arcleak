@@ -51,10 +51,15 @@ It also runs as a SwiftPM build-tool plugin, as a GitHub Action, and as an LSP s
 ## Learn more
 
 - [User guide](docs/README.md): getting started, rules, configuration, CI, reports.
-- [Development](development/): how arcleak is built and released.
 
 arcleak is one of a family of analyzers with the same options and reports:
 [deadwood](https://github.com/g-cqd/deadwood) (unused code), [dolly](https://github.com/g-cqd/dolly) (duplicated code),
 [fcheck](https://github.com/g-cqd/fcheck) and [modeler](https://github.com/g-cqd/modeler).
 
 [MIT](LICENSE)
+
+## Contributing & Security
+
+- [Contributing](CONTRIBUTING.md)
+- [Security](SECURITY.md)
+- [License](LICENSE)
